@@ -1,0 +1,8 @@
+[deps]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+GeoInterface = "cf35fbd7-0cd7-5166-be24-54bfbe79505f"
+GeoInterfaceMakie = "0edc0954-3250-4c18-859d-ec71c1660c08"
+GeometryOps = "3251bfac-6a57-4b6d-aa61-ac1fef2975ab"
+LibGEOS = "a90b1aa1-3769-5649-ba7e-abc5a9d163eb"
+Literate = "98b081ad-f1c9-55d3-8b20-4c87d4299306"
