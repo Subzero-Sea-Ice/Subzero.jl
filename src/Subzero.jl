@@ -1,7 +1,7 @@
 module Subzero
 
 # Use the README as the module docs
-# Testing push to hex_bonds branch 
+
 @doc let
     path = joinpath(dirname(@__DIR__), "README.md")
     include_dependency(path)
