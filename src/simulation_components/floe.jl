@@ -32,6 +32,8 @@ Singular sea ice floe with fields describing current state.
     rmax::FT                # distance of vertix farthest from centroid (m)
     moment::FT              # mass moment of intertia
     angles::Vector{FT}      # interior angles of floe in degrees
+    # Bonds (Adjacenct floes information) ----------------------------------------
+    hex_bonds::Vector{Int} = fill(0, 6) # Indices of neighboring floes (default: 6 slots)
     # Monte Carlo Points ---------------------------------------------------
     x_subfloe_points::Vector{FT}        # x-coordinates for monte carlo integration centered
                             #   at origin
@@ -195,6 +197,7 @@ function Floe{FT}(
     )
 end
 
+
 """
     Floe{FT}(
         coords::PolyVec,
@@ -309,7 +312,6 @@ function poly_to_floes!(
     end
     return 0
 end
-
 
 """
     initialize_floe_field(args...)
