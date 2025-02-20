@@ -148,6 +148,8 @@ function deepcopy_floe(floe::LazyRow{Floe{FT}}) where {FT}
         overarea = floe.overarea,
         collision_force = copy(floe.collision_force),
         collision_trq = floe.collision_trq,
+        bond_force = copy(floe.bond_force),
+        bond_trq = floe.bond_trq,
         stress_accum = copy(floe.stress_accum),
         stress_instant = copy(floe.stress_instant),
         strain = copy(floe.strain),

@@ -63,6 +63,8 @@ Singular sea ice floe with fields describing current state.
     overarea::FT = 0.0      # total overlap with other floe
     collision_force::Matrix{FT} = zeros(1, 2)
     collision_trq::FT = 0.0
+    bond_force::Matrix{FT} = zeros(1, 2)  # bond force
+    bond_trq::FT = 0.0                    # bond torque
     interactions::Matrix{FT} = zeros(0, 7)
     num_inters::Int = 0
     stress_accum::Matrix{FT} = zeros(2, 2)

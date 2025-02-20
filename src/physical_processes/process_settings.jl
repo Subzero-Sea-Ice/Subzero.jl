@@ -239,6 +239,51 @@ CollisionSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
     CollisionSettings{FT}(;kwargs...)
 
 """
+    HexagonalBondSettings{FT<:AbstractFloat}
+
+Settings needed for bonds within the model. 
+If bonds_on is true, fracture happens through bonds, else they will not.
+"""
+
+@kwdef struct HexagonalBondSettings{FT<:AbstractFloat}
+    bonds_on::Bool = false
+    elastic_constant::FT = 1.0
+
+    function HexagonalBondSettings{FT}(
+        bonds_on,
+        elastic_constant, 
+    ) where {FT<:AbstractFloat}
+        if bonds_on
+            if elastic_constant < 0
+                @warn "Elastic constant must be non-negative. Setting to 0."
+                elastic_constant = FT(0)
+            end
+        end 
+        new{FT}(bonds_on, elastic_constant) 
+    end
+
+    HexagonalBondSettings(
+        bonds_on,
+        elastic_constant
+    ) = HexagonalBondSettings{Float64}(
+        bonds_on,
+        elastic_constant,
+    )
+end 
+
+
+
+"""
+    HexagonalBondSettings(::Type{FT}, kwargs...)
+
+A float type FT can be provided as the first argument of any HexagonalBondSettings
+constructor. A HexagonalBondSettings of type FT will be created by passing all
+other arguments to the correct constructor. 
+"""
+HexagonalBondSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
+HexagonalBondSettings{FT}(;kwargs...)
+
+"""
     FractureSettings{CT<:AbstractFractureCriteria}
 
 Settings needed for fractures within the model. 

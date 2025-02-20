@@ -946,6 +946,7 @@ function getattrs(output::Symbol)
         output == :rmax ? ("m", "Maximum radius within floe") :
         output == :moment ? ("kg m^2", "Floe mass moment of intertia") :
         output == :angles ? ("kg m^2", "Floe interior angles") :
+        output == :hex_bonds ? ("Floe Bonds - Neighbpuring floe ids connected with a bond") :
         output == :x_subfloe_points ? ("location", "x-coordinates for floe monte carlo points") :
         output == :y_subfloe_points ? ("location", "y-coordinates for floe monte carlo points") :
         output == :α ? ("radians", "Floe rotation since starting position") :
@@ -963,6 +964,8 @@ function getattrs(output::Symbol)
         output == :overarea ? ("m^2", "Overlap area of floe with other floes") :
         output == :collision_force ? ("N", "Total collision force from floes/topography/border in form [xf yf]") :
         output == :collision_torque ? ("N", "Total collision torque from floes/topography/border") :
+        output == :bond_force ? ("N", "Total bond force") :
+        output == :bond_torque ? ("N", "Total bond torque") :
         output == :interactions ? ("[unitless, N, N, location, location, N m, m^2]",
                                     "Matrix of floe's interactions with following columns: ID of floe interacted with,
                                     collision x-force on floe, collision y-force on floe, collision x-point, collision y-point,

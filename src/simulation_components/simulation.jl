@@ -72,6 +72,7 @@ The user can also define settings for each physical process.
     floe_settings::FloeSettings{FT, PT, ST} = FloeSettings()
     coupling_settings::CouplingSettings = CouplingSettings()
     collision_settings::CollisionSettings{FT} = CollisionSettings()
+    hexagonal_bond_settings::HexagonalBondSettings{FT} = hexagonalBondSettings()
     fracture_settings::FractureSettings{CT} = FractureSettings()
     simp_settings::SimplificationSettings{FT} = SimplificationSettings()
     ridgeraft_settings::RidgeRaftSettings{FT} = RidgeRaftSettings()
@@ -114,6 +115,16 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
                 sim.Δt,
                 sim.collision_settings,
                 spinlock,
+            )
+        end
+        # Hexagonal Bonds 
+        if sim.hexagonal_bond_settings.bonds_on
+            timestep_hexagonal_bonds!(
+                sim.model.floes,
+                sim.model.domain,
+                sim.consts,
+                sim.Δt*tstep,
+                sim.hexagonal_bond_settings,
             )
         end
         pieces_buffer = StructArray{Floe{Float64}}(undef, 0)

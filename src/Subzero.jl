@@ -37,6 +37,7 @@ export
     HiblerYieldCurve,
     MohrsCone,
     CollisionSettings,
+    HexagonalBondSettings,
     FractureSettings,
     CouplingSettings,
     SimplificationSettings,
@@ -118,6 +119,7 @@ include("physical_processes/fractures.jl")
 include("physical_processes/update_floe.jl")
 include("physical_processes/coupling.jl")
 include("physical_processes/collisions.jl")
+include("physical_processes/hex_bonds.jl")
 include("physical_processes/process_settings.jl")
 include("physical_processes/simplification.jl")
 include("physical_processes/ridge_raft.jl")
