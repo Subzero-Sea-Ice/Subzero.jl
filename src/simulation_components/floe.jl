@@ -33,7 +33,7 @@ Singular sea ice floe with fields describing current state.
     moment::FT              # mass moment of intertia
     angles::Vector{FT}      # interior angles of floe in degrees
     # Bonds (Adjacenct floes information) ----------------------------------------
-    hex_bonds::Vector{Int} = fill(0, 6) # Indices of neighboring floes (default: 6 slots)
+    hex_bonds::Vector{Int}  # Indices of neighboring floes (default: 6 slots)
     # Monte Carlo Points ---------------------------------------------------
     x_subfloe_points::Vector{FT}        # x-coordinates for monte carlo integration centered
                             #   at origin
@@ -189,6 +189,7 @@ function Floe{FT}(
         rmax = rmax,
         moment = moment,
         angles = angles,
+        hex_bonds = get(kwargs, :hex_bonds, []), 
         x_subfloe_points = x_subfloe_points,
         y_subfloe_points = y_subfloe_points,
         stress_instant = stress_instant,

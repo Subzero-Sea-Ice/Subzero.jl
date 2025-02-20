@@ -129,6 +129,7 @@ function deepcopy_floe(floe::LazyRow{Floe{FT}}) where {FT}
         rmax = floe.rmax,
         moment = floe.moment,
         angles = copy(floe.angles),
+        hex_bonds = copy(floe.hex_bonds),
         x_subfloe_points = copy(floe.x_subfloe_points),
         y_subfloe_points = copy(floe.y_subfloe_points),
         α = floe.α,
