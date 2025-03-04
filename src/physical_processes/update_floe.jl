@@ -511,7 +511,7 @@ function timestep_floe_properties!(
         floes.p_dαdt[i] = floes.ξ[i]
 
         # Update ice velocities with forces and torques
-        dudt = (floes.fxOA[i] + cforce[1])/floes.mass[i]
+        dudt = (floes.fxOA[i] + cforce[1] )/floes.mass[i]
         dvdt = (floes.fyOA[i] + cforce[2])/floes.mass[i]
         frac = if abs(Δt*dudt) > (h/2) && abs(Δt*dvdt) > (h/2)
             frac1 = (sign(dudt)*h/2Δt)/dudt

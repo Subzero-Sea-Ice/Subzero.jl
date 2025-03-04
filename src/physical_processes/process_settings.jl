@@ -247,26 +247,31 @@ If bonds_on is true, fracture happens through bonds, else they will not.
 
 @kwdef struct HexagonalBondSettings{FT<:AbstractFloat}
     bonds_on::Bool = false
-    elastic_constant::FT = 1.0
+    nfaces:: Int = 6
+    elastic_constant::FT = 1000.0
 
     function HexagonalBondSettings{FT}(
-        bonds_on,
+        bonds_on, nfaces,
         elastic_constant, 
     ) where {FT<:AbstractFloat}
         if bonds_on
+            if nfaces != 6
+                error("Only hexagons (nfaces = 6) are supported.")
+                nfaces = Int(6)
+            end
             if elastic_constant < 0
                 @warn "Elastic constant must be non-negative. Setting to 0."
                 elastic_constant = FT(0)
             end
         end 
-        new{FT}(bonds_on, elastic_constant) 
+        new{FT}(bonds_on, nfaces, elastic_constant) 
     end
 
     HexagonalBondSettings(
-        bonds_on,
+        bonds_on, nfaces,
         elastic_constant
     ) = HexagonalBondSettings{Float64}(
-        bonds_on,
+        bonds_on, nfaces,
         elastic_constant,
     )
 end 

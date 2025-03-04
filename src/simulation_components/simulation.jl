@@ -127,6 +127,7 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
                 sim.hexagonal_bond_settings,
             )
         end
+      
         pieces_buffer = StructArray{Floe{Float64}}(undef, 0)
         # Ridge and raft floes that meet overlap conditions
         if (
