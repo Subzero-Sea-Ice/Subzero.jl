@@ -1,25 +1,27 @@
 """
 Functions needed for calculating bond forces and torques
 """
-# Declare initial_midpoints as a global vector of tuples outside the function
+# Declare initial_bond_endpoints and initial_best_bond_match (minimum bond length is considered when ghosts are involved)
+# as a global vector of tuples outside the function
 global initial_bond_endpoints = Vector{Tuple{Tuple{Int, Int, Int,Int}, Tuple{Vector{Float64}, Vector{Float64}}}}()
 global initial_best_bond_match  = Vector{Tuple{Tuple{Int, Int, Int,Int}, Tuple{Vector{Float64}, Vector{Float64}}}}()
 
-function midpoint(p1, p2)
+#Function to calculate midpoint of each face of polygon to find endpoints of a bond
+function face_midpoint(p1, p2)
     return [(p1[1] + p2[1]) / 2, (p1[2] + p2[2]) / 2]
 end
 
-
-function compute_bond_midpoints(floes, index, idx_floe, idx_neighbour, idx_neighbour_ghost, nfaces)
+#Function to calculate endpoints of a bond
+function compute_bond_endpoints(floes, index, idx_floe, idx_neighbour, idx_neighbour_ghost, nfaces)
     bond_idx_floe = findfirst(isequal(idx_neighbour), floes.hex_bonds[idx_floe])
     bond_idx_neighbour = findfirst(isequal(idx_floe), floes.hex_bonds[idx_neighbour])
 
-    c_floe = midpoint(
+    c_floe = face_midpoint(
         floes.coords[index][1][bond_idx_floe],
         floes.coords[index][1][mod(bond_idx_floe, nfaces) + 1]
     )
 
-    c_neighbour = midpoint(
+    c_neighbour = face_midpoint(
         floes.coords[idx_neighbour_ghost][1][bond_idx_neighbour],
         floes.coords[idx_neighbour_ghost][1][mod(bond_idx_neighbour, nfaces) + 1]
     )
@@ -27,10 +29,12 @@ function compute_bond_midpoints(floes, index, idx_floe, idx_neighbour, idx_neigh
     return c_floe, c_neighbour
 end
 
-function calculate_distance(p1, p2)
+# Function to calculate bond length 
+function calculate_bond_length(p1, p2)
     return sqrt((p1[1] - p2[1])^2 + (p1[2] - p2[2])^2)
 end
 
+# Function to find out the best bond combination between floes (actual+ghost floes) by selecting the combination with minimum distance
 function find_closest_best_bond_match(floes, present_bond_endpoints)
     best_bond_match_ordered = Vector{Vector{Tuple{Tuple{Int, Int, Int,Int}, Tuple{Vector{Float64}, Vector{Float64}}}}}()
     seen_combinations = Set{Tuple{Int, Int}}() # Track (idx_floe, bond_id) pairs
@@ -39,7 +43,7 @@ function find_closest_best_bond_match(floes, present_bond_endpoints)
         idx_floe = floes.id[index]
         for bond_id in bonds
             if bond_id != 0
-                key1 = (idx_floe, bond_id)
+                key1 = (idx_floe, bond_id)  # The actual order
                 key2 = (bond_id, idx_floe)  # The reversed key
                 if key1 in processed_pairs || key2 in processed_pairs
                     continue
@@ -48,10 +52,10 @@ function find_closest_best_bond_match(floes, present_bond_endpoints)
                     filtered = filter(x -> (x[1][1], x[1][2]) == key1 || (x[1][1], x[1][2]) == key2, present_bond_endpoints)
                     if !isempty(filtered)
                         min_dist_match = filtered[1]
-                        min_dist = calculate_distance(filtered[1][2][1], filtered[1][2][2])
+                        min_dist = calculate_bond_length(filtered[1][2][1], filtered[1][2][2])
 
                         for match in filtered
-                            dist = calculate_distance(match[2][1], match[2][2])
+                            dist = calculate_bond_length(match[2][1], match[2][2])
                             if dist < min_dist
                                 min_dist = dist
                                 min_dist_match = match
@@ -70,6 +74,7 @@ function find_closest_best_bond_match(floes, present_bond_endpoints)
     return best_bond_match_ordered
 end
 
+# Function to find which floes are bonded together (including their ghosts)
 function find_bond_match(best_bond_match, key1, key2)
     found_match = nothing
     matched_key = nothing
@@ -91,6 +96,7 @@ function find_bond_match(best_bond_match, key1, key2)
     return found_match, matched_key
 end
 
+# Function to extract the bonded floes (To use this in torque calculation)
 function extract_best_match(matched_key, key1, key2, found_match)
     if matched_key == key1
         return found_match[2][1], found_match[2][2]
@@ -99,7 +105,7 @@ function extract_best_match(matched_key, key1, key2, found_match)
     end
 end
 
-
+# Function to calculate bond forces and torques at each time step
 function timestep_hexagonal_bonds!(
     floes::StructArray{<:Floe{FT}},
     domain,
@@ -114,6 +120,18 @@ function timestep_hexagonal_bonds!(
     global present_bond_endpoints = Vector{Tuple{Tuple{Int, Int, Int, Int}, Tuple{Vector{Float64}, Vector{Float64}}}}()
     global present_best_bond_match = Vector{Tuple{Tuple{Int, Int, Int, Int}, Tuple{Vector{Float64}, Vector{Float64}}}}()
 
+    """
+    present_bond_endpoints :: It stores the information of 
+    1. Index of floe, 2. Index of neighbour 3. Ghost index of floe 4. Ghost index of neighbour
+    4. Endpoints of bonds for all the combinations of bonded floes 
+    For Eg: If floe-1 is bonded to floe-4 and both the floes have a ghost too then present_bond_endpoints 
+    stores information of endpoints of bonds for all possibilities
+    like (floe,neighbour,ghost_floe,ghost_neighbour)=>(1,4,0,0),(1,4,1,0),(1,4,0,1),(1,4,1,1)
+
+    present_best_bond_match :: It stores the information of bonded floes which has least bond length 
+    among all combinations stored in present_bond_endpoints. If (1,4,0,1) has least bond length among 
+    (1,4,0,0),(1,4,1,0),(1,4,0,1),(1,4,1,1) , then "present_best_bond_match" stores bond endpoints of (1,4,0,1)
+    """
     for (index, bonds) in enumerate(floes.hex_bonds)
         idx_floe = floes.id[index]
         idx_floe_ghost = floes.ghost_id[index]
@@ -121,38 +139,45 @@ function timestep_hexagonal_bonds!(
             if bond_id != 0
                 idx_neighbour_ghost = findall(==(bond_id), floes.id)   
                 for idx_neighbour in idx_neighbour_ghost 
-                    c_floe, c_neighbour = compute_bond_midpoints(floes,index, idx_floe, bond_id, idx_neighbour, nfaces)
+                    c_floe, c_neighbour = compute_bond_endpoints(floes,index, idx_floe, bond_id, idx_neighbour, nfaces)
                     push!(present_bond_endpoints, ((idx_floe, bond_id, idx_floe_ghost,floes.ghost_id[idx_neighbour]), (c_floe, c_neighbour)))
                 end
             end
         end
     end
-    if curr_time==0
+    if curr_time == 0
         global initial_bond_endpoints = present_bond_endpoints
         global initial_best_bond_match = find_closest_best_bond_match(floes, initial_bond_endpoints)
     end
-    present_best_bond_match = find_closest_best_bond_match(floes,present_bond_endpoints)
- 
+    present_best_bond_match = find_closest_best_bond_match(floes,present_bond_endpoints) 
     for (index, bonds) in enumerate(floes.hex_bonds)
         fill!(floes.bond_force[index], FT(0))  # Reset both Fx and Fy to zero
         floes.bond_trq[index] = FT(0.0)
         idx_floe = floes.id[index]
-        idx_floe_ghost = floes.ghost_id[index]
         if floes.ghost_id[index] == 0
             for bond_id in bonds
                 if bond_id != 0
                     Fx_bond, Fy_bond, torque_xy = 0.0, 0.0, 0.0 # Initialize to avoid scope issues.
                     key1 = (idx_floe, bond_id) # Actual order
                     key2 = (bond_id, idx_floe) # Reverse order
+                    """
+                    If  present_best_bond_match stores bond endpoints of (1,4,0,1) {minimum bond length} then
+                    find_bond_match() :: present_found_match = stores bond end points (floe and neighbour), present_matched_key = (1,4)
+                    ---------------------------------------------------------------------------------------------------------------------
+                    extract_best_match() :: Floe is 1, Neighbour is 4 {Index positions of (1,4) matters in (1->floe,4->neighbour,0,1)}
+                    c_floe_best_bond_match = stores floe's bond endpoints, c_neighbour_best_bond_match = stores neighbours's bond endpoints based on
+                    index positions of floe and neighbour in present_matched_key 
+                    """
                     initial_found_match, initial_matched_key = find_bond_match(initial_best_bond_match, key1, key2)
                     present_found_match, present_matched_key = find_bond_match(present_best_bond_match, key1, key2)
                     c_floe_best_bond_match_init, c_neighbour_best_bond_match_init = extract_best_match(initial_matched_key, key1, key2, initial_found_match)
                     c_floe_best_bond_match, c_neighbour_best_bond_match = extract_best_match(present_matched_key, key1, key2, present_found_match)
                     Δx = (c_neighbour_best_bond_match[1] - c_floe_best_bond_match[1]) - (c_neighbour_best_bond_match_init[1] - c_floe_best_bond_match_init[1])
                     Δy = (c_neighbour_best_bond_match[2] - c_floe_best_bond_match[2]) - (c_neighbour_best_bond_match_init[2] - c_floe_best_bond_match_init[2])
-                    k_ice = 1.0 # Example value, adjust accordingly
+                    # Calculate each bond force for each floe
                     Fx_bond = k_ice * Δx
                     Fy_bond = k_ice * Δy
+                    # Accumalate all bond forces for each floe
                     floes.bond_force[index][1] += Fx_bond
                     floes.bond_force[index][2] += Fy_bond
                     c_floe = nothing  # Declare and initialize c_floe outside the loop
@@ -167,20 +192,29 @@ function timestep_hexagonal_bonds!(
                     end
                     if c_floe !== nothing #check if c_floe was found.
                         r_x = c_floe[1] - floes.centroid[index][1]
-                        r_y = c_floe[2] - floes.centroid[index][1]
+                        r_y = c_floe[2] - floes.centroid[index][2]
+                        # Calculate torque: τ = r × F = r_x * F_y - r_y * F_x for each bond for each floe
                         torque_xy = r_x * Fy_bond - r_y * Fx_bond
-                        #println("Time: $curr_time, Floe: $idx_floe, Neighbor: $bond_id, Forces: $Fx_bond, $Fy_bond, Torque: $torque_xy")
-                        #println("Time: $curr_time, Floe: $idx_floe, Neighbor: $bond_id, r_x: $r_x, r_y: $r_y")
-                        # Calculate torque: τ = r × F = r_x * F_y - r_y * F_x
+                        #= if(curr_time == 20000)
+                            step_t = curr_time/20
+                            println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, Δx : $Δx, Δy: $Δy")
+                            println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, Forces: $Fx_bond, $Fy_bond, Torque: $torque_xy")
+                            println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, x: $c_floe")
+                            println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id", "<cx:>", floes.centroid[index][1], "<cy:>", floes.centroid[index][2])
+                            println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, r_x: $r_x, r_y: $r_y")
+                        end =#
+                        # Accumulaye all bond torques for each floe
                         floes.bond_trq[index] += torque_xy
                     else
-                        println("c_floe not found for [idx_floe, bond_id, 0, 0]") #add error checking to see if c_floe was not found.
+                        #println("c_floe not found for [idx_floe, bond_id, 0, 0]") #add error checking to see if c_floe was not found.
                     end   
                 end
             end
         end
-        #println(floes.id[index],"<<Force>>", floes.bond_force[index],"<<Torque>>",floes.bond_trq[index])
+        #= if(curr_time == 20000)
+            step_t = curr_time/20
+            println("<<Floe:>>",floes.id[index],"<<Force>>", floes.bond_force[index],"<<Torque>>",floes.bond_trq[index])
+        end =#
     end   
-
     return
 end
