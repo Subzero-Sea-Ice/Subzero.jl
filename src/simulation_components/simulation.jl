@@ -192,7 +192,13 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
                     sim.Δt,
                 )
         end
-
+        # Bond breakage
+        if sim.hexagonal_bond_settings.bonds_on 
+            bond_fracture_floes!(
+                sim.model.floes,
+                sim.hexagonal_bond_settings,
+            )
+        end
         # Weld floes
         if sim.weld_settings.weld_on
             weld_setting_idx = findfirst(
