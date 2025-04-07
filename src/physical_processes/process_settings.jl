@@ -278,8 +278,6 @@ If bonds_on is true, fracture happens through bonds, else they will not.
     )
 end 
 
-
-
 """
     HexagonalBondSettings(::Type{FT}, kwargs...)
 
@@ -354,6 +352,35 @@ fractured floe into - 3 is suggested value.
         )
 end
 
+@kwdef struct HexagonalBond_FractureSettings{FT<:AbstractFloat}
+    rad_bond :: FT = 500
+    σc_bond  :: FT = 24e7 
+
+    function HexagonalBond_FractureSettings{FT}(
+        rad_bond, σc_bond,
+    ) where {FT<:AbstractFloat}
+        if σc_bond < 0
+            @warn "Strength of bond must be non-negative. Setting to 0."
+            σc_bond = FT(0)
+        end
+        new{FT}(rad_bond, σc_bond) 
+    end
+
+    HexagonalBond_FractureSettings(
+        rad_bond, σc_bond,
+    ) = HexagonalBond_FractureSettings{Float64}(
+        rad_bond, σc_bond,
+    )
+end 
+"""
+    HexagonalBond_FractureSettings(::Type{FT}, kwargs...)
+
+A float type FT can be provided as the first argument of any HexagonalBond_FractureSettings
+constructor. A HexagonalBond_FractureSettings of type FT will be created by passing all
+other arguments to the correct constructor. 
+"""
+HexagonalBond_FractureSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
+HexagonalBond_FractureSettings{FT}(;kwargs...)
 
 """
     struct SimplificationSettings{FT<:AbstractFloat}

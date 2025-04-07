@@ -39,6 +39,7 @@ export
     CollisionSettings,
     HexagonalBondSettings,
     FractureSettings,
+    HexagonalBond_FractureSettings,
     CouplingSettings,
     SimplificationSettings,
     RidgeRaftSettings,

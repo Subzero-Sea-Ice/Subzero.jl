@@ -153,6 +153,12 @@ function timestep_hexagonal_bonds!(
     for (index, bonds) in enumerate(floes.hex_bonds)
         fill!(floes.bond_force[index], FT(0))  # Reset both Fx and Fy to zero
         floes.bond_trq[index] = FT(0.0)
+        # Ensure ind_bond_force is reset at each time step
+        if length(floes.ind_bond_force) > index
+            for i in eachindex(floes.ind_bond_force[index])
+               floes.ind_bond_force[index][i] .= FT(0)  # Set Fx and Fy to zero
+            end
+        end
         idx_floe = floes.id[index]
         if floes.ghost_id[index] == 0
             for bond_id in bonds
@@ -177,6 +183,10 @@ function timestep_hexagonal_bonds!(
                     # Calculate each bond force for each floe
                     Fx_bond = k_ice * Δx
                     Fy_bond = k_ice * Δy
+                    # Store each Fx_bond,Fy_bond in ind_bond_force
+                    idx_nei = findfirst(==(bond_id), bonds)
+                    floes.ind_bond_force[index][idx_nei][1] = Fx_bond
+                    floes.ind_bond_force[index][idx_nei][2] = Fy_bond
                     # Accumalate all bond forces for each floe
                     floes.bond_force[index][1] += Fx_bond
                     floes.bond_force[index][2] += Fy_bond
@@ -211,10 +221,11 @@ function timestep_hexagonal_bonds!(
                 end
             end
         end
-        #= if(curr_time == 20000)
-            step_t = curr_time/20
+        if(curr_time == 20000)
             println("<<Floe:>>",floes.id[index],"<<Force>>", floes.bond_force[index],"<<Torque>>",floes.bond_trq[index])
-        end =#
+            println("<<Floe:>>",floes.id[index],"<<Force>>", floes.ind_bond_force[index])
+            println("<<Floe:>>",floes.id[index],"<<Bonds>>", floes.hex_bonds[index])
+        end
     end   
     return
 end
