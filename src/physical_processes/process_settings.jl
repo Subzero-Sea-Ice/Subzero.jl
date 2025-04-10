@@ -249,12 +249,11 @@ If bonds_on is true, fracture happens through bonds, else they will not.
     bonds_on::Bool = false
     nfaces:: Int = 6
     elastic_constant:: FT = 1000.0
-    rad_bond :: FT = 500
-    σc_bond :: FT = 24e7 
+    damp_coeff:: FT = 2.0
 
     function HexagonalBondSettings{FT}(
         bonds_on, nfaces,
-        elastic_constant,rad_bond, σc_bond,
+        elastic_constant, damp_coeff, 
     ) where {FT<:AbstractFloat}
         if bonds_on
             if nfaces != 6
@@ -266,15 +265,15 @@ If bonds_on is true, fracture happens through bonds, else they will not.
                 elastic_constant = FT(0)
             end
         end 
-        new{FT}(bonds_on, nfaces, elastic_constant, rad_bond, σc_bond) 
+        new{FT}(bonds_on, nfaces, elastic_constant, damp_coeff) 
     end
 
     HexagonalBondSettings(
         bonds_on, nfaces,
-        elastic_constant,rad_bond, σc_bond,
+        elastic_constant, damp_coeff, 
     ) = HexagonalBondSettings{Float64}(
         bonds_on, nfaces,
-        elastic_constant,rad_bond, σc_bond,
+        elastic_constant, damp_coeff, 
     )
 end 
 

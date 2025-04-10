@@ -15,7 +15,6 @@ end
 function compute_bond_endpoints(floes, index, idx_floe, idx_neighbour, idx_neighbour_ghost, nfaces)
     bond_idx_floe = findfirst(isequal(idx_neighbour), floes.hex_bonds[idx_floe])
     bond_idx_neighbour = findfirst(isequal(idx_floe), floes.hex_bonds[idx_neighbour])
-
     c_floe = face_midpoint(
         floes.coords[index][1][bond_idx_floe],
         floes.coords[index][1][mod(bond_idx_floe, nfaces) + 1]
@@ -116,10 +115,10 @@ function timestep_hexagonal_bonds!(
 
     nfaces = hexagonal_bond_settings.nfaces
     k_ice  = hexagonal_bond_settings.elastic_constant
-
+    c_ice  = hexagonal_bond_settings.damp_coeff
     global present_bond_endpoints = Vector{Tuple{Tuple{Int, Int, Int, Int}, Tuple{Vector{Float64}, Vector{Float64}}}}()
     global present_best_bond_match = Vector{Tuple{Tuple{Int, Int, Int, Int}, Tuple{Vector{Float64}, Vector{Float64}}}}()
-
+    #println("<<Bonds Force in time step>>",floes.hex_bonds)
     """
     present_bond_endpoints :: It stores the information of 
     1. Index of floe, 2. Index of neighbour 3. Ghost index of floe 4. Ghost index of neighbour
@@ -180,11 +179,13 @@ function timestep_hexagonal_bonds!(
                     c_floe_best_bond_match, c_neighbour_best_bond_match = extract_best_match(present_matched_key, key1, key2, present_found_match)
                     Δx = (c_neighbour_best_bond_match[1] - c_floe_best_bond_match[1]) - (c_neighbour_best_bond_match_init[1] - c_floe_best_bond_match_init[1])
                     Δy = (c_neighbour_best_bond_match[2] - c_floe_best_bond_match[2]) - (c_neighbour_best_bond_match_init[2] - c_floe_best_bond_match_init[2])
-                    # Calculate each bond force for each floe
-                    Fx_bond = k_ice * Δx
-                    Fy_bond = k_ice * Δy
-                    # Store each Fx_bond,Fy_bond in ind_bond_force
                     idx_nei = findfirst(==(bond_id), bonds)
+                    Δu = floes.u[idx_nei] - floes.u[index]
+                    Δv = floes.v[idx_nei] - floes.v[index]
+                    # Calculate each bond force for each floe
+                    Fx_bond = k_ice * Δx  +  c_ice * Δu
+                    Fy_bond = k_ice * Δy  +  c_ice * Δv
+                    # Store each Fx_bond,Fy_bond in ind_bond_force
                     floes.ind_bond_force[index][idx_nei][1] = Fx_bond
                     floes.ind_bond_force[index][idx_nei][2] = Fy_bond
                     # Accumalate all bond forces for each floe
@@ -205,9 +206,10 @@ function timestep_hexagonal_bonds!(
                         r_y = c_floe[2] - floes.centroid[index][2]
                         # Calculate torque: τ = r × F = r_x * F_y - r_y * F_x for each bond for each floe
                         torque_xy = r_x * Fy_bond - r_y * Fx_bond
-                        #= if(curr_time == 20000)
+#=                         if(curr_time == 10000)
                             step_t = curr_time/20
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, Δx : $Δx, Δy: $Δy")
+                            println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, Δu : $Δu, Δv: $Δv")
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, Forces: $Fx_bond, $Fy_bond, Torque: $torque_xy")
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, x: $c_floe")
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id", "<cx:>", floes.centroid[index][1], "<cy:>", floes.centroid[index][2])
@@ -221,11 +223,11 @@ function timestep_hexagonal_bonds!(
                 end
             end
         end
-        if(curr_time == 20000)
+       #=  if(curr_time == 10000)
             println("<<Floe:>>",floes.id[index],"<<Force>>", floes.bond_force[index],"<<Torque>>",floes.bond_trq[index])
             println("<<Floe:>>",floes.id[index],"<<Force>>", floes.ind_bond_force[index])
             println("<<Floe:>>",floes.id[index],"<<Bonds>>", floes.hex_bonds[index])
-        end
+        end =#
     end   
     return
 end
