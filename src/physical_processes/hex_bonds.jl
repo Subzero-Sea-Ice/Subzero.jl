@@ -6,6 +6,17 @@ Functions needed for calculating bond forces and torques
 global initial_bond_endpoints = Vector{Tuple{Tuple{Int, Int, Int,Int}, Tuple{Vector{Float64}, Vector{Float64}}}}()
 global initial_best_bond_match  = Vector{Tuple{Tuple{Int, Int, Int,Int}, Tuple{Vector{Float64}, Vector{Float64}}}}()
 
+#Function to calculate differences in velocities at the endpoints of a bond
+function get_vel_diff(floes, idx_floe, idx_neighbour, c_floe, c_neighbour)
+    u_floe = floes.u[idx_floe] + floes.ξ[idx_floe] * (c_floe[1] - floes.centroid[idx_floe][1])
+    v_floe = floes.v[idx_floe] + floes.ξ[idx_floe] * (c_floe[2] - floes.centroid[idx_floe][2])
+    u_neighbour = floes.u[idx_neighbour] + floes.ξ[idx_neighbour] * (c_neighbour[1] - floes.centroid[idx_neighbour][1])
+    v_neighbour = floes.v[idx_neighbour] + floes.ξ[idx_neighbour] * (c_neighbour[2] - floes.centroid[idx_neighbour][2])
+    Δu = u_neighbour - u_floe
+    Δv = v_neighbour - v_floe
+    return Δu, Δv
+end
+
 #Function to calculate midpoint of each face of polygon to find endpoints of a bond
 function face_midpoint(p1, p2)
     return [(p1[1] + p2[1]) / 2, (p1[2] + p2[2]) / 2]
@@ -179,34 +190,38 @@ function timestep_hexagonal_bonds!(
                     c_floe_best_bond_match, c_neighbour_best_bond_match = extract_best_match(present_matched_key, key1, key2, present_found_match)
                     Δx = (c_neighbour_best_bond_match[1] - c_floe_best_bond_match[1]) - (c_neighbour_best_bond_match_init[1] - c_floe_best_bond_match_init[1])
                     Δy = (c_neighbour_best_bond_match[2] - c_floe_best_bond_match[2]) - (c_neighbour_best_bond_match_init[2] - c_floe_best_bond_match_init[2])
-                    idx_nei = findfirst(==(bond_id), bonds)
-                    Δu = floes.u[idx_nei] - floes.u[index]
-                    Δv = floes.v[idx_nei] - floes.v[index]
-                    # Calculate each bond force for each floe
-                    Fx_bond = k_ice * Δx  +  c_ice * Δu
-                    Fy_bond = k_ice * Δy  +  c_ice * Δv
-                    # Store each Fx_bond,Fy_bond in ind_bond_force
-                    floes.ind_bond_force[index][idx_nei][1] = Fx_bond
-                    floes.ind_bond_force[index][idx_nei][2] = Fy_bond
-                    # Accumalate all bond forces for each floe
-                    floes.bond_force[index][1] += Fx_bond
-                    floes.bond_force[index][2] += Fy_bond
                     c_floe = nothing  # Declare and initialize c_floe outside the loop
-                    for (bond_tuple, (found_c_floe, c_neighbour)) in present_bond_endpoints
+                    c_neighbour = nothing
+                    for (bond_tuple, (found_c_floe, found_c_neighbour)) in present_bond_endpoints
                         if bond_tuple == (idx_floe, bond_id, 0, 0)
                             c_floe = found_c_floe
+                            c_neighbour = found_c_neighbour
                             break
                         elseif bond_tuple == (bond_id, idx_floe, 0, 0)
-                            c_floe = c_neighbour
+                            c_floe = found_c_neighbour
+                            c_neighbour = found_c_floe
                         break
                         end
                     end
-                    if c_floe !== nothing #check if c_floe was found.
+                    if c_floe !== nothing && c_neighbour !== nothing
+                        Δu, Δv = get_vel_diff(floes, index, bond_id, c_floe, c_neighbour)
+                        # Calculate each bond force for each floe
+                        Fx_bond = k_ice * Δx  +  c_ice * Δu
+                        Fy_bond = k_ice * Δy  +  c_ice * Δv
+                        # Store each Fx_bond,Fy_bond in ind_bond_force
+                        idx_nei = findfirst(==(bond_id), bonds)
+                        floes.ind_bond_force[index][idx_nei][1] = Fx_bond
+                        floes.ind_bond_force[index][idx_nei][2] = Fy_bond
+                        # Accumalate all bond forces for each floe
+                        floes.bond_force[index][1] += Fx_bond
+                        floes.bond_force[index][2] += Fy_bond
                         r_x = c_floe[1] - floes.centroid[index][1]
                         r_y = c_floe[2] - floes.centroid[index][2]
                         # Calculate torque: τ = r × F = r_x * F_y - r_y * F_x for each bond for each floe
                         torque_xy = r_x * Fy_bond - r_y * Fx_bond
-#=                         if(curr_time == 10000)
+                        # Accumulaye all bond torques for each floe
+                        floes.bond_trq[index] += torque_xy
+                        #= if(curr_time == 10000)
                             step_t = curr_time/20
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, Δx : $Δx, Δy: $Δy")
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, Δu : $Δu, Δv: $Δv")
@@ -215,8 +230,6 @@ function timestep_hexagonal_bonds!(
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id", "<cx:>", floes.centroid[index][1], "<cy:>", floes.centroid[index][2])
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, r_x: $r_x, r_y: $r_y")
                         end =#
-                        # Accumulaye all bond torques for each floe
-                        floes.bond_trq[index] += torque_xy
                     else
                         #println("c_floe not found for [idx_floe, bond_id, 0, 0]") #add error checking to see if c_floe was not found.
                     end   
@@ -231,3 +244,5 @@ function timestep_hexagonal_bonds!(
     end   
     return
 end
+
+
