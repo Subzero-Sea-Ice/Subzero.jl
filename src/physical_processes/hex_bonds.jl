@@ -24,6 +24,13 @@ end
 
 #Function to calculate endpoints of a bond
 function compute_bond_endpoints(floes, index, idx_floe, idx_neighbour, idx_neighbour_ghost, nfaces)
+    # Check if any input index is `nothing`
+    if index === nothing || idx_floe === nothing || idx_neighbour === nothing || idx_neighbour_ghost === nothing
+        @warn "One or more indices are 'nothing':"
+        @warn "  index = $index, idx_floe = $idx_floe, idx_neighbour = $idx_neighbour, idx_neighbour_ghost = $idx_neighbour_ghost"
+        @warn "  Size of floes.id = $(length(floes.id))"
+        return nothing, nothing
+    end
     bond_idx_floe = findfirst(isequal(idx_neighbour), floes.hex_bonds[idx_floe])
     bond_idx_neighbour = findfirst(isequal(idx_floe), floes.hex_bonds[idx_neighbour])
     c_floe = face_midpoint(
@@ -163,6 +170,8 @@ function timestep_hexagonal_bonds!(
     for (index, bonds) in enumerate(floes.hex_bonds)
         fill!(floes.bond_force[index], FT(0))  # Reset both Fx and Fy to zero
         floes.bond_trq[index] = FT(0.0)
+        fill!(floes.stress_bond[index], FT(0))  # Reset all stresses to zero
+        floe_stress_bond =  zeros(FT, 2, 2)
         # Ensure ind_bond_force is reset at each time step
         if length(floes.ind_bond_force) > index
             for i in eachindex(floes.ind_bond_force[index])
@@ -174,6 +183,7 @@ function timestep_hexagonal_bonds!(
             for bond_id in bonds
                 if bond_id != 0
                     Fx_bond, Fy_bond, torque_xy = 0.0, 0.0, 0.0 # Initialize to avoid scope issues.
+                    stress = zeros(FT, 2, 2)
                     key1 = (idx_floe, bond_id) # Actual order
                     key2 = (bond_id, idx_floe) # Reverse order
                     """
@@ -204,7 +214,7 @@ function timestep_hexagonal_bonds!(
                         end
                     end
                     if c_floe !== nothing && c_neighbour !== nothing
-                        Δu, Δv = get_vel_diff(floes, index, bond_id, c_floe, c_neighbour)
+                        Δu, Δv = get_vel_diff(floes, idx_floe, bond_id, c_floe, c_neighbour)
                         # Calculate each bond force for each floe
                         Fx_bond = k_ice * Δx  +  c_ice * Δu
                         Fy_bond = k_ice * Δy  +  c_ice * Δv
@@ -221,7 +231,15 @@ function timestep_hexagonal_bonds!(
                         torque_xy = r_x * Fy_bond - r_y * Fx_bond
                         # Accumulaye all bond torques for each floe
                         floes.bond_trq[index] += torque_xy
-                        #= if(curr_time == 10000)
+                        # Calculate individual bond stresses
+                        stress[1,1] = Fx_bond * r_x
+                        stress[1,2] = Fx_bond * r_y + Fy_bond * r_x
+                        stress[2,2] = Fy_bond * r_y
+                        # Accumulate stresses
+                        floe_stress_bond[1,1] += stress[1,1]
+                        floe_stress_bond[1,2] += stress[1,2]
+                        floe_stress_bond[2,2] += stress[2,2]
+                      #=   if(curr_time == 20000)
                             step_t = curr_time/20
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, Δx : $Δx, Δy: $Δy")
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, Δu : $Δu, Δv: $Δv")
@@ -229,18 +247,26 @@ function timestep_hexagonal_bonds!(
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, x: $c_floe")
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id", "<cx:>", floes.centroid[index][1], "<cy:>", floes.centroid[index][2])
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, r_x: $r_x, r_y: $r_y")
-                        end =#
+                            println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, σ_xx: ", stress[1,1], "σ_xy:", stress[1,2],  "σ_yy:", stress[2,2])
+                        end  =#
                     else
-                        #println("c_floe not found for [idx_floe, bond_id, 0, 0]") #add error checking to see if c_floe was not found.
+                        println("c_floe not found for [idx_floe, bond_id, 0, 0]") #add error checking to see if c_floe was not found.
                     end   
                 end
             end
         end
-       #=  if(curr_time == 10000)
+        floe_stress_bond[1, 2] *= FT(0.5)
+        floe_stress_bond[2, 1] = floe_stress_bond[1, 2]
+        floe_stress_bond .*= 1/(floes.area[index] * floes.height[index])
+        floes.stress_bond[index] .= floe_stress_bond
+
+        #=  if(curr_time == 20000)
             println("<<Floe:>>",floes.id[index],"<<Force>>", floes.bond_force[index],"<<Torque>>",floes.bond_trq[index])
             println("<<Floe:>>",floes.id[index],"<<Force>>", floes.ind_bond_force[index])
             println("<<Floe:>>",floes.id[index],"<<Bonds>>", floes.hex_bonds[index])
-        end =#
+            println("<<Floe:>>",floes.id[index],"<<Area>>", floes.area[index], "<<Height>>", floes.height[index])
+            println("<<Floe:>>",floes.id[index],"<<Bond stress>>", floes.stress_bond[index])
+        end  =#
     end   
     return
 end

@@ -66,6 +66,7 @@ Singular sea ice floe with fields describing current state.
     bond_force::Matrix{FT} = zeros(1, 2)  # bond force aggregate
     bond_trq::FT = 0.0                    # bond torque aggregate
     ind_bond_force::Vector{Vector{FT}} = [zeros(FT, 2) for _ in 1:6] # Individual bond forces storage
+    stress_bond::Matrix{FT} = zeros(2, 2) # stress in a floe due to bonds
     interactions::Matrix{FT} = zeros(0, 7)
     num_inters::Int = 0
     stress_accum::Matrix{FT} = zeros(2, 2)
@@ -181,7 +182,7 @@ function Floe{FT}(
     )
     # Generate Stress History
     stress_instant = zeros(FT, 2, 2)
-
+    stress_bond = zeros(FT, 2, 2)
     return Floe{FT}(;
         poly = GO.tuples(floe, FT),
         centroid = centroid,
@@ -196,6 +197,7 @@ function Floe{FT}(
         x_subfloe_points = x_subfloe_points,
         y_subfloe_points = y_subfloe_points,
         stress_instant = stress_instant,
+        stress_bond = stress_bond,
         status = status,
         kwargs...
     )
