@@ -6,6 +6,20 @@ Functions needed for calculating bond forces and torques
 global initial_bond_endpoints = Vector{Tuple{Tuple{Int, Int, Int,Int}, Tuple{Vector{Float64}, Vector{Float64}}}}()
 global initial_best_bond_match  = Vector{Tuple{Tuple{Int, Int, Int,Int}, Tuple{Vector{Float64}, Vector{Float64}}}}()
 
+# Function to update hex_bonds when floes are removed from simulation Eg: Open boundariesfunction update_hex_bonds!(floe)
+function update_hex_bonds!(floes)
+    existing_ids = Set(floes.id)
+    #println("existing_ids::", existing_ids )
+    for (index, bonds) in enumerate(floes.hex_bonds)
+        for j in eachindex(bonds)
+            if bonds[j] != 0 && !(bonds[j] in existing_ids)
+                floes.hex_bonds[index][j] = 0
+            end
+        end
+    end
+end
+
+
 #Function to calculate differences in velocities at the endpoints of a bond
 function get_vel_diff(floes, idx_floe, idx_neighbour, c_floe, c_neighbour)
     u_floe = floes.u[idx_floe] + floes.ξ[idx_floe] * (c_floe[1] - floes.centroid[idx_floe][1])
@@ -23,26 +37,17 @@ function face_midpoint(p1, p2)
 end
 
 #Function to calculate endpoints of a bond
-function compute_bond_endpoints(floes, index, idx_floe, idx_neighbour, idx_neighbour_ghost, nfaces)
-    # Check if any input index is `nothing`
-    if index === nothing || idx_floe === nothing || idx_neighbour === nothing || idx_neighbour_ghost === nothing
-        @warn "One or more indices are 'nothing':"
-        @warn "  index = $index, idx_floe = $idx_floe, idx_neighbour = $idx_neighbour, idx_neighbour_ghost = $idx_neighbour_ghost"
-        @warn "  Size of floes.id = $(length(floes.id))"
-        return nothing, nothing
-    end
-    bond_idx_floe = findfirst(isequal(idx_neighbour), floes.hex_bonds[idx_floe])
-    bond_idx_neighbour = findfirst(isequal(idx_floe), floes.hex_bonds[idx_neighbour])
+function compute_bond_endpoints(floes, index, idx_floe, bond_id, idx_neighbour_ghost, nfaces)
+    bond_idx_floe = findfirst(isequal(bond_id), floes.hex_bonds[index])    
+    bond_idx_neighbour = findfirst(isequal(idx_floe), floes.hex_bonds[idx_neighbour_ghost]) 
     c_floe = face_midpoint(
         floes.coords[index][1][bond_idx_floe],
         floes.coords[index][1][mod(bond_idx_floe, nfaces) + 1]
     )
-
     c_neighbour = face_midpoint(
         floes.coords[idx_neighbour_ghost][1][bond_idx_neighbour],
         floes.coords[idx_neighbour_ghost][1][mod(bond_idx_neighbour, nfaces) + 1]
     )
-
     return c_floe, c_neighbour
 end
 
@@ -136,7 +141,7 @@ function timestep_hexagonal_bonds!(
     c_ice  = hexagonal_bond_settings.damp_coeff
     global present_bond_endpoints = Vector{Tuple{Tuple{Int, Int, Int, Int}, Tuple{Vector{Float64}, Vector{Float64}}}}()
     global present_best_bond_match = Vector{Tuple{Tuple{Int, Int, Int, Int}, Tuple{Vector{Float64}, Vector{Float64}}}}()
-    #println("<<Bonds Force in time step>>",floes.hex_bonds)
+    update_hex_bonds!(floes)   # Updates hex_bonds when floes are removed from simulation
     """
     present_bond_endpoints :: It stores the information of 
     1. Index of floe, 2. Index of neighbour 3. Ghost index of floe 4. Ghost index of neighbour
@@ -154,7 +159,7 @@ function timestep_hexagonal_bonds!(
         idx_floe_ghost = floes.ghost_id[index]
         for bond_id in bonds
             if bond_id != 0
-                idx_neighbour_ghost = findall(==(bond_id), floes.id)   
+                idx_neighbour_ghost = findall(==(bond_id), floes.id) 
                 for idx_neighbour in idx_neighbour_ghost 
                     c_floe, c_neighbour = compute_bond_endpoints(floes,index, idx_floe, bond_id, idx_neighbour, nfaces)
                     push!(present_bond_endpoints, ((idx_floe, bond_id, idx_floe_ghost,floes.ghost_id[idx_neighbour]), (c_floe, c_neighbour)))
@@ -162,6 +167,7 @@ function timestep_hexagonal_bonds!(
             end
         end
     end
+    
     if curr_time == 0
         global initial_bond_endpoints = present_bond_endpoints
         global initial_best_bond_match = find_closest_best_bond_match(floes, initial_bond_endpoints)
@@ -214,7 +220,8 @@ function timestep_hexagonal_bonds!(
                         end
                     end
                     if c_floe !== nothing && c_neighbour !== nothing
-                        Δu, Δv = get_vel_diff(floes, idx_floe, bond_id, c_floe, c_neighbour)
+                        index_nei = findfirst(==(bond_id), floes.id)
+                        Δu, Δv = get_vel_diff(floes, index, index_nei, c_floe, c_neighbour)
                         # Calculate each bond force for each floe
                         Fx_bond = k_ice * Δx  +  c_ice * Δu
                         Fy_bond = k_ice * Δy  +  c_ice * Δv
