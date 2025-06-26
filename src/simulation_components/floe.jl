@@ -199,9 +199,6 @@ function Floe{FT}(
         y_subfloe_points = y_subfloe_points,
         stress_instant = stress_instant,
         stress_bond = stress_bond,
-        x_subfloe_points = x_subfloe_points,
-        y_subfloe_points = y_subfloe_points,
-        stress_instant = stress_instant,
         status = status,
         kwargs...
     )

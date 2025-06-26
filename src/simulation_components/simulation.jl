@@ -75,7 +75,6 @@ The user can also define settings for each physical process.
     hexagonal_bond_settings::HexagonalBondSettings{FT} = hexagonalBondSettings()
     fracture_settings::FractureSettings{CT} = FractureSettings()
     hexagonal_bond_fracture_settings::HexagonalBond_FractureSettings{FT} = HexagonalBond_FractureSettings()
-    fracture_settings::FractureSettings{CT} = FractureSettings()
     simp_settings::SimplificationSettings{FT} = SimplificationSettings()
     ridgeraft_settings::RidgeRaftSettings{FT} = RidgeRaftSettings()
     weld_settings::WeldSettings{FT} = WeldSettings()
