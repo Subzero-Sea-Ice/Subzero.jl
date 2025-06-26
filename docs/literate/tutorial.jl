@@ -154,19 +154,11 @@ domain = Domain(; north = north_bound, south = south_bound, east = east_bound, w
 # symetrically slowing to 0m/s at the edges where the `CollisionBoundary` elements are. We will
 # then provide a constant `temp`erature of -1 C and a constant `v`-velocity of 0m/s. 
 
-<<<<<<< HEAD
-function shear_flow(Nx, Ny, min_u, max_u)
-    increasing = true
-    curr_u = min_u
-    Δu = fld(Nx, 2)  # divide Nx by 2 and round down
-    u_vals = zeros(Nx, Ny)
-=======
 function shear_flow_velocities(Nx, Ny, min_u, max_u)
     u_vals = fill(min_u, Nx, Ny)  # fill in field with min value
     increasing = true  # velocity values start by going up
     Δu = (max_u - min_u) / fld(Ny, 2)  # must reach max_u in the middle of the field
     curr_u = min_u + Δu  # first column already set to min_u
->>>>>>> upstream/main
     for (i, col) in enumerate(eachcol(u_vals))
         (i == 1 || i == Ny) && continue  # edges already set to 0m/s
         col .= curr_u
@@ -179,17 +171,10 @@ function shear_flow_velocities(Nx, Ny, min_u, max_u)
             curr_u -= Δu
         end
     end
-<<<<<<< HEAD
-    return curr_u
-end
-
-u_vals = shear_flow(grid.Nx + 1, grid.Ny + 1, 0.0, 0.25)
-=======
     return u_vals
 end
 
 u_vals = shear_flow_velocities(grid.Nx + 1, grid.Ny + 1, 0.0, 0.25)
->>>>>>> upstream/main
 ocean = Ocean(; u = u_vals, v = 0.0, temp = -1.0, grid)
 
 # We can now plot our ocean velocity values on an axis below our `grid` and `domain` setup.

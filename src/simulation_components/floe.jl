@@ -32,11 +32,8 @@ Singular sea ice floe with fields describing current state.
     rmax::FT                # distance of vertix farthest from centroid (m)
     moment::FT              # mass moment of intertia
     angles::Vector{FT}      # interior angles of floe in degrees
-<<<<<<< HEAD
     # Bonds (Adjacenct floes information) ----------------------------------------
     hex_bonds::Vector{Int}  # Indices of neighboring floes (default: 6 slots)
-=======
->>>>>>> upstream/main
     # Monte Carlo Points ---------------------------------------------------
     x_subfloe_points::Vector{FT}        # x-coordinates for monte carlo integration centered
                             #   at origin
@@ -66,13 +63,10 @@ Singular sea ice floe with fields describing current state.
     overarea::FT = 0.0      # total overlap with other floe
     collision_force::Matrix{FT} = zeros(1, 2)
     collision_trq::FT = 0.0
-<<<<<<< HEAD
     bond_force::Matrix{FT} = zeros(1, 2)  # bond force aggregate
     bond_trq::FT = 0.0                    # bond torque aggregate
     ind_bond_force::Vector{Vector{FT}} = [zeros(FT, 2) for _ in 1:6] # Individual bond forces storage
     stress_bond::Matrix{FT} = zeros(2, 2) # stress in a floe due to bonds
-=======
->>>>>>> upstream/main
     interactions::Matrix{FT} = zeros(0, 7)
     num_inters::Int = 0
     stress_accum::Matrix{FT} = zeros(2, 2)
@@ -188,11 +182,8 @@ function Floe{FT}(
     )
     # Generate Stress History
     stress_instant = zeros(FT, 2, 2)
-<<<<<<< HEAD
     stress_bond = zeros(FT, 2, 2)
-=======
 
->>>>>>> upstream/main
     return Floe{FT}(;
         poly = GO.tuples(floe, FT),
         centroid = centroid,
@@ -203,26 +194,20 @@ function Floe{FT}(
         rmax = rmax,
         moment = moment,
         angles = angles,
-<<<<<<< HEAD
         hex_bonds = get(kwargs, :hex_bonds, []), 
         x_subfloe_points = x_subfloe_points,
         y_subfloe_points = y_subfloe_points,
         stress_instant = stress_instant,
         stress_bond = stress_bond,
-=======
         x_subfloe_points = x_subfloe_points,
         y_subfloe_points = y_subfloe_points,
         stress_instant = stress_instant,
->>>>>>> upstream/main
         status = status,
         kwargs...
     )
 end
 
-<<<<<<< HEAD
 
-=======
->>>>>>> upstream/main
 """
     Floe{FT}(
         coords::PolyVec,
@@ -338,10 +323,7 @@ function poly_to_floes!(
     return 0
 end
 
-<<<<<<< HEAD
-=======
 
->>>>>>> upstream/main
 """
     initialize_floe_field(args...)
 

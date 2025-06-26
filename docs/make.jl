@@ -4,23 +4,6 @@ import GeoInterface as GI
 import GeometryOps as GO
 import LibGEOS as LG
 
-<<<<<<< HEAD
-
-# Converting any files in the literate folder to markdown
-LITERATE_INPUT = joinpath(@__DIR__, "literate")
-LITERATE_OUTPUT = joinpath(@__DIR__, "src")
-
-for (root, _, files) ∈ walkdir(LITERATE_INPUT), file ∈ files
-    # ignore non julia files
-    splitext(file)[2] == ".jl" || continue
-    # full path to a literate script
-    ipath = joinpath(root, file)
-    # generated output path
-    opath = splitdir(replace(ipath, LITERATE_INPUT=>LITERATE_OUTPUT))[1]
-    # generate the markdown file calling Literate
-    Literate.markdown(ipath, opath)
-end
-=======
 function jl_to_md(input, output)
     # turns .jl files in input to .md files in output
     for ipath in readdir(input, join = true)
@@ -45,7 +28,6 @@ println("Building examples...")
 examples_input = joinpath(@__DIR__, "literate", "examples")
 examples_output = joinpath(@__DIR__, "src", "examples")
 jl_to_md(examples_input, examples_output)
->>>>>>> upstream/main
 
 # Documentation formatting
 format = Documenter.HTML(;
@@ -66,8 +48,6 @@ makedocs(;
     pages=[
         "Introduction" => "index.md",
         "Tutorial" => "tutorial.md",
-<<<<<<< HEAD
-=======
         "Examples" => [
             "examples/shear_flow.md",
             "examples/simple_strait.md",
@@ -75,7 +55,6 @@ makedocs(;
             "examples/moving_bounds.md",
             "examples/restart_sim.md"
         ],
->>>>>>> upstream/main
         "API Reference" => "api.md",
         "Improving Subzero" => [
             "Contributing" => "contribute.md",

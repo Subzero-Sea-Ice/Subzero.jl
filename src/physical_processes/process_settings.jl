@@ -239,7 +239,6 @@ CollisionSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
     CollisionSettings{FT}(;kwargs...)
 
 """
-<<<<<<< HEAD
     HexagonalBondSettings{FT<:AbstractFloat}
 
 Settings needed for bonds within the model. 
@@ -289,8 +288,6 @@ HexagonalBondSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
 HexagonalBondSettings{FT}(;kwargs...)
 
 """
-=======
->>>>>>> upstream/main
     FractureSettings{CT<:AbstractFractureCriteria}
 
 Settings needed for fractures within the model. 
@@ -354,7 +351,6 @@ fractured floe into - 3 is suggested value.
         )
 end
 
-<<<<<<< HEAD
 @kwdef struct HexagonalBond_FractureSettings{FT<:AbstractFloat}
     rad_bond :: FT = 500
     σc_bond  :: FT = 24e7 
@@ -384,8 +380,6 @@ other arguments to the correct constructor.
 """
 HexagonalBond_FractureSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
 HexagonalBond_FractureSettings{FT}(;kwargs...)
-=======
->>>>>>> upstream/main
 
 """
     struct SimplificationSettings{FT<:AbstractFloat}
