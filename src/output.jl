@@ -292,11 +292,14 @@ function get_known_grid_outputs()
         :strain_vx_grid,
         :strain_uy_grid,
         :strain_vy_grid,
+<<<<<<< HEAD
         # Adding bond stress too
         :stress_bond_xx_grid,
         :stress_bond_yx_grid, 
         :stress_bond_xy_grid,
         :stress_bond_yy_grid,
+=======
+>>>>>>> upstream/main
     ])
 end
 
@@ -909,6 +912,7 @@ function calc_eulerian_data!(floes::FLT, topography, writer) where {FT <: Abstra
                             sum([s[2, 1] for s in fic.strain] .* ma_ratios)
                         elseif outputs[k] == :strain_vy_grid
                             sum([s[2, 2] for s in fic.strain] .* ma_ratios)
+<<<<<<< HEAD
                         # Write bond_stress data too
                         ##-------------------------##  
                         elseif outputs[k] == :stress_bond_xx_grid
@@ -920,6 +924,8 @@ function calc_eulerian_data!(floes::FLT, topography, writer) where {FT <: Abstra
                         elseif outputs[k] == :stress_bond_yy_grid
                             sum([s[2, 2] for s in floes.stress_bond[floeidx]] .* ma_ratios)
                         ##-------------------------##    
+=======
+>>>>>>> upstream/main
                         end
                         writer.data[j, i, k] = data
                     end
@@ -962,7 +968,10 @@ function getattrs(output::Symbol)
         output == :rmax ? ("m", "Maximum radius within floe") :
         output == :moment ? ("kg m^2", "Floe mass moment of intertia") :
         output == :angles ? ("kg m^2", "Floe interior angles") :
+<<<<<<< HEAD
         output == :hex_bonds ? ("Floe Bonds - Neighbpuring floe ids connected with a bond") :
+=======
+>>>>>>> upstream/main
         output == :x_subfloe_points ? ("location", "x-coordinates for floe monte carlo points") :
         output == :y_subfloe_points ? ("location", "y-coordinates for floe monte carlo points") :
         output == :α ? ("radians", "Floe rotation since starting position") :
@@ -980,9 +989,12 @@ function getattrs(output::Symbol)
         output == :overarea ? ("m^2", "Overlap area of floe with other floes") :
         output == :collision_force ? ("N", "Total collision force from floes/topography/border in form [xf yf]") :
         output == :collision_torque ? ("N", "Total collision torque from floes/topography/border") :
+<<<<<<< HEAD
         output == :bond_force ? ("N", "Total bond force") :
         output == :bond_torque ? ("N", "Total bond torque") :
         output == :stress_bond ? ("N/m^2", "Total bond stress") :
+=======
+>>>>>>> upstream/main
         output == :interactions ? ("[unitless, N, N, location, location, N m, m^2]",
                                     "Matrix of floe's interactions with following columns: ID of floe interacted with,
                                     collision x-force on floe, collision y-force on floe, collision x-point, collision y-point,
@@ -1015,11 +1027,14 @@ function getattrs(output::Symbol)
         output == :strain_vx_grid ? ("unitless", "Average vx strain on floes in a grid cell") :
         output == :strain_uy_grid ? ("unitless", "Average uy strain on floes in a grid cell") :
         output == :strain_vy_grid ? ("unitless", "Average vy strain on floes in a grid cell") :
+<<<<<<< HEAD
         # Adding bond stresses too
         output == :stress_bond_xx_grid ? ("N/m^2", "Average xx stress on floes in a given grid cell for bonds") :
         output == :stress_bond_yx_grid ? ("N/m^2", "Average yx stress on floes in a given grid cell for bonds") :
         output == :stress_bond_xy_grid ? ("N/m^2", "Average xy stress on floes in a given grid cell for bonds") :
         output == :stress_bond_yy_grid ? ("N/m^2", "Average yy stress on floes in a given grid cell for bonds") :
+=======
+>>>>>>> upstream/main
         ("", "") # if symbol isn't found, return empty attributes
     return unit, comment
 end

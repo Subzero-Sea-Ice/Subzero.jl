@@ -475,9 +475,12 @@ function timestep_floe_properties!(
     Threads.@threads for i in eachindex(floes)
         cforce = floes.collision_force[i]
         ctrq = floes.collision_trq[i]
+<<<<<<< HEAD
         # Bond forces and torques
         bforce = floes.bond_force[i]
         btrq = floes.bond_trq[i]
+=======
+>>>>>>> upstream/main
         # Update stress
         calc_stress!(get_floe(floes, i), floe_settings, Δt)
 
@@ -514,8 +517,13 @@ function timestep_floe_properties!(
         floes.p_dαdt[i] = floes.ξ[i]
 
         # Update ice velocities with forces and torques
+<<<<<<< HEAD
         dudt = (floes.fxOA[i] + cforce[1] + bforce[1])/floes.mass[i]
         dvdt = (floes.fyOA[i] + cforce[2] + bforce[2])/floes.mass[i]
+=======
+        dudt = (floes.fxOA[i] + cforce[1])/floes.mass[i]
+        dvdt = (floes.fyOA[i] + cforce[2])/floes.mass[i]
+>>>>>>> upstream/main
         frac = if abs(Δt*dudt) > (h/2) && abs(Δt*dvdt) > (h/2)
             frac1 = (sign(dudt)*h/2Δt)/dudt
             frac2 = (sign(dvdt)*h/2Δt)/dvdt
@@ -537,7 +545,11 @@ function timestep_floe_properties!(
         floes.p_dudt[i] = dudt
         floes.p_dvdt[i] = dvdt
 
+<<<<<<< HEAD
         dξdt = (floes.trqOA[i] + ctrq + btrq)/floes.moment[i]
+=======
+        dξdt = (floes.trqOA[i] + ctrq)/floes.moment[i]
+>>>>>>> upstream/main
         dξdt = frac*dξdt
         ξ = floes.ξ[i] + 1.5Δt*dξdt-0.5Δt*floes.p_dξdt[i]
         if abs(ξ) > floe_settings.maximum_ξ

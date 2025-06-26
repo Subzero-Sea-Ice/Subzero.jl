@@ -72,9 +72,13 @@ The user can also define settings for each physical process.
     floe_settings::FloeSettings{FT, PT, ST} = FloeSettings()
     coupling_settings::CouplingSettings = CouplingSettings()
     collision_settings::CollisionSettings{FT} = CollisionSettings()
+<<<<<<< HEAD
     hexagonal_bond_settings::HexagonalBondSettings{FT} = hexagonalBondSettings()
     fracture_settings::FractureSettings{CT} = FractureSettings()
     hexagonal_bond_fracture_settings::HexagonalBond_FractureSettings{FT} = HexagonalBond_FractureSettings()
+=======
+    fracture_settings::FractureSettings{CT} = FractureSettings()
+>>>>>>> upstream/main
     simp_settings::SimplificationSettings{FT} = SimplificationSettings()
     ridgeraft_settings::RidgeRaftSettings{FT} = RidgeRaftSettings()
     weld_settings::WeldSettings{FT} = WeldSettings()
@@ -102,7 +106,10 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
         # Add ghost floes through periodic boundaries
         n_init_floes = length(sim.model.floes) # number of floes before ghosts
         add_ghosts!(sim.model.floes, sim.model.domain)
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/main
         # Output at given timestep
         write_data!(sim, tstep, start_tstep)  # Horribly type unstable
         
@@ -118,6 +125,7 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
                 spinlock,
             )
         end
+<<<<<<< HEAD
         # Hexagonal Bonds 
         if sim.hexagonal_bond_settings.bonds_on
             timestep_hexagonal_bonds!(
@@ -129,6 +137,8 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
             )
         end
       
+=======
+>>>>>>> upstream/main
         pieces_buffer = StructArray{Floe{Float64}}(undef, 0)
         # Ridge and raft floes that meet overlap conditions
         if (
@@ -193,6 +203,7 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
                     sim.Δt,
                 )
         end
+<<<<<<< HEAD
         # Bond breakage
         if sim.hexagonal_bond_settings.bonds_on 
             bond_fracture_floes!(
@@ -200,6 +211,9 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
                 sim.hexagonal_bond_fracture_settings,
             )
         end
+=======
+
+>>>>>>> upstream/main
         # Weld floes
         if sim.weld_settings.weld_on
             weld_setting_idx = findfirst(

@@ -1,7 +1,10 @@
 module Subzero
 
 # Use the README as the module docs
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/main
 @doc let
     path = joinpath(dirname(@__DIR__), "README.md")
     include_dependency(path)
@@ -37,9 +40,13 @@ export
     HiblerYieldCurve,
     MohrsCone,
     CollisionSettings,
+<<<<<<< HEAD
     HexagonalBondSettings,
     FractureSettings,
     HexagonalBond_FractureSettings,
+=======
+    FractureSettings,
+>>>>>>> upstream/main
     CouplingSettings,
     SimplificationSettings,
     RidgeRaftSettings,
@@ -55,7 +62,11 @@ import Base.@kwdef # this is being exported as of version 1.9
 import Base.show
 import GeometryOps as GO
 import GeometryOps.GeoInterface as GI
+<<<<<<< HEAD
 import GeometryOps.GeometryBasics as GB
+=======
+import GeometryBasics as GB
+>>>>>>> upstream/main
 import StaticArrays as SA
 using CoordinateTransformations, Dates, Extents,
     Interpolations, JLD2, LinearAlgebra, Logging, Measures, NCDatasets,
@@ -117,11 +128,17 @@ include("simulation_components/atmos.jl")
 include("simulation_components/model.jl")
 # Physical Processes
 include("physical_processes/fractures.jl")
+<<<<<<< HEAD
 include("physical_processes/bond_fractures.jl")
 include("physical_processes/update_floe.jl")
 include("physical_processes/coupling.jl")
 include("physical_processes/collisions.jl")
 include("physical_processes/hex_bonds.jl")
+=======
+include("physical_processes/update_floe.jl")
+include("physical_processes/coupling.jl")
+include("physical_processes/collisions.jl")
+>>>>>>> upstream/main
 include("physical_processes/process_settings.jl")
 include("physical_processes/simplification.jl")
 include("physical_processes/ridge_raft.jl")
@@ -134,4 +151,8 @@ include("logger.jl")
 # Simulation
 include("output.jl")
 include("simulation_components/simulation.jl")
+<<<<<<< HEAD
 end
+=======
+end
+>>>>>>> upstream/main

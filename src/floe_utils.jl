@@ -98,7 +98,10 @@ make_polygon(ring::GI.LinearRing) = GI.Polygon([ring])
 make_multipolygon(coords::Vector{<:PolyVec}) = GI.MultiPolygon(GO.tuples(coords))
 make_multipolygon(tuple_coords) = GI.MultiPolygon(tuple_coords)
 make_multipolygon(polys::Vector{<:GI.Polygon}) = GI.MultiPolygon(polys)
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/main
 function make_multipolygon(polys::Vector{<:StaticQuadrilateral{FT}}) where FT
     new_polys = Vector{Polys{FT}}(undef, length(polys))
     for (i, poly) in enumerate(polys)
@@ -137,7 +140,10 @@ function deepcopy_floe(floe::LazyRow{Floe{FT}}) where {FT}
         rmax = floe.rmax,
         moment = floe.moment,
         angles = copy(floe.angles),
+<<<<<<< HEAD
         hex_bonds = copy(floe.hex_bonds),
+=======
+>>>>>>> upstream/main
         x_subfloe_points = copy(floe.x_subfloe_points),
         y_subfloe_points = copy(floe.y_subfloe_points),
         α = floe.α,
@@ -156,10 +162,13 @@ function deepcopy_floe(floe::LazyRow{Floe{FT}}) where {FT}
         overarea = floe.overarea,
         collision_force = copy(floe.collision_force),
         collision_trq = floe.collision_trq,
+<<<<<<< HEAD
         bond_force = copy(floe.bond_force),
         bond_trq = floe.bond_trq,
         stress_bond = copy(floe.stress_bond),
         #ind_bond_force = copy(floe.ind_bond_force),
+=======
+>>>>>>> upstream/main
         stress_accum = copy(floe.stress_accum),
         stress_instant = copy(floe.stress_instant),
         strain = copy(floe.strain),
