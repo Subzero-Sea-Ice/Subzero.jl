@@ -193,8 +193,8 @@ julia> Ocean(Float32; u = u_field, v = v_field, temp = 0.0, grid)
 Ocean{Float32}
   ⊢Vector fields of dimension (21, 11)
   ⊢Tracer fields of dimension (21, 11)
-  ⊢Average u-velocity of: 0.4856711 m/s
-  ⊢Average v-velocity of: 0.5319979 m/s
+  ⊢Average u-velocity of: 0.48567 m/s
+  ⊢Average v-velocity of: 0.532 m/s
   ∟Average temperature of: 0.0 C
 ```
 - Trying to create an `Ocean` with a constant field and NO grid
@@ -230,13 +230,13 @@ _get_val_field(::Type, ::Real, ::Nothing) = throw(ArgumentError("To create a mat
 _get_val_field(t, v, g) = throw(ArgumentError("Incorrect inputs to Ocean or Atmos constructor."))
 
 # Pretty printing for Ocean showing key dimensions
-function Base.show(io::IO, ocean::Ocean{FT}) where FT
+function Base.show(io::IO, ocean::Ocean{FT}; digits = 5) where FT
     overall_summary = "Ocean{$FT}"
     vector_summary = "Vector fields of dimension $(size(ocean.u))"
-    avg_ocean_u = "Average u-velocity of: $(mean(ocean.u)) m/s"
-    avg_ocean_v = "Average v-velocity of: $(mean(ocean.v)) m/s"
+    avg_ocean_u = "Average u-velocity of: $(round(mean(ocean.u), digits = digits)) m/s"
+    avg_ocean_v = "Average v-velocity of: $(round(mean(ocean.v), digits = digits)) m/s"
     tracer_summary = "Tracer fields of dimension $(size(ocean.temp))"
-    avg_ocean_temp = "Average temperature of: $(mean(ocean.temp)) C"
+    avg_ocean_temp = "Average temperature of: $(round(mean(ocean.temp), digits = digits)) C"
     print(io, overall_summary, "\n",
         "  ⊢", vector_summary, "\n",
         "  ⊢", tracer_summary, "\n",

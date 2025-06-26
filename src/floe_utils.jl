@@ -99,6 +99,14 @@ make_multipolygon(coords::Vector{<:PolyVec}) = GI.MultiPolygon(GO.tuples(coords)
 make_multipolygon(tuple_coords) = GI.MultiPolygon(tuple_coords)
 make_multipolygon(polys::Vector{<:GI.Polygon}) = GI.MultiPolygon(polys)
 
+function make_multipolygon(polys::Vector{<:StaticQuadrilateral{FT}}) where FT
+    new_polys = Vector{Polys{FT}}(undef, length(polys))
+    for (i, poly) in enumerate(polys)
+        new_polys[i] = make_polygon([[p for p in GI.getpoint(poly)]])
+    end
+    return make_multipolygon(new_polys)
+end
+
 get_floe(floes::StructArray, i::Int) = LazyRow(floes, i)
 
 function _make_bounding_box_polygon(::Type{FT}, xmin, xmax, ymin, ymax) where FT

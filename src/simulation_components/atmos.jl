@@ -94,8 +94,8 @@ julia> Atmos(Float32; u = u_field, v = v_field, temp = 0.0, grid)
 Atmos{Float32}
   ⊢Vector fields of dimension (21, 11)
   ⊢Tracer fields of dimension (21, 11)
-  ⊢Average u-velocity of: 0.4965465 m/s
-  ⊢Average v-velocity of: 0.5340565 m/s
+  ⊢Average u-velocity of: 0.49655 m/s
+  ⊢Average v-velocity of: 0.53406 m/s
   ∟Average temperature of: 0.0 C
 ```
 - Trying to create an `Atmos` with a constant field and NO grid
@@ -114,13 +114,13 @@ function Atmos(::Type{FT} = Float64; u, v, temp, grid = nothing) where FT
 end
 
 # Pretty printing for Atmos showing key dimensions
-function Base.show(io::IO, atmos::Atmos{FT}) where FT
+function Base.show(io::IO, atmos::Atmos{FT}; digits = 5) where FT
     overall_summary = "Atmos{$FT}"
     vector_summary = "Vector fields of dimension $(size(atmos.u))"
-    avg_atmos_u = "Average u-velocity of: $(mean(atmos.u)) m/s"
-    avg_atmos_v = "Average v-velocity of: $(mean(atmos.v)) m/s"
+    avg_atmos_u = "Average u-velocity of: $(round(mean(atmos.u), digits = digits)) m/s"
+    avg_atmos_v = "Average v-velocity of: $(round(mean(atmos.v), digits = digits)) m/s"
     tracer_summary = "Tracer fields of dimension $(size(atmos.temp))"
-    avg_atmos_temp = "Average temperature of: $(mean(atmos.temp)) C"
+    avg_atmos_temp = "Average temperature of: $(round(mean(atmos.temp), digits = digits)) C"
     print(io, overall_summary, "\n",
         "  ⊢", vector_summary, "\n",
         "  ⊢", tracer_summary, "\n",

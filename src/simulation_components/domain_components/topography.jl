@@ -53,7 +53,7 @@ julia> poly = GI.Polygon([[(0.0, 0.0), (0.0, 1e3), (1e3, 1e3), (1e3, 0.0), (0.0,
 julia> TopographyElement(Float64; poly)
 TopographyElement{Float64}
   ⊢centroid is (500.0, 500.0) in meters
-  ∟maximum radius is 707.1067811865476 meters
+  ∟maximum radius is 707.10678 meters
 ```
 
 ```jldoctest topography
@@ -79,10 +79,10 @@ _get_velocity(::TopographyElement{FT}, _, _) where {FT} =  (zero(FT), zero(FT))
 _normal_direction_correct!(_, _, ::TopographyElement) = return
 
 # Pretty printing for TopographyElement showing key types and fields
-function Base.show(io::IO, topo_element::TopographyElement{FT}) where FT
+function Base.show(io::IO, topo_element::TopographyElement{FT}; digits = 5) where FT
     overall_summary = "TopographyElement{$FT}"
-    centroid_summary = "centroid is ($(GI.x(topo_element.centroid)), $(GI.y(topo_element.centroid))) in meters"
-    rmax_summary = "maximum radius is $(topo_element.rmax) meters"
+    centroid_summary = "centroid is ($(round(GI.x(topo_element.centroid), digits = digits)), $(round(GI.y(topo_element.centroid); digits = digits))) in meters"
+    rmax_summary = "maximum radius is $(round(topo_element.rmax, digits = digits)) meters"
     print(io, overall_summary, "\n",
         "  ⊢", centroid_summary, "\n",
         "  ∟", rmax_summary)
@@ -122,11 +122,11 @@ julia> coords = [[[(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (0.0, 0.0)]], [[(10.0, 0.
 julia> initialize_topography_field(Float64; coords)
 2-element TopographyField{Float64} list:
  TopographyElement{Float64}
-  ⊢centroid is (0.3333333333333333, 0.6666666666666666) in meters
-  ∟maximum radius is 0.74535599249993 meters
+  ⊢centroid is (0.33333, 0.66667) in meters
+  ∟maximum radius is 0.74536 meters
  TopographyElement{Float64}
-  ⊢centroid is (10.333333333333334, 0.6666666666666666) in meters
-  ∟maximum radius is 0.7453559924999301 meters
+  ⊢centroid is (10.33333, 0.66667) in meters
+  ∟maximum radius is 0.74536 meters
 ```
 
 - Defining a topography field with polygons
@@ -138,11 +138,11 @@ julia> polys = [GI.Polygon(c) for c in coords];
 julia> initialize_topography_field(Float32; polys)
 2-element TopographyField{Float32} list:
  TopographyElement{Float32}
-  ⊢centroid is (0.33333334, 0.6666667) in meters
-  ∟maximum radius is 0.745356 meters
+  ⊢centroid is (0.33333, 0.66667) in meters
+  ∟maximum radius is 0.74536 meters
  TopographyElement{Float32}
-  ⊢centroid is (10.333333, 0.6666667) in meters
-  ∟maximum radius is 0.74535626 meters
+  ⊢centroid is (10.33333, 0.66667) in meters
+  ∟maximum radius is 0.74536 meters
 ```
 
 - Creating an empty topography field without polys or coords

@@ -228,9 +228,9 @@ function OpenBoundary(::Type{D}, ::Type{FT} = Float64; grid = nothing,
 end
 
 # Pretty printing for OpenBoundary showing key types and fields
-function Base.show(io::IO, open_bound::OpenBoundary{D, FT}) where {D, FT}
+function Base.show(io::IO, open_bound::OpenBoundary{D, FT}; digits = 5) where {D, FT}
     overall_summary = "OpenBoundary{$D, $FT}"
-    points_summary, val_summary = show_boundary_poly_val_strings(open_bound)
+    points_summary, val_summary = show_boundary_poly_val_strings(open_bound; digits)
     print(io, overall_summary, "\n",
         "  ⊢", points_summary, "\n",
         "  ∟", val_summary)
@@ -315,9 +315,9 @@ function PeriodicBoundary(::Type{D}, ::Type{FT} = Float64; grid = nothing,
 end
 
 # Pretty printing for PeriodicBoundary showing key types and fields
-function Base.show(io::IO, periodic_bound::PeriodicBoundary{D, FT}) where {D, FT}
+function Base.show(io::IO, periodic_bound::PeriodicBoundary{D, FT}; digits = 5) where {D, FT}
     overall_summary = "PeriodicBoundary{$D, $FT}"
-    points_summary, val_summary = show_boundary_poly_val_strings(periodic_bound)
+    points_summary, val_summary = show_boundary_poly_val_strings(periodic_bound; digits)
     print(io, overall_summary, "\n",
         "  ⊢", points_summary, "\n",
         "  ∟", val_summary)
@@ -403,9 +403,9 @@ function CollisionBoundary(::Type{D}, ::Type{FT} = Float64; grid = nothing,
 end
 
 # Pretty printing for CollisionBoundary showing key types and fields
-function Base.show(io::IO, collision_bound::CollisionBoundary{D, FT}) where {D, FT}
+function Base.show(io::IO, collision_bound::CollisionBoundary{D, FT}; digits = 5) where {D, FT}
     overall_summary = "CollisionBoundary{$D, $FT}"
-    points_summary, val_summary = show_boundary_poly_val_strings(collision_bound)
+    points_summary, val_summary = show_boundary_poly_val_strings(collision_bound; digits)
     print(io, overall_summary, "\n",
         "  ⊢", points_summary, "\n",
         "  ∟", val_summary)
@@ -544,9 +544,9 @@ function _update_boundary!(boundary::MovingBoundary{D, FT}, Δt) where {D <: Uni
 end
 
 # Pretty printing for CollisionBoundary showing key types and fields
-function Base.show(io::IO, moving_bound::MovingBoundary{D, FT}) where {D, FT}
+function Base.show(io::IO, moving_bound::MovingBoundary{D, FT}; digits = 5) where {D, FT}
     overall_summary = "MovingBoundary{$D, $FT}"
-    points_summary, val_summary = show_boundary_poly_val_strings(moving_bound)
+    points_summary, val_summary = show_boundary_poly_val_strings(moving_bound; digits)
     u_velocity_summary = "u-velocity of $(moving_bound.u) m/s"
     v_velocity_summary = "v-velocity of $(moving_bound.v) m/s"
     print(io, overall_summary, "\n",
