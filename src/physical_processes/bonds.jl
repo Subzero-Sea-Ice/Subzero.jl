@@ -69,9 +69,10 @@ function timestep_hexagonal_bonds!(
             floes.ind_bond_force[id][i] .= FT(0)  # set both Fx and Fy to zero
         end
     end
-    for id in eachindex(floes)
-        if floes.ghost_id[id] == 0
-            fill!(floes.bond_force[id], FT(0))  # Reset both Fx and Fy to zero
+    for idx in eachindex(floes)
+        id = floes.id[idx]
+        if floes.ghost_id[idx] == 0
+            fill!(floes.bond_force[idx], FT(0))  # Reset both Fx and Fy to zero
             i_indices = findall(==(id), floes.id)  # actual + ghost indices
             edges_i = polygon_edges(floes.coords[i_indices[1]][1])
             num_edges_i = length(edges_i) - 1  
@@ -111,27 +112,29 @@ function timestep_hexagonal_bonds!(
                     # assign forces once for the best pair
                     if best_pair !== nothing
                         i_idx2, edge_idx2, neighbor_idx, neighbor_edge_idx, mid_i2, mid_neighbor2 = best_pair
+                        floe_idx_act = findfirst(x -> x == floes.id[i_idx2], floes.id)
                         Δu, Δv = get_vel_diff(floes, i_idx2, neighbor_idx, mid_i2, mid_neighbor2)
-                        #Δu, Δv = get_vel_diff(floes, index, index_nei, c_floe, c_neighbour)
                         Fx_bond = best_dx * k_ice +  c_ice * Δu
                         Fy_bond = best_dy * k_ice +  c_ice * Δv
-                        floes.ind_bond_force[floes.id[i_idx2]][edge_idx2][1] = Fx_bond
-                        floes.ind_bond_force[floes.id[i_idx2]][edge_idx2][2] = Fy_bond
+                        floes.ind_bond_force[floe_idx_act][edge_idx2][1] = Fx_bond
+                        floes.ind_bond_force[floe_idx_act][edge_idx2][2] = Fy_bond
                     end
                 end 
                 if neighbor != 0
-                    nei_edge_idx = findfirst(x -> x == id, floes.hex_bonds[neighbor])
-                    floes.ind_bond_force[neighbor][nei_edge_idx][1] = - floes.ind_bond_force[id][edge_idx][1] 
-                    floes.ind_bond_force[neighbor][nei_edge_idx][2] = - floes.ind_bond_force[id][edge_idx][2] 
+                    floe_idx_act = findfirst(x -> x == id, floes.id)
+                    nei_idx_act = findfirst(x -> x == neighbor, floes.id)
+                    nei_edge_idx = findfirst(x -> x == id, floes.hex_bonds[nei_idx_act])
+                    floes.ind_bond_force[nei_idx_act][nei_edge_idx][1] = - floes.ind_bond_force[floe_idx_act][edge_idx][1] 
+                    floes.ind_bond_force[nei_idx_act][nei_edge_idx][2] = - floes.ind_bond_force[floe_idx_act][edge_idx][2] 
                 end
             end    
-            floes.bond_force[id][1] = sum(first.(floes.ind_bond_force[id]))
-            floes.bond_force[id][2] = sum(last.(floes.ind_bond_force[id]))
-            #= if(curr_time == 5000)
+            floes.bond_force[idx][1] = sum(first.(floes.ind_bond_force[idx]))
+            floes.bond_force[idx][2] = sum(last.(floes.ind_bond_force[idx]))
+            if(curr_time == 5000)
                 step_t = curr_time/20
-                println(">>Time:", step_t, " >>Floe:", id,  " >>Forces:" ,floes.ind_bond_force[id])
-                println(">>Time:", step_t, " >>Floe:",  id,  " >>Forces:" ,floes.bond_force[id])
-            end =#
+                println(">>Time:", step_t, " >>Floe:", id,  " >>Forces:" ,floes.ind_bond_force[idx])
+                println(">>Time:", step_t, " >>Floe:",  id,  " >>Forces:" ,floes.bond_force[idx])
+            end
         end
     end
 
@@ -159,14 +162,14 @@ function timestep_hexagonal_bonds!(
                 floe_stress_bond[1,2] += Fx_bond * r_y + Fy_bond * r_x
                 floe_stress_bond[2,2] += Fy_bond * r_y
                 #bond_id = floes.hex_bonds[idx][edge_idx]  
-               #=  if(curr_time == 5000)
+                if(curr_time == 5000)
                     step_t = curr_time/20
                     println("Time: $step_t, Floe: $idx, Neighbor: $bond_id, Forces: $Fx_bond, $Fy_bond, Torque: $torque_xy, Total:", floes.bond_trq[idx])
                     println("Time: $step_t, Floe: $idx, coords: ", floes.coords[idx][1])
                     println("Time: $step_t, Floe: $idx, Neighbor: $bond_id, x,y: $mid_i")
                     println("Time: $step_t, Floe: $idx, Neighbor: $bond_id", "<cx:>", floes.centroid[idx][1], "<cy:>", floes.centroid[idx][2])
                     println("Time: $step_t, Floe: $idx, Neighbor: $bond_id, r_x: $r_x, r_y: $r_y")
-                end  =#
+                end 
             end
         end
         floe_stress_bond[1, 2] *= FT(0.5)

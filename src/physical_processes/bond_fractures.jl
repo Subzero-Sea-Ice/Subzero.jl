@@ -28,6 +28,3 @@ function bond_fracture_floes!(
         end
     end
 end
-
-
-
