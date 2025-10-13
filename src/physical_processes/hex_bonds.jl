@@ -19,7 +19,6 @@ function update_hex_bonds!(floes)
     end
 end
 
-
 #Function to calculate differences in velocities at the endpoints of a bond
 function get_vel_diff(floes, idx_floe, idx_neighbour, c_floe, c_neighbour)
     u_floe = floes.u[idx_floe] + floes.ξ[idx_floe] * (c_floe[1] - floes.centroid[idx_floe][1])
@@ -142,6 +141,7 @@ function timestep_hexagonal_bonds!(
     global present_bond_endpoints = Vector{Tuple{Tuple{Int, Int, Int, Int}, Tuple{Vector{Float64}, Vector{Float64}}}}()
     global present_best_bond_match = Vector{Tuple{Tuple{Int, Int, Int, Int}, Tuple{Vector{Float64}, Vector{Float64}}}}()
     update_hex_bonds!(floes)   # Updates hex_bonds when floes are removed from simulation
+    #println("Hex_bonds::", floes.hex_bonds)
     """
     present_bond_endpoints :: It stores the information of 
     1. Index of floe, 2. Index of neighbour 3. Ghost index of floe 4. Ghost index of neighbour
@@ -171,6 +171,7 @@ function timestep_hexagonal_bonds!(
     if curr_time == 0
         global initial_bond_endpoints = present_bond_endpoints
         global initial_best_bond_match = find_closest_best_bond_match(floes, initial_bond_endpoints)
+        #println("Initial_bond_endpoints:",initial_bond_endpoints )
     end
     present_best_bond_match = find_closest_best_bond_match(floes,present_bond_endpoints) 
     for (index, bonds) in enumerate(floes.hex_bonds)
@@ -204,8 +205,8 @@ function timestep_hexagonal_bonds!(
                     present_found_match, present_matched_key = find_bond_match(present_best_bond_match, key1, key2)
                     c_floe_best_bond_match_init, c_neighbour_best_bond_match_init = extract_best_match(initial_matched_key, key1, key2, initial_found_match)
                     c_floe_best_bond_match, c_neighbour_best_bond_match = extract_best_match(present_matched_key, key1, key2, present_found_match)
-                    Δx = (c_neighbour_best_bond_match[1] - c_floe_best_bond_match[1]) - (c_neighbour_best_bond_match_init[1] - c_floe_best_bond_match_init[1])
-                    Δy = (c_neighbour_best_bond_match[2] - c_floe_best_bond_match[2]) - (c_neighbour_best_bond_match_init[2] - c_floe_best_bond_match_init[2])
+                    Δx = (c_neighbour_best_bond_match[1] - c_floe_best_bond_match[1]) #- (c_neighbour_best_bond_match_init[1] - c_floe_best_bond_match_init[1])
+                    Δy = (c_neighbour_best_bond_match[2] - c_floe_best_bond_match[2]) #- (c_neighbour_best_bond_match_init[2] - c_floe_best_bond_match_init[2])
                     c_floe = nothing  # Declare and initialize c_floe outside the loop
                     c_neighbour = nothing
                     for (bond_tuple, (found_c_floe, found_c_neighbour)) in present_bond_endpoints
@@ -246,7 +247,11 @@ function timestep_hexagonal_bonds!(
                         floe_stress_bond[1,1] += stress[1,1]
                         floe_stress_bond[1,2] += stress[1,2]
                         floe_stress_bond[2,2] += stress[2,2]
-                      #=   if(curr_time == 20000)
+                        if(curr_time == 20000)
+                            step_t = curr_time/20
+                            println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, Δx : $Δx, Δy: $Δy, Floe: $c_floe_best_bond_match, Neigh: $c_neighbour_best_bond_match")
+                        end
+                        if(curr_time == 5000)
                             step_t = curr_time/20
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, Δx : $Δx, Δy: $Δy")
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, Δu : $Δu, Δv: $Δv")
@@ -255,8 +260,8 @@ function timestep_hexagonal_bonds!(
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id", "<cx:>", floes.centroid[index][1], "<cy:>", floes.centroid[index][2])
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, r_x: $r_x, r_y: $r_y")
                             println("Time: $step_t, Floe: $idx_floe, Neighbor: $bond_id, σ_xx: ", stress[1,1], "σ_xy:", stress[1,2],  "σ_yy:", stress[2,2])
-                        end  =#
-                    else
+                        end
+                    else 
                         println("c_floe not found for [idx_floe, bond_id, 0, 0]") #add error checking to see if c_floe was not found.
                     end   
                 end

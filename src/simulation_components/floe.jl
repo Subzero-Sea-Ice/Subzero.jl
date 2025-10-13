@@ -33,7 +33,7 @@ Singular sea ice floe with fields describing current state.
     moment::FT              # mass moment of intertia
     angles::Vector{FT}      # interior angles of floe in degrees
     # Bonds (Adjacenct floes information) ----------------------------------------
-    hex_bonds::Vector{Int}  # Indices of neighboring floes (default: 6 slots)
+    hex_bonds::Vector{Int}  # Indices of neighboring floes
     # Monte Carlo Points ---------------------------------------------------
     x_subfloe_points::Vector{FT}        # x-coordinates for monte carlo integration centered
                             #   at origin
