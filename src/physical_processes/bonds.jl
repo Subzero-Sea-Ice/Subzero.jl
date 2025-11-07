@@ -27,18 +27,32 @@ end
 # Function to check if point is inside polygon (outer ring)
 function point_in_polygon(p::GB.Point2, poly_coords::Vector{Vector{Float64}})
     x, y = p[1], p[2]
-    vertices = poly_coords
-    n = length(vertices)
+    n = length(poly_coords)
     inside = false
     j = n
+    tol = 1e-9
+
     for i in 1:n
-        xi, yi = vertices[i][1], vertices[i][2]
-        xj, yj = vertices[j][1], vertices[j][2]
-        if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi + 1e-20) + xi)
-            inside = !inside
+        xi, yi = poly_coords[i]
+        xj, yj = poly_coords[j]
+
+        # --- Check if point lies on this edge ---
+        cross = (x - xi) * (yj - yi) - (y - yi) * (xj - xi)
+        if abs(cross) < tol
+            if (min(xi, xj) - tol ≤ x ≤ max(xi, xj) + tol) &&
+               (min(yi, yj) - tol ≤ y ≤ max(yi, yj) + tol)
+                return true  # point is on the boundary
+            end
         end
+
+        # --- Ray casting for inside/outside test ---
+        intersect = ((yi > y) != (yj > y)) &&
+                    (x < (xj - xi) * (y - yi) / (yj - yi + eps()) + xi)
+
+        inside ⊻= intersect
         j = i
     end
+
     return inside
 end
 
@@ -96,12 +110,12 @@ function timestep_hexagonal_bonds!(
                             dx = mid_neighbor[1] - mid_i[1]
                             dy = mid_neighbor[2] - mid_i[2]
                             dist = sqrt(dx^2 + dy^2)
-                            #= in_neighbor = point_in_polygon(mid_i, floes.coords[neighbor_idx][1])
+                            in_neighbor = point_in_polygon(mid_i, floes.coords[neighbor_idx][1])
                             in_i = point_in_polygon(mid_neighbor, floes.coords[i_idx][1])
                             if in_neighbor || in_i
                                 dx, dy = 0.0, 0.0
                                 dist = 0.0
-                            end =#
+                            end
                             if dist < best_dist
                                 best_dx, best_dy = dx, dy
                                 best_dist = dist
@@ -130,11 +144,11 @@ function timestep_hexagonal_bonds!(
             end    
             floes.bond_force[idx][1] = sum(first.(floes.ind_bond_force[idx]))
             floes.bond_force[idx][2] = sum(last.(floes.ind_bond_force[idx]))
-            if(curr_time == 5000)
-                step_t = curr_time/20
-                println(">>Time:", step_t, " >>Floe:", id,  " >>Forces:" ,floes.ind_bond_force[idx])
-                println(">>Time:", step_t, " >>Floe:",  id,  " >>Forces:" ,floes.bond_force[idx])
-            end
+            #if(curr_time == 5000)
+            #    step_t = curr_time/20
+            #    println(">>Time:", step_t, " >>Floe:", id,  " >>Forces:" ,floes.ind_bond_force[idx])
+            #    println(">>Time:", step_t, " >>Floe:",  id,  " >>Forces:" ,floes.bond_force[idx])
+            #end
         end
     end
 
@@ -162,14 +176,14 @@ function timestep_hexagonal_bonds!(
                 floe_stress_bond[1,2] += Fx_bond * r_y + Fy_bond * r_x
                 floe_stress_bond[2,2] += Fy_bond * r_y
                 #bond_id = floes.hex_bonds[idx][edge_idx]  
-                if(curr_time == 5000)
-                    step_t = curr_time/20
-                    println("Time: $step_t, Floe: $idx, Neighbor: $bond_id, Forces: $Fx_bond, $Fy_bond, Torque: $torque_xy, Total:", floes.bond_trq[idx])
-                    println("Time: $step_t, Floe: $idx, coords: ", floes.coords[idx][1])
-                    println("Time: $step_t, Floe: $idx, Neighbor: $bond_id, x,y: $mid_i")
-                    println("Time: $step_t, Floe: $idx, Neighbor: $bond_id", "<cx:>", floes.centroid[idx][1], "<cy:>", floes.centroid[idx][2])
-                    println("Time: $step_t, Floe: $idx, Neighbor: $bond_id, r_x: $r_x, r_y: $r_y")
-                end 
+                #if(curr_time == 5000)
+                #    step_t = curr_time/20
+                #    println("Time: $step_t, Floe: $idx, Neighbor: $bond_id, Forces: $Fx_bond, $Fy_bond, Torque: $torque_xy, Total:", floes.bond_trq[idx])
+                #    println("Time: $step_t, Floe: $idx, coords: ", floes.coords[idx][1])
+                #    println("Time: $step_t, Floe: $idx, Neighbor: $bond_id, x,y: $mid_i")
+                #    println("Time: $step_t, Floe: $idx, Neighbor: $bond_id", "<cx:>", floes.centroid[idx][1], "<cy:>", floes.centroid[idx][2])
+                #    println("Time: $step_t, Floe: $idx, Neighbor: $bond_id, r_x: $r_x, r_y: $r_y")
+                #end 
             end
         end
         floe_stress_bond[1, 2] *= FT(0.5)
@@ -180,8 +194,3 @@ function timestep_hexagonal_bonds!(
 
     return
 end   
-
-
-
-
-
