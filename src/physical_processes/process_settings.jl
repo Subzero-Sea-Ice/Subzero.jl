@@ -239,20 +239,19 @@ CollisionSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
     CollisionSettings{FT}(;kwargs...)
 
 """
-    HexagonalBondSettings{FT<:AbstractFloat}
+    BondSettings{FT<:AbstractFloat}
 
 Settings needed for bonds within the model. 
 If bonds_on is true, fracture happens through bonds, else they will not.
 """
 
-@kwdef struct HexagonalBondSettings{FT<:AbstractFloat}
+@kwdef struct BondSettings{FT<:AbstractFloat}
     bonds_on::Bool = false
-    nfaces :: Int = 6
     elastic_constant:: FT = 1000000.0
     damp_coeff:: FT = 2.0
 
-    function HexagonalBondSettings{FT}(
-        bonds_on, nfaces, elastic_constant, damp_coeff, 
+    function BondSettings{FT}(
+        bonds_on, elastic_constant, damp_coeff, 
     ) where {FT<:AbstractFloat}
         if bonds_on
             if elastic_constant < 0
@@ -260,25 +259,25 @@ If bonds_on is true, fracture happens through bonds, else they will not.
                 elastic_constant = FT(0)
             end
         end 
-        new{FT}(bonds_on, nfaces, elastic_constant, damp_coeff) 
+        new{FT}(bonds_on, elastic_constant, damp_coeff) 
     end
 
-    HexagonalBondSettings(
-        bonds_on, nfaces, elastic_constant, damp_coeff, 
-    ) = HexagonalBondSettings{Float64}(
-        bonds_on, nfaces, elastic_constant, damp_coeff, 
+    BondSettings(
+        bonds_on, elastic_constant, damp_coeff, 
+    ) = BondSettings{Float64}(
+        bonds_on, elastic_constant, damp_coeff, 
     )
 end 
 
 """
-    HexagonalBondSettings(::Type{FT}, kwargs...)
+    BondSettings(::Type{FT}, kwargs...)
 
-A float type FT can be provided as the first argument of any HexagonalBondSettings
-constructor. A HexagonalBondSettings of type FT will be created by passing all
+A float type FT can be provided as the first argument of any BondSettings
+constructor. A BondSettings of type FT will be created by passing all
 other arguments to the correct constructor. 
 """
-HexagonalBondSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
-HexagonalBondSettings{FT}(;kwargs...)
+BondSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
+BondSettings{FT}(;kwargs...)
 
 """
     FractureSettings{CT<:AbstractFractureCriteria}
@@ -344,11 +343,11 @@ fractured floe into - 3 is suggested value.
         )
 end
 
-@kwdef struct HexagonalBond_FractureSettings{FT<:AbstractFloat}
+@kwdef struct Bond_FractureSettings{FT<:AbstractFloat}
     rad_bond :: FT = 500
     σc_bond  :: FT = 24e7 
 
-    function HexagonalBond_FractureSettings{FT}(
+    function Bond_FractureSettings{FT}(
         rad_bond, σc_bond,
     ) where {FT<:AbstractFloat}
         if σc_bond < 0
@@ -358,21 +357,21 @@ end
         new{FT}(rad_bond, σc_bond) 
     end
 
-    HexagonalBond_FractureSettings(
+    Bond_FractureSettings(
         rad_bond, σc_bond,
-    ) = HexagonalBond_FractureSettings{Float64}(
+    ) = Bond_FractureSettings{Float64}(
         rad_bond, σc_bond,
     )
 end 
 """
-    HexagonalBond_FractureSettings(::Type{FT}, kwargs...)
+    Bond_FractureSettings(::Type{FT}, kwargs...)
 
-A float type FT can be provided as the first argument of any HexagonalBond_FractureSettings
-constructor. A HexagonalBond_FractureSettings of type FT will be created by passing all
+A float type FT can be provided as the first argument of any Bond_FractureSettings
+constructor. A Bond_FractureSettings of type FT will be created by passing all
 other arguments to the correct constructor. 
 """
-HexagonalBond_FractureSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
-HexagonalBond_FractureSettings{FT}(;kwargs...)
+Bond_FractureSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
+Bond_FractureSettings{FT}(;kwargs...)
 
 """
     struct SimplificationSettings{FT<:AbstractFloat}

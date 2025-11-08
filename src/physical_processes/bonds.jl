@@ -4,10 +4,10 @@ Functions needed for calculating bond forces and torques
 function update_bonds!(floes)
     existing_ids = Set(floes.id)
     #println("existing_ids::", existing_ids )
-    for (index, bonds) in enumerate(floes.hex_bonds)
+    for (index, bonds) in enumerate(floes.bonds)
         for j in eachindex(bonds)
             if bonds[j] != 0 && !(bonds[j] in existing_ids)
-                floes.hex_bonds[index][j] = 0
+                floes.bonds[index][j] = 0
             end
         end
     end
@@ -67,14 +67,13 @@ function get_vel_diff(floes, idx_floe, idx_neighbour, c_floe, c_neighbour)
     return Δu, Δv
 end
 
-function timestep_hexagonal_bonds!(
+function timestep_bonds!(
     floes::StructArray{<:Floe{FT}},
     domain,
     consts,
     curr_time,
     hexagonal_bond_settings,
 ) where {FT<:AbstractFloat}
-    nfaces = hexagonal_bond_settings.nfaces
     k_ice  = hexagonal_bond_settings.elastic_constant
     c_ice  = hexagonal_bond_settings.damp_coeff
     update_bonds!(floes)
@@ -91,7 +90,7 @@ function timestep_hexagonal_bonds!(
             edges_i = polygon_edges(floes.coords[i_indices[1]][1])
             num_edges_i = length(edges_i) - 1  
             for edge_idx in 1:num_edges_i
-                neighbor = floes.hex_bonds[i_indices[1]][edge_idx]  
+                neighbor = floes.bonds[i_indices[1]][edge_idx]  
                 Fx_bond, Fy_bond = 0.0, 0.0
                 if neighbor != 0 && id < neighbor
                     neighbor_indices = findall(==(neighbor), floes.id)
@@ -104,7 +103,7 @@ function timestep_hexagonal_bonds!(
                         mid_i = midpoint(edge_i)
                         for neighbor_idx in neighbor_indices
                             edges_neighbor = polygon_edges(floes.coords[neighbor_idx][1])
-                            neighbor_edge_idx = findfirst(x -> x == id, floes.hex_bonds[neighbor_idx])
+                            neighbor_edge_idx = findfirst(x -> x == id, floes.bonds[neighbor_idx])
                             edge_neighbor = edges_neighbor[neighbor_edge_idx]
                             mid_neighbor = midpoint(edge_neighbor)
                             dx = mid_neighbor[1] - mid_i[1]
@@ -137,7 +136,7 @@ function timestep_hexagonal_bonds!(
                 if neighbor != 0
                     floe_idx_act = findfirst(x -> x == id, floes.id)
                     nei_idx_act = findfirst(x -> x == neighbor, floes.id)
-                    nei_edge_idx = findfirst(x -> x == id, floes.hex_bonds[nei_idx_act])
+                    nei_edge_idx = findfirst(x -> x == id, floes.bonds[nei_idx_act])
                     floes.ind_bond_force[nei_idx_act][nei_edge_idx][1] = - floes.ind_bond_force[floe_idx_act][edge_idx][1] 
                     floes.ind_bond_force[nei_idx_act][nei_edge_idx][2] = - floes.ind_bond_force[floe_idx_act][edge_idx][2] 
                 end
@@ -175,7 +174,7 @@ function timestep_hexagonal_bonds!(
                 floe_stress_bond[1,1] += Fx_bond * r_x
                 floe_stress_bond[1,2] += Fx_bond * r_y + Fy_bond * r_x
                 floe_stress_bond[2,2] += Fy_bond * r_y
-                #bond_id = floes.hex_bonds[idx][edge_idx]  
+                #bond_id = floes.bonds[idx][edge_idx]  
                 #if(curr_time == 5000)
                 #    step_t = curr_time/20
                 #    println("Time: $step_t, Floe: $idx, Neighbor: $bond_id, Forces: $Fx_bond, $Fy_bond, Torque: $torque_xy, Total:", floes.bond_trq[idx])

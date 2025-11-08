@@ -72,9 +72,9 @@ The user can also define settings for each physical process.
     floe_settings::FloeSettings{FT, PT, ST} = FloeSettings()
     coupling_settings::CouplingSettings = CouplingSettings()
     collision_settings::CollisionSettings{FT} = CollisionSettings()
-    hexagonal_bond_settings::HexagonalBondSettings{FT} = hexagonalBondSettings()
+    bond_settings::BondSettings{FT} = BondSettings()
     fracture_settings::FractureSettings{CT} = FractureSettings()
-    hexagonal_bond_fracture_settings::HexagonalBond_FractureSettings{FT} = HexagonalBond_FractureSettings()
+    bond_fracture_settings::Bond_FractureSettings{FT} = Bond_FractureSettings()
     simp_settings::SimplificationSettings{FT} = SimplificationSettings()
     ridgeraft_settings::RidgeRaftSettings{FT} = RidgeRaftSettings()
     weld_settings::WeldSettings{FT} = WeldSettings()
@@ -118,14 +118,14 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
                 spinlock,
             )
         end
-        # Hexagonal Bonds 
-        if sim.hexagonal_bond_settings.bonds_on
-            timestep_hexagonal_bonds!(
+        # Bonds 
+        if sim.bond_settings.bonds_on
+            timestep_bonds!(
                 sim.model.floes,
                 sim.model.domain,
                 sim.consts,
                 sim.Δt*tstep,
-                sim.hexagonal_bond_settings,
+                sim.bond_settings,
             )
         end
       
@@ -194,10 +194,10 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
                 )
         end
         # Bond breakage
-        if sim.hexagonal_bond_settings.bonds_on 
+        if sim.bond_settings.bonds_on 
             bond_fracture_floes!(
                 sim.model.floes,
-                sim.hexagonal_bond_fracture_settings,
+                sim.bond_fracture_settings,
             )
         end
 
