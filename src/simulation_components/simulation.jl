@@ -198,6 +198,7 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
             bond_fracture_floes!(
                 sim.model.floes,
                 sim.bond_fracture_settings,
+                sim.bond_settings,
             )
         end
 

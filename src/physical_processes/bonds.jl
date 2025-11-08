@@ -72,10 +72,15 @@ function timestep_bonds!(
     domain,
     consts,
     curr_time,
-    hexagonal_bond_settings,
+    bond_settings,
 ) where {FT<:AbstractFloat}
-    k_ice  = hexagonal_bond_settings.elastic_constant
-    c_ice  = hexagonal_bond_settings.damp_coeff
+    λ_Rb  = bond_settings.λ_Rb
+    λ_lb  = bond_settings.λ_lb
+    ζ_b   = bond_settings.ζ_b
+    SF_b  = bond_settings.SF_b
+    k_b  = bond_settings.k_b
+    c_b  = bond_settings.c_b
+
     update_bonds!(floes)
     for id in eachindex(floes)
         for i in eachindex(floes.ind_bond_force[id])
@@ -127,8 +132,21 @@ function timestep_bonds!(
                         i_idx2, edge_idx2, neighbor_idx, neighbor_edge_idx, mid_i2, mid_neighbor2 = best_pair
                         floe_idx_act = findfirst(x -> x == floes.id[i_idx2], floes.id)
                         Δu, Δv = get_vel_diff(floes, i_idx2, neighbor_idx, mid_i2, mid_neighbor2)
-                        Fx_bond = best_dx * k_ice +  c_ice * Δu
-                        Fy_bond = best_dy * k_ice +  c_ice * Δv
+                        r_i = sqrt(floes.area[i_idx2] / π)
+                        r_j = sqrt(floes.area[neighbor_idx] / π)
+                        r_eff = (2 * r_i * r_j) / (r_i + r_j)                          # reduced (harmonic) radius
+                        h_eff = min(floes.height[i_idx2], floes.height[neighbor_idx])  # conservative effective height
+                        area_b = 2 * bond_settings.λ_Rb * r_eff * h_eff                # bond cross-section area
+                        dxc = floes.centroid[neighbor_idx][1] - floes.centroid[i_idx2][1]
+                        dyc = floes.centroid[neighbor_idx][2] - floes.centroid[i_idx2][2]
+                        len_b = sqrt(dxc^2 + dyc^2)
+                        k_b = consts.E * area_b / len_b                                # bond stiffness
+                        m_b = (floes.mass[i_idx2] * floes.mass[neighbor_idx]) /
+                              (floes.mass[i_idx2] + floes.mass[neighbor_idx])          # reduced mass
+                        c_b = 2 * bond_settings.ζ_b * sqrt(k_b * m_b)                  # damping coefficient
+
+                        Fx_bond = best_dx * k_b + c_b * Δu
+                        Fy_bond = best_dy * k_b + c_b * Δv
                         floes.ind_bond_force[floe_idx_act][edge_idx2][1] = Fx_bond
                         floes.ind_bond_force[floe_idx_act][edge_idx2][2] = Fy_bond
                     end

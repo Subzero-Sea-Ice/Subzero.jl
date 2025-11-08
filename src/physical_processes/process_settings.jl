@@ -241,33 +241,44 @@ CollisionSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
 """
     BondSettings{FT<:AbstractFloat}
 
-Settings needed for bonds within the model. 
-If bonds_on is true, fracture happens through bonds, else they will not.
+Defines settings related to bonds within the model.
+
+If `bonds_on` is `true`, the model includes fracture through bonds.
+If `bonds_on` is `false`, the simulation will not include bond mechanics.
+
+References:
+- Herman et al. (2016)
+- Damsgaard et al. (2021)
+- West et al. (2022)
 """
-
 @kwdef struct BondSettings{FT<:AbstractFloat}
-    bonds_on::Bool = false
-    elastic_constant:: FT = 1000000.0
-    damp_coeff:: FT = 2.0
+    bonds_on :: Bool = false          # Enable or disable bonds in the model
+    k_b      :: FT   = 1e6            # Elastic stiffness of bond (function of E, A, L)
+    c_b      :: FT   = 1e8            # Damping coefficient of bond (function of ζ_b, k_b, m)
+    λ_Rb     :: FT   = 1.0            # Bond radius coefficient (Herman et al., 2016)
+    λ_lb     :: FT   = 0.8            # Bond length coefficient (Herman et al., 2016)
+    SF_b     :: FT   = 0.07           # Safety factor for stability (Damsgaard et al., 2021)
+    ζ_b      :: FT   = 0.7            # Damping ratio of bond (West et al., 2022)
 
-    function BondSettings{FT}(
-        bonds_on, elastic_constant, damp_coeff, 
-    ) where {FT<:AbstractFloat}
+    function BondSettings{FT}(bonds_on, k_b, c_b, λ_Rb, λ_lb, SF_b, ζ_b) where {FT<:AbstractFloat}
         if bonds_on
-            if elastic_constant < 0
-                @warn "Elastic constant must be non-negative. Setting to 0."
-                elastic_constant = FT(0)
+            if k_b <= 0
+                @warn "Bond stiffness (k_b) must be positive when bonds are enabled. Setting k_b = 0.0."
+                k_b = FT(0)
             end
-        end 
-        new{FT}(bonds_on, elastic_constant, damp_coeff) 
+            if c_b < 0
+                @warn "Damping coefficient (c_b) must be non-negative. Setting c_b = 0.0."
+                c_b = FT(0)
+            end
+        end
+        new{FT}(bonds_on, k_b, c_b, λ_Rb, λ_lb, SF_b, ζ_b)
     end
 
-    BondSettings(
-        bonds_on, elastic_constant, damp_coeff, 
-    ) = BondSettings{Float64}(
-        bonds_on, elastic_constant, damp_coeff, 
-    )
-end 
+    BondSettings(bonds_on, k_b, c_b, λ_Rb, λ_lb, SF_b, ζ_b) =
+        BondSettings{Float64}(bonds_on, k_b, c_b, λ_Rb, λ_lb, SF_b, ζ_b)
+
+end
+
 
 """
     BondSettings(::Type{FT}, kwargs...)
@@ -343,26 +354,45 @@ fractured floe into - 3 is suggested value.
         )
 end
 
-@kwdef struct Bond_FractureSettings{FT<:AbstractFloat}
-    rad_bond :: FT = 500
-    σc_bond  :: FT = 24e7 
+"""
+    Bond_FractureSettings{FT<:AbstractFloat}
 
-    function Bond_FractureSettings{FT}(
-        rad_bond, σc_bond,
-    ) where {FT<:AbstractFloat}
-        if σc_bond < 0
-            @warn "Strength of bond must be non-negative. Setting to 0."
-            σc_bond = FT(0)
+Defines the fracture strength parameters for bonds in the model.
+These parameters determine when a bond fails under tension, compression, or shear.
+Reference:
+- Herman et al. (2016)
+# Parameters
+- `σt_max_bond` : Maximum tensile strength of the bond (Pa)
+- `σc_max_bond` : Maximum compressive strength of the bond (Pa)
+- `τ_max_bond`  : Maximum shear strength of the bond (Pa)
+"""
+@kwdef struct Bond_FractureSettings{FT<:AbstractFloat}
+    σt_max_bond :: FT = 1e5     # Tensile strength limit
+    σc_max_bond :: FT = 1e6     # Compressive strength limit
+    τ_max_bond  :: FT = 1e6     # Shear strength limit
+
+    function Bond_FractureSettings{FT}(σt_max_bond, σc_max_bond, τ_max_bond) where {FT<:AbstractFloat}
+        if σt_max_bond < 0
+            @warn "Tensile strength (σt_max_bond) must be non-negative. Setting σt_max_bond = 0.0."
+            σt_max_bond = FT(0)
         end
-        new{FT}(rad_bond, σc_bond) 
+        if σc_max_bond < 0
+            @warn "Compressive strength (σc_max_bond) must be non-negative. Setting σc_max_bond = 0.0."
+            σc_max_bond = FT(0)
+        end
+        if τ_max_bond < 0
+            @warn "Shear strength (τ_max_bond) must be non-negative. Setting τ_max_bond = 0.0."
+            τ_max_bond = FT(0)
+        end
+
+        new{FT}(σt_max_bond, σc_max_bond, τ_max_bond)
     end
 
-    Bond_FractureSettings(
-        rad_bond, σc_bond,
-    ) = Bond_FractureSettings{Float64}(
-        rad_bond, σc_bond,
-    )
-end 
+    Bond_FractureSettings(σt_max_bond, σc_max_bond, τ_max_bond) =
+        Bond_FractureSettings{Float64}(σt_max_bond, σc_max_bond, τ_max_bond)
+
+end
+ 
 """
     Bond_FractureSettings(::Type{FT}, kwargs...)
 
