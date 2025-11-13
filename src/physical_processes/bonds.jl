@@ -161,11 +161,6 @@ function timestep_bonds!(
             end    
             floes.bond_force[idx][1] = sum(first.(floes.ind_bond_force[idx]))
             floes.bond_force[idx][2] = sum(last.(floes.ind_bond_force[idx]))
-            #if(curr_time == 5000)
-            #    step_t = curr_time/20
-            #    println(">>Time:", step_t, " >>Floe:", id,  " >>Forces:" ,floes.ind_bond_force[idx])
-            #    println(">>Time:", step_t, " >>Floe:",  id,  " >>Forces:" ,floes.bond_force[idx])
-            #end
         end
     end
 
@@ -192,15 +187,6 @@ function timestep_bonds!(
                 floe_stress_bond[1,1] += Fx_bond * r_x
                 floe_stress_bond[1,2] += Fx_bond * r_y + Fy_bond * r_x
                 floe_stress_bond[2,2] += Fy_bond * r_y
-                #bond_id = floes.bonds[idx][edge_idx]  
-                #if(curr_time == 5000)
-                #    step_t = curr_time/20
-                #    println("Time: $step_t, Floe: $idx, Neighbor: $bond_id, Forces: $Fx_bond, $Fy_bond, Torque: $torque_xy, Total:", floes.bond_trq[idx])
-                #    println("Time: $step_t, Floe: $idx, coords: ", floes.coords[idx][1])
-                #    println("Time: $step_t, Floe: $idx, Neighbor: $bond_id, x,y: $mid_i")
-                #    println("Time: $step_t, Floe: $idx, Neighbor: $bond_id", "<cx:>", floes.centroid[idx][1], "<cy:>", floes.centroid[idx][2])
-                #    println("Time: $step_t, Floe: $idx, Neighbor: $bond_id, r_x: $r_x, r_y: $r_y")
-                #end 
             end
         end
         floe_stress_bond[1, 2] *= FT(0.5)

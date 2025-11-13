@@ -66,14 +66,14 @@ The user can also define settings for each physical process.
     verbose::Bool = false               # String output printed during run
     name::String = "sim"                # Simulation name for printing/saving
     # Timesteps ----------------------------------------------------------------
-    Δt::Int = 10                        # Simulation timestep (seconds)
+    Δt::FT = 10                        # Simulation timestep (seconds)
     nΔt::Int = 7500                     # Total timesteps simulation runs for
     # Physical Processes -------------------------------------------------------
     floe_settings::FloeSettings{FT, PT, ST} = FloeSettings()
-    coupling_settings::CouplingSettings = CouplingSettings()
+    coupling_settings::CouplingSettings{FT} = CouplingSettings()
     collision_settings::CollisionSettings{FT} = CollisionSettings()
     bond_settings::BondSettings{FT} = BondSettings()
-    fracture_settings::FractureSettings{CT} = FractureSettings()
+    fracture_settings::FractureSettings{FT,CT} = FractureSettings()
     bond_fracture_settings::Bond_FractureSettings{FT} = Bond_FractureSettings()
     simp_settings::SimplificationSettings{FT} = SimplificationSettings()
     ridgeraft_settings::RidgeRaftSettings{FT} = RidgeRaftSettings()

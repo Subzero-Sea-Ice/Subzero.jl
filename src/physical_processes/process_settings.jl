@@ -130,18 +130,18 @@ of monte carlo points to attempt to generage for each floe. If two_way_coupling_
 true then the simulation calculates the stress the ice/atmosphere put on the
 ocean. 
 """
-@kwdef struct CouplingSettings
+@kwdef struct CouplingSettings{FT<:AbstractFloat}
     coupling_on::Bool = true
-    Δt::Int = 10
+    Δt::FT = 10
     Δd::Int = 1
     two_way_coupling_on::Bool = false
 
-    function CouplingSettings(
+    function CouplingSettings{FT}(
         coupling_on,
         Δt,
         Δd,
         two_way_coupling_on,
-    )
+    )where {FT<:AbstractFloat}
         if coupling_on && Δt < 0
             @warn "Coupling can't occur on a multiple of negative timesteps. \
                 Turning coupling off."
@@ -157,13 +157,15 @@ ocean.
                 with a buffer of less than 0 grid cells. Setting Δd = 0."
             Δd = 0
         end
-        new(
+        new{FT}(
             coupling_on,
             Δt,
             Δd,
             two_way_coupling_on,
         )
     end
+    CouplingSettings(coupling_on,Δt,Δd,two_way_coupling_on,) = 
+    CouplingSettings{Float64}(coupling_on,Δt,Δd,two_way_coupling_on,)
 end
 
 """
@@ -302,20 +304,20 @@ primarily causing the fracture, identified by the largest overlap area on the
 most recent set of collisions. Npieces denotes how many pieces to try to split a
 fractured floe into - 3 is suggested value.
 """
-@kwdef struct FractureSettings{CT<:AbstractFractureCriteria}
+@kwdef struct FractureSettings{FT<:AbstractFloat,CT<:AbstractFractureCriteria}
     fractures_on::Bool = false
     criteria::CT = NoFracture()
-    Δt::Int = 0
+    Δt::FT = 0
     deform_on::Bool = false
     npieces::Int = 3
 
-    function FractureSettings{CT}(
+    function FractureSettings{FT,CT}(
         fractures_on,
         criteria::CT,
         Δt,
         deform_on,
         npieces,
-    ) where {CT <: AbstractFractureCriteria}
+    ) where {FT<:AbstractFloat,CT <: AbstractFractureCriteria}
         if fractures_on
             if Δt < 0
                 @warn "Fracturing can't occur with negative timesteps. Turning \
@@ -336,7 +338,7 @@ fractured floe into - 3 is suggested value.
                 deformation off."
             deform_on = false
         end
-        new{CT}(fractures_on, criteria, Δt, deform_on, npieces)
+        new{FT,CT}(fractures_on, criteria, Δt, deform_on, npieces)
     end
     FractureSettings(
         fractures_on,
@@ -345,7 +347,7 @@ fractured floe into - 3 is suggested value.
         deform_on,
         npieces,
     ) where {CT <: AbstractFractureCriteria} = 
-        FractureSettings{CT}(
+        FractureSettings{Float64,CT}(
             fractures_on,
             criteria,
             Δt,
@@ -484,7 +486,7 @@ following meanings:
 """
 @kwdef struct RidgeRaftSettings{FT<:AbstractFloat}
     ridge_raft_on::Bool = false
-    Δt::Int = 0
+    Δt::FT = 0
     ridge_probability::FT = 0.95
     raft_probability::FT = 0.95
     min_overlap_frac::FT = 0.01
