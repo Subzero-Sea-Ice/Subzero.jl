@@ -152,8 +152,11 @@ function timestep_bonds!(
                     # --- Assign forces for best pair ---
                     if best_pair !== nothing
                         i_idx2, edge_idx2, neighbor_idx, nei_edge_idx, mid_i2, mid_n2 = best_pair
-                        floe_idx_act = findfirst(x -> x == floes.id[i_idx2], floes.id)
-
+                        thread_id = Threads.threadid()
+                        parent_id = floes.id[i_idx2]
+                        floe_idx_act = findfirst(x -> x == parent_id, floes.id) 
+                        nei_idx_act = findfirst(x -> x == neighbor, floes.id)
+    
                         Δu, Δv = get_vel_diff(floes, i_idx2, neighbor_idx, mid_i2, mid_n2)
                         r_i = sqrt(floes.area[i_idx2] / π)
                         r_j = sqrt(floes.area[neighbor_idx] / π)
@@ -167,13 +170,27 @@ function timestep_bonds!(
                         k_b = consts.E * area_b / len_b
                         m_b = (floes.mass[i_idx2] * floes.mass[neighbor_idx]) /
                               (floes.mass[i_idx2] + floes.mass[neighbor_idx])
-                        c_b = 2 * ζ_b * sqrt(k_b * m_b)
+                        c_b = 2 * ζ_b * sqrt(k_b * m_b)       
 
                         Fx_bond = best_dx * k_b + c_b * Δu
                         Fy_bond = best_dy * k_b + c_b * Δv
 
                         floes.ind_bond_force[floe_idx_act][edge_idx2][1] = Fx_bond
                         floes.ind_bond_force[floe_idx_act][edge_idx2][2] = Fy_bond
+    
+                        #val_x = floes.ind_bond_force[floe_idx_act][edge_idx2][1]
+                        #val_y = floes.ind_bond_force[floe_idx_act][edge_idx2][2]
+			#if curr_time == 100
+			#    println("Thread $thread_id | Bond $(parent_id) -> $(nei_idx_act) | Target Index $(floe_idx_act) (Edge $(edge_idx2))")
+			#    println(" $(parent_id) -> $(nei_idx_act) [Geometric Inputs]: best_dx = $best_dx, best_dy = $best_dy (best_dist = $best_dist)")
+			#    println(" $(parent_id) -> $(nei_idx_act) [Kinematic Inputs]: Δu = $Δu, Δv = $Δv")
+			#    println(" $(parent_id) -> $(nei_idx_act) [Property Inputs]: k_b = $k_b, c_b = $c_b (mass_eff = $m_b)")
+			#    println(" $(parent_id) -> $(nei_idx_act) [CALC]: Fx = $Fx_bond, Fy = $Fy_bond")
+			#    println(" $(parent_id) -> $(nei_idx_act) [WRITTEN]: X = $val_x, Y = $val_y")
+			#    println(" $(parent_id) -> $(nei_idx_act) [INDEX CHECK]: Winner Floe Index: $i_idx2 vs. Target Index: $floe_idx_act (Must be same if geometry matters!)")
+			#    println(" $(parent_id) -> $(nei_idx_act) [INDEX CHECK]: Winner Nei Index: $neighbor_idx vs. Target Index: $nei_idx_act (Must be same if geometry matters!)")
+			#end
+
                     end
                 end
             end
@@ -181,7 +198,7 @@ function timestep_bonds!(
     end
 
     # --- Step 4a. Mirror forces for id > neighbor ---
-    Threads.@threads for idx in eachindex(floes)
+    for idx in eachindex(floes)
         id = floes.id[idx]
         bonds_i = floes.bonds[idx]
         num_edges_i = length(bonds_i)

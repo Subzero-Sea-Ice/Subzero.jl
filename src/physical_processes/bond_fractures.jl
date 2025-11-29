@@ -10,7 +10,6 @@ function bond_fracture_floes!(
     σc_max_bond = bond_fracture_settings.σc_max_bond
     τ_max_bond  = bond_fracture_settings.τ_max_bond
 
-    bond_area = 6000
   
     #println("<<Bonds Force in time step>>",length(floes.bonds))
     for (index, bonds) in enumerate(floes.bonds)

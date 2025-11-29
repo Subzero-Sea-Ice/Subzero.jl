@@ -82,6 +82,7 @@ function timestep_bonds!(
     c_b  = bond_settings.c_b
 
     update_bonds!(floes)
+    println(floes.bonds)
     for id in eachindex(floes)
         for i in eachindex(floes.ind_bond_force[id])
             floes.ind_bond_force[id][i] .= FT(0)  # set both Fx and Fy to zero
@@ -89,6 +90,7 @@ function timestep_bonds!(
     end
     for idx in eachindex(floes)
         id = floes.id[idx]
+        println("1. I am here", floe.id, ">>>>")
         if floes.ghost_id[idx] == 0
             fill!(floes.bond_force[idx], FT(0))  # Reset both Fx and Fy to zero
             i_indices = findall(==(id), floes.id)  # actual + ghost indices
@@ -134,21 +136,22 @@ function timestep_bonds!(
                         Δu, Δv = get_vel_diff(floes, i_idx2, neighbor_idx, mid_i2, mid_neighbor2)
                         r_i = sqrt(floes.area[i_idx2] / π)
                         r_j = sqrt(floes.area[neighbor_idx] / π)
-                        r_eff = (2 * r_i * r_j) / (r_i + r_j)                          # reduced (harmonic) radius
+                        r_eff = (2 * r_i * r_j) / (r_i + r_j + eps(FT))                          # reduced (harmonic) radius
                         h_eff = min(floes.height[i_idx2], floes.height[neighbor_idx])  # conservative effective height
                         area_b = 2 * bond_settings.λ_Rb * r_eff * h_eff                # bond cross-section area
                         dxc = floes.centroid[neighbor_idx][1] - floes.centroid[i_idx2][1]
                         dyc = floes.centroid[neighbor_idx][2] - floes.centroid[i_idx2][2]
-                        len_b = sqrt(dxc^2 + dyc^2)
+                        len_b = sqrt(dxc^2 + dyc^2) + eps(FT)
                         k_b = consts.E * area_b / len_b                                # bond stiffness
                         m_b = (floes.mass[i_idx2] * floes.mass[neighbor_idx]) /
-                              (floes.mass[i_idx2] + floes.mass[neighbor_idx])          # reduced mass
+                              (floes.mass[i_idx2] + floes.mass[neighbor_idx] + eps(FT))          # reduced mass
                         c_b = 2 * bond_settings.ζ_b * sqrt(k_b * m_b)                  # damping coefficient
 
                         Fx_bond = best_dx * k_b + c_b * Δu
                         Fy_bond = best_dy * k_b + c_b * Δv
                         floes.ind_bond_force[floe_idx_act][edge_idx2][1] = Fx_bond
                         floes.ind_bond_force[floe_idx_act][edge_idx2][2] = Fy_bond
+                        println(k_b, "<<>>", m_b, "<<>>", c_b)
                     end
                 end 
                 if neighbor != 0
@@ -191,7 +194,8 @@ function timestep_bonds!(
         end
         floe_stress_bond[1, 2] *= FT(0.5)
         floe_stress_bond[2, 1] = floe_stress_bond[1, 2]
-        floe_stress_bond .*= 1/(floes.area[idx] * floes.height[idx])
+        denom = floes.area[idx] * floes.height[idx] + eps(FT)
+        floe_stress_bond .*= 1 / denom
         floes.stress_bond[idx] .= floe_stress_bond
     end
 
