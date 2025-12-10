@@ -12,7 +12,8 @@ function bond_fracture_floes!(
 
   
     #println("<<Bonds Force in time step>>",length(floes.bonds))
-    for (index, bonds) in enumerate(floes.bonds)
+    Threads.@threads for index in eachindex(floes)
+        bonds = floes.bonds[index]
         #println("<<Bonds Force>> Floe:",index, "<<-->>",floes.ind_bond_force[index])
         idx_floe = floes.id[index]
         for bond_id in bonds
@@ -30,9 +31,26 @@ function bond_fracture_floes!(
                 Ft = σt_max_bond * area_b
                 if resul_force >= Ft
                     floes.bonds[index][idx_nei] = 0                  # Remove bond in floe
-                    floes.bonds[idx_neighbour][idx_floe_in_nei] = 0  # Remove bond in neighbour   
+                    #floes.bonds[idx_neighbour][idx_floe_in_nei] = 0  # Remove bond in neighbour   
                 end
             end
         end
     end
+
+    for (index, bonds) in enumerate(floes.bonds)
+        floe_id = floes.id[index]
+        for bond_id in bonds
+            if bond_id != 0
+		 idx_neighbour = findfirst(==(bond_id), floes.id)
+                 idx_pos = findfirst(==(bond_id), bonds)
+                 bonds_nei = floes.bonds[idx_neighbour] 
+                 if findfirst(==(floe_id), bonds_nei) === nothing
+                    floes.bonds[index][idx_pos] = 0
+                 end 
+            end
+        end
+    end
+
+
 end
+

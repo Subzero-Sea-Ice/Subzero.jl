@@ -3,7 +3,6 @@ Functions needed for calculating bond forces and torques
 """
 function update_bonds!(floes)
     existing_ids = Set(floes.id)
-    #println("existing_ids::", existing_ids )
     for (index, bonds) in enumerate(floes.bonds)
         for j in eachindex(bonds)
             if bonds[j] != 0 && !(bonds[j] in existing_ids)
@@ -82,7 +81,6 @@ function timestep_bonds!(
     c_b  = bond_settings.c_b
 
     update_bonds!(floes)
-    println(floes.bonds)
     for id in eachindex(floes)
         for i in eachindex(floes.ind_bond_force[id])
             floes.ind_bond_force[id][i] .= FT(0)  # set both Fx and Fy to zero
@@ -90,7 +88,6 @@ function timestep_bonds!(
     end
     for idx in eachindex(floes)
         id = floes.id[idx]
-        println("1. I am here", floe.id, ">>>>")
         if floes.ghost_id[idx] == 0
             fill!(floes.bond_force[idx], FT(0))  # Reset both Fx and Fy to zero
             i_indices = findall(==(id), floes.id)  # actual + ghost indices
@@ -151,7 +148,6 @@ function timestep_bonds!(
                         Fy_bond = best_dy * k_b + c_b * Δv
                         floes.ind_bond_force[floe_idx_act][edge_idx2][1] = Fx_bond
                         floes.ind_bond_force[floe_idx_act][edge_idx2][2] = Fy_bond
-                        println(k_b, "<<>>", m_b, "<<>>", c_b)
                     end
                 end 
                 if neighbor != 0
