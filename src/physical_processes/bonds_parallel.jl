@@ -80,7 +80,6 @@ function timestep_bonds!(
     SF_b  = bond_settings.SF_b
     k_b  = bond_settings.k_b
     c_b  = bond_settings.c_b
-
     # --- Step 1. Update bonds due to fracturing ---
     update_bonds!(floes)
 
@@ -160,27 +159,26 @@ function timestep_bonds!(
                         Δu, Δv = get_vel_diff(floes, i_idx2, neighbor_idx, mid_i2, mid_n2)
                         r_i = sqrt(floes.area[i_idx2] / π)
                         r_j = sqrt(floes.area[neighbor_idx] / π)
-                        r_eff = (2 * r_i * r_j) / (r_i + r_j)
+                        r_eff = (2 * r_i * r_j) / (r_i + r_j + eps(FT))
                         h_eff = min(floes.height[i_idx2], floes.height[neighbor_idx])
                         area_b = 2 * λ_Rb * r_eff * h_eff
-
                         dxc = floes.centroid[neighbor_idx][1] - floes.centroid[i_idx2][1]
                         dyc = floes.centroid[neighbor_idx][2] - floes.centroid[i_idx2][2]
-                        len_b = sqrt(dxc^2 + dyc^2)
+                        len_b = sqrt(dxc^2 + dyc^2) + eps(FT)
                         k_b = consts.E * area_b / len_b
                         m_b = (floes.mass[i_idx2] * floes.mass[neighbor_idx]) /
-                              (floes.mass[i_idx2] + floes.mass[neighbor_idx])
+                              (floes.mass[i_idx2] + floes.mass[neighbor_idx] + eps(FT))
                         c_b = 2 * ζ_b * sqrt(k_b * m_b)       
 
                         Fx_bond = best_dx * k_b + c_b * Δu
                         Fy_bond = best_dy * k_b + c_b * Δv
 
+                        floes.ind_bond_stiff[floe_idx_act][edge_idx2] = k_b
                         floes.ind_bond_force[floe_idx_act][edge_idx2][1] = Fx_bond
                         floes.ind_bond_force[floe_idx_act][edge_idx2][2] = Fy_bond
-    
                         #val_x = floes.ind_bond_force[floe_idx_act][edge_idx2][1]
                         #val_y = floes.ind_bond_force[floe_idx_act][edge_idx2][2]
-			#if curr_time == 100
+			#if curr_time == 50
 			#    println("Thread $thread_id | Bond $(parent_id) -> $(nei_idx_act) | Target Index $(floe_idx_act) (Edge $(edge_idx2))")
 			#    println(" $(parent_id) -> $(nei_idx_act) [Geometric Inputs]: best_dx = $best_dx, best_dy = $best_dy (best_dist = $best_dist)")
 			#    println(" $(parent_id) -> $(nei_idx_act) [Kinematic Inputs]: Δu = $Δu, Δv = $Δv")
@@ -210,6 +208,7 @@ function timestep_bonds!(
                      nei_edge_idx = findfirst(x -> x == id, floes.bonds[nei_idx_act])
                      floes.ind_bond_force[idx][edge_idx][1] = -floes.ind_bond_force[nei_idx_act][nei_edge_idx][1]
                      floes.ind_bond_force[idx][edge_idx][2] = -floes.ind_bond_force[nei_idx_act][nei_edge_idx][2]
+                     floes.ind_bond_stiff[idx][edge_idx] = floes.ind_bond_stiff[nei_idx_act][nei_edge_idx]
                end
             end
         end

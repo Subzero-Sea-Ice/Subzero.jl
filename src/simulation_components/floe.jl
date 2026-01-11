@@ -5,6 +5,8 @@ Structs and functions used to define floes and floe fields within Subzero
 """
 Enum for differnt floe status
 """
+const Pt2 = GB.Point{2,Float64}
+
 @enum StatusTag begin
     active = 1
     remove = 2
@@ -66,6 +68,7 @@ Singular sea ice floe with fields describing current state.
     bond_force::Matrix{FT} = zeros(1, 2)  # bond force aggregate
     bond_trq::FT = 0.0                    # bond torque aggregate
     ind_bond_force::Vector{Vector{FT}} = Vector{Vector{FT}}() 
+    ind_bond_stiff::Vector{FT} = Vector{FT}() 
     stress_bond::Matrix{FT} = zeros(2, 2) # stress in a floe due to bonds
     interactions::Matrix{FT} = zeros(0, 7)
     num_inters::Int = 0
@@ -403,6 +406,7 @@ function _initialize_floe_field(
         coords_array = floe.coords[1]
         nedges = length(coords_array) - 1
         floe.ind_bond_force = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_stiff = zeros(FT, nedges)
         floe_arr[i_idx] = floe
     end
     # Warn about floes with area less than minimum floe size
@@ -503,12 +507,30 @@ function generate_voronoi_coords(
     end
     # Make voronoi cells into floes
     if current_points > 1
-        tess_cells = voronoicells(
-            xpoints,
-            ypoints,
-            Rectangle(GB.Point2((0.0, 0.0)), GB.Point2((1.0, 1.0))),
-            rng = rng
-        ).Cells
+        points = [Pt2(xpoints[i], ypoints[i]) for i in 1:current_points]
+        for iter in 1:20
+            diagram = voronoicells(points, Rectangle(Pt2(0.0,0.0), Pt2(1.0,1.0)))
+            new_points = Pt2[]
+            for cell in diagram.Cells
+                if isempty(cell)
+                    continue
+                end
+                xs = [p[1] for p in cell]
+                ys = [p[2] for p in cell]
+                cx = mean(xs)
+                cy = mean(ys)
+                push!(new_points, Pt2(cx, cy))
+            end
+            points = new_points
+        end
+        tess_cells = voronoicells(points, Rectangle(Pt2(0.0,0.0), Pt2(1.0,1.0))).Cells
+
+        #tess_cells = voronoicells(
+        #    xpoints,
+        #    ypoints,
+        #    Rectangle(GB.Point2((0.0, 0.0)), GB.Point2((1.0, 1.0))),
+        #    rng = rng
+        #).Cells
         # Scale and translate voronoi coordinates
         tcoords = Vector{PolyVec{FT}}(undef, length(tess_cells))
         for i in eachindex(tess_cells)
@@ -652,6 +674,7 @@ function _initialize_floe_field(
         coords_array = floe.coords[1]
         nedges = length(coords_array) - 1
         floe.ind_bond_force = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_stiff = zeros(FT, nedges)
         floe_arr[i_idx] = floe
     end
 
