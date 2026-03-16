@@ -9,8 +9,9 @@ function bond_fracture_floes!(
     σt_max_bond = bond_fracture_settings.σt_max_bond
     σc_max_bond = bond_fracture_settings.σc_max_bond
     τ_max_bond  = bond_fracture_settings.τ_max_bond
-
   
+    h_mean = 2.8
+    r_mean = 5331.05
     #println("<<Bonds Force in time step>>",length(floes.bonds))
     Threads.@threads for index in eachindex(floes)
         bonds = floes.bonds[index]
@@ -28,7 +29,7 @@ function bond_fracture_floes!(
                 r_eff = (2 * r_i * r_j) / (r_i + r_j)                          # reduced (harmonic) radius
                 h_eff = min(floes.height[index], floes.height[idx_neighbour])   # conservative effective height
                 area_b = 2 * bond_settings.λ_Rb * r_eff * h_eff                # bond cross-section area
-                Ft = σt_max_bond * area_b
+                Ft = σt_max_bond * area_b * (h_eff/h_mean)^(1.0) * (r_eff/r_mean)^(-0.3) 
                 tol = sqrt(eps(FT))
                 Ft_sq = (Ft * (1.0 - tol))^2
                 if (Fx_bond^2 + Fy_bond^2) >= Ft_sq

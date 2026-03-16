@@ -59,6 +59,10 @@ Singular sea ice floe with fields describing current state.
     # Forces/Collisions ----------------------------------------------------
     fxOA::FT = 0.0          # force from ocean and atmos in x direction
     fyOA::FT = 0.0          # force from ocean and atmos in y direction
+    fxA::FT = 0.0           # force from atmos in x direction
+    fyA::FT = 0.0           # force from atmos in y direction
+    fxO::FT = 0.0           # force from ocean in x direction
+    fyO::FT = 0.0           # force from ocean in y direction
     trqOA::FT = 0.0         # torque from ocean and Atmos
     hflx_factor::FT = 0.0   # heat flux factor can be multiplied by floe height
                             #   to get the heatflux
@@ -508,7 +512,7 @@ function generate_voronoi_coords(
     # Make voronoi cells into floes
     if current_points > 1
         points = [Pt2(xpoints[i], ypoints[i]) for i in 1:current_points]
-        for iter in 1:20
+        for iter in 1:10
             diagram = voronoicells(points, Rectangle(Pt2(0.0,0.0), Pt2(1.0,1.0)))
             new_points = Pt2[]
             for cell in diagram.Cells

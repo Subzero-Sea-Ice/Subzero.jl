@@ -2,15 +2,16 @@ using JLD2, Random, Statistics, Subzero, CairoMakie, GeoInterfaceMakie
 using NCDatasets, Interpolations, StaticArrays, LinearAlgebra
 using JSON
 import GeometryBasics as GB
+using Images, ImageMorphology
 
 # User Inputs
 const FT = Float64
 const Lx = 512e3
 const Ly = 512e3
 const Δgrid = 2e3
-const hmean = 1.78
+const hmean = 2.87
 const Δh = 0.0
-const Δt = 1.0
+const Δt = 1.5
 
 # Model initialization
 grid = RegRectilinearGrid(; x0 = 0.0, xf = Lx, y0 = 0.0, yf = Ly, Δx = Δgrid, Δy = Δgrid)
@@ -99,12 +100,12 @@ topo_arr = initialize_topography_field(FT; coords)
 domain = Domain(; north = nboundary, south = sboundary, east = eboundary, west = wboundary, topography = topo_arr)
 coupling_settings = CouplingSettings(two_way_coupling_on = false,)
 bond_settings = BondSettings(bonds_on = true, k_b = 1e6, c_b = 1e8, λ_Rb = 1.0, λ_lb = 0.8, SF_b = 0.077, ζ_b = 0.7,)
-bond_fracture_settings = Bond_FractureSettings(σt_max_bond = 30000, σc_max_bond = 1e6, τ_max_bond = 1e6,)
+bond_fracture_settings = Bond_FractureSettings(σt_max_bond = 60000, σc_max_bond = 1e6, τ_max_bond = 1e6,)
 floe_settings = FloeSettings(subfloe_point_generator = SubGridPointsGenerator(grid, 2),)
 
 floe_arr = initialize_floe_field(
     FT,
-    2500,
+    4000,
     [1.0],
     domain,
     hmean,
@@ -203,11 +204,131 @@ function point_in_poly(x, y, xs, ys)
     return inside
 end
 
+function midpoint(edge::GB.Line)
+    p1, p2 = edge.points
+    GB.Point2((p1[1] + p2[1])/2, (p1[2] + p2[2])/2)
+end
+#image_path = "/home/pvishwaja/poly_topo/sea_ice_april_2016_day1_thick.png" 
+#println("Processing satellite image for leads...")
+#img_raw = load(image_path)
+#img_bin = Gray.(img_raw) .< 0.5
+#sharp_leads = img_bin
+#sharp_leads = reverse(sharp_leads, dims=1)
+#r_y = range(0.0, Ly, length=size(sharp_leads, 1))
+#r_x = range(0.0, Lx, length=size(sharp_leads, 2))
+#itp_im = interpolate((r_y, r_x), Float64.(sharp_leads), Gridded(Linear()))
+#
+##id_to_idx = Dict(val => i for (i, val) in enumerate(floe_idx))
+#function img_value(itp_im, x, y)
+#    xq = clamp(x, first(r_x), last(r_x))
+#    yq = clamp(y, first(r_y), last(r_y))
+#    return itp_im(yq, xq)  
+#end
+#
+#function bond_is_broken(itp_im, p1, p2; n_samples=10, threshold=0.5)
+#    xs = range(p1[1], p2[1], length=n_samples)
+#    ys = range(p1[2], p2[2], length=n_samples)
+#
+#    for (x, y) in zip(xs, ys)
+#        if img_value(itp_im, x, y) > threshold
+#            return true
+#        end
+#    end
+#    return false
+#end
+#
+#for iidx in eachindex(floe_arr)
+#
+#    floe = floe_arr[iidx]
+#
+#    coords_poly = floe_arr.coords
+#    bonds       = floe_arr.bonds
+#    ghost_poly  = floe_arr.ghost_id
+#    ids         = floe_arr.id
+#
+#    # loop over all real (non-ghost) floes
+#    for (idx, id) in enumerate(ids)
+#
+#        ghost_poly[idx] == 1 && continue
+#
+#        # indices of this floe (real + ghosts)
+#        i_indices = findall(==(id), ids)
+#
+#        edges_i = polygon_edges(coords_poly[i_indices[1]][1])
+#        num_edges = length(edges_i) - 1
+#
+#        # loop over edges of this floe
+#        for edge_idx in 1:num_edges
+#
+#            neighbor = bonds[i_indices[1]][edge_idx]
+#            (neighbor == 0 || id >= neighbor) && continue
+#
+#            neighbor_indices = findall(==(neighbor), ids)
+#
+#            best_dist = Inf
+#            best_pair = nothing
+#
+#            # match real/ghost copies geometrically
+#            for i_idx in i_indices
+#
+#                edges_i2 = polygon_edges(coords_poly[i_idx][1])
+#                mid_i = midpoint(edges_i2[edge_idx])
+#
+#                for n_idx in neighbor_indices
+#
+#                    edges_n = polygon_edges(coords_poly[n_idx][1])
+#                    n_edge_idx = findfirst(==(id), bonds[n_idx])
+#                    mid_n = midpoint(edges_n[n_edge_idx])
+#
+#                    dist = hypot(
+#                        mid_n[1] - mid_i[1],
+#                        mid_n[2] - mid_i[2]
+#                    )
+#
+#                    if dist < best_dist
+#                        best_dist = dist
+#                        best_pair = (
+#                            i_idx,
+#                            edge_idx,
+#                            n_idx,
+#                            n_edge_idx,
+#                            mid_i,
+#                            mid_n
+#                        )
+#                    end
+#                end
+#            end
+#
+#            best_pair === nothing && continue
+#
+#            i_idx1, edge_idx1, n_idx1,
+#            n_edge_idx1, mid_i1, mid_n1 = best_pair
+#
+#            # check satellite lead intersection
+#            is_broken = bond_is_broken(itp_im, mid_i1, mid_n1)
+#
+#            if is_broken
+#                parent_id = ids[i_idx1]
+#
+#                floe_idx_act = findfirst(==(parent_id), ids)
+#                nei_idx_act  = findfirst(==(neighbor), ids)
+#
+#                bonds[floe_idx_act][edge_idx1]      = 0
+#                bonds[nei_idx_act][n_edge_idx1] = 0
+#            end
+#        end
+#    end
+#
+#    # update this floe's bonds
+#    floe.bonds = bonds[iidx]
+#    floe_arr[iidx] = floe
+#end
+
 ncfile_thick = "/home/pvishwaja/poly_topo/APRIL_2016_Thick_box_2km.nc"
 ds = NCDataset(ncfile_thick)
-sithick = ds["sithick"][:, :, 1]   
-Xt = repeat(x', length(y), 1)   
-Yt = repeat(y, 1, length(x))   
+sithick = ds["sithick"][:, :, 1]  
+Xt = repeat(x, 1, length(y))   
+Yt = repeat(y', length(x), 1)   
 for i_idx in eachindex(floe_arr)
     floe = floe_arr[i_idx]
     verts = floe.coords[1]
@@ -255,6 +376,57 @@ function smooth_floe_thickness!(floe_arr; β=0.2, niter=3)
 end
 smooth_floe_thickness!(floe_arr)
 
+image_path2 = "/home/pvishwaja/poly_topo/sea_ice_april_2016_day1_thick.png"
+N_SAMPLES    = 1500      # MC samples per floe
+println("Processing satellite image for thickness...")
+img_raw = load(image_path2)
+img_bin = Gray.(img_raw) .< 0.5        # black = lead
+img_bin = reverse(img_bin, dims=1)     # flip y-axis
+r_y = range(0.0, Ly, length=size(img_bin,1))
+r_x = range(0.0, Lx, length=size(img_bin,2))
+itp_im2 = interpolate((r_y, r_x), Float64.(img_bin), Gridded(Linear()))
+
+function lead_fraction(vertices, itp_im2; nsamples=1000)
+    xs = [v[1] for v in vertices]
+    ys = [v[2] for v in vertices]
+
+    xmin, xmax = extrema(xs)
+    ymin, ymax = extrema(ys)
+
+    lead_hits = 0
+    inside_hits = 0
+
+    for _ in 1:nsamples
+        x = rand()*(xmax-xmin) + xmin
+        y = rand()*(ymax-ymin) + ymin
+
+        if point_in_poly(x, y, xs, ys)
+            inside_hits += 1
+            if itp_im2(y, x) > 0.5   # lead
+                lead_hits += 1
+            end
+        end
+    end
+
+    return inside_hits == 0 ? 0.0 : lead_hits / inside_hits
+end
+
+println("Reducing floe thickness over leads...")
+lead_fraction_floe = zeros(num_floes)
+        
+for i in eachindex(floe_arr)
+    floe = floe_arr[i]
+    hi = floe.height
+    vertices = floe_arr.coords[i][1]
+    frac = lead_fraction(vertices, itp_im2; nsamples=N_SAMPLES)
+    lead_fraction_floe[i] = frac
+    max_thinning = hi > 1.5 ? 0.8 : 0.5
+    hi *= (1.0 - max_thinning * frac)
+    floe.height = hi
+    floe_arr[i] = floe
+end
+
+println("<<< Done processig satellite data >>>")
 # Model creation
 model = Model(grid, ocean, atmos, domain, floe_arr)
 
@@ -265,19 +437,19 @@ consts = Constants(E = modulus, f = f)
 
 # Run simulation
 run_time!(simulation) =  @time run!(simulation)
-dir = "/scratch/pvishwaja/poly_topo/check_dt1"
+dir = "/scratch/pvishwaja/poly_topo/check_2016_0p5_0p8_6e4"
 
 # Output setup
 initwriter = InitialStateOutputWriter(dir = dir, overwrite = true)
-floewriter = FloeOutputWriter(1, dir = dir, overwrite = true)
-gridwriter = GridOutputWriter(1, grid, (grid.Nx, grid.Ny), dir = dir, overwrite = true)
-checkpointwriter = CheckpointOutputWriter(1, dir = dir, filename = "checkpoint.jld2", overwrite = true)
+floewriter = FloeOutputWriter(1000, dir = dir, overwrite = true)
+gridwriter = GridOutputWriter(1000, grid, (grid.Nx, grid.Ny), dir = dir, overwrite = true)
+checkpointwriter = CheckpointOutputWriter(1000, dir = dir, filename = "checkpoint.jld2", overwrite = true)
 writers = OutputWriters(initwriter, floewriter, checkpointwriter, gridwriter )
 simulation = Simulation(
     model = model,
     consts = consts,
     Δt = Δt,
-    nΔt = 10,
+    nΔt = 500000,
     verbose = true,
     writers = writers,
     rng = Xoshiro(1),
@@ -321,7 +493,7 @@ end
 run_with_change_atm_oce(simulation)
 
 plot_sim(
-    "/scratch/pvishwaja/poly_topo/check_dt1/floes.jld2",
-    "/scratch/pvishwaja/poly_topo/check_dt1/initial_state.jld2",
+    "/scratch/pvishwaja/poly_topo/check_2016_0p5_0p8_6e4/floes.jld2",
+    "/scratch/pvishwaja/poly_topo/check_2016_0p5_0p8_6e4/initial_state.jld2",
     Δt,
-    "/scratch/pvishwaja/poly_topo/check_dt1/wind_flow.mp4")
+    "/scratch/pvishwaja/poly_topo/check_2016_0p5_0p8_6e4/wind_flow.mp4")
