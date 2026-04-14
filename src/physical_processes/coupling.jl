@@ -1527,8 +1527,14 @@ function calc_one_way_coupling!(
             tot_τy_A = FT(0)
             tot_τx_O = FT(0)
             tot_τy_O = FT(0)
+            tot_τx_C = FT(0)
+            tot_τy_C = FT(0)
+            tot_τx_P = FT(0)
+            tot_τy_P = FT(0)
             tot_τtrq = FT(0)
             tot_hflx_factor = FT(0)
+            tot_τx_C = tot_τx 
+            tot_τy_C = tot_τy
             ma_ratio = floes.mass[i]/floes.area[i]
             # Determine total stress per-monte carlo point
             for j in 1:npoints
@@ -1571,6 +1577,8 @@ function calc_one_way_coupling!(
                 tot_τy_A += τy_atm
                 tot_τx_O += τx_ocn
                 tot_τy_O += τy_ocn
+                tot_τx_P += τx_p∇
+                tot_τy_P += τy_p∇
                 tot_τtrq += τtrq
                 tot_hflx_factor += hflx_factor
                 # Save floe info onto the grid
@@ -1594,6 +1602,10 @@ function calc_one_way_coupling!(
             floes.fyA[i] = tot_τy_A/npoints * floes.area[i]
             floes.fxO[i] = tot_τx_O/npoints * floes.area[i]
             floes.fyO[i] = tot_τy_O/npoints * floes.area[i]
+            floes.fxC[i] = tot_τx_C/npoints * floes.area[i]
+            floes.fyC[i] = tot_τy_C/npoints * floes.area[i]
+            floes.fxP[i] = tot_τx_P/npoints * floes.area[i]
+            floes.fyP[i] = tot_τy_P/npoints * floes.area[i]
             floes.trqOA[i] = tot_τtrq/npoints * floes.area[i]
             floes.hflx_factor[i] = tot_hflx_factor/npoints
         end

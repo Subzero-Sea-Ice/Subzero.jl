@@ -63,6 +63,10 @@ Singular sea ice floe with fields describing current state.
     fyA::FT = 0.0           # force from atmos in y direction
     fxO::FT = 0.0           # force from ocean in x direction
     fyO::FT = 0.0           # force from ocean in y direction
+    fxP::FT = 0.0           # force from ocean pressure gradient in x direction
+    fyP::FT = 0.0           # force from ocean pressure gradient in y direction
+    fxC::FT = 0.0           # force from coriolis in x direction
+    fyC::FT = 0.0           # force from coriolis in y direction
     trqOA::FT = 0.0         # torque from ocean and Atmos
     hflx_factor::FT = 0.0   # heat flux factor can be multiplied by floe height
                             #   to get the heatflux

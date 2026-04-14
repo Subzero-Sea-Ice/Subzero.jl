@@ -77,16 +77,7 @@ ocean = Ocean(; grid, u = uoce_init, v = uoce_init, temp = 0.0)
 nboundary = OpenBoundary(North; grid)
 sboundary  = OpenBoundary(South; grid)
 eboundary = OpenBoundary(East; grid)
-#wboundary = OpenBoundary(West; grid)
 wboundary = MovingBoundary(West; grid, u = 0.0, v = 0.0)
-
-#topo1_raw = JSON.parsefile("/home/pvishwaja/poly_topo/topo2_25m.json")
-#topo1 = Vector{Vector{Vector{Float64}}}(topo1_raw)
-#topo2_raw = JSON.parsefile("/home/pvishwaja/poly_topo/topo2_25m.json")
-#topo2 = Vector{Vector{Vector{Float64}}}(topo2_raw)
-#topo1_km = [ [ p .* 1000 for p in poly ] for poly in topo1 ]
-#topo2_km = [ [ p .* 1000 for p in poly ] for poly in topo2 ]
-#coords1 = [topo1_km,topo2_km]
 
 topo18_raw = JSON.parsefile("/home/pvishwaja/poly_topo/topo18.json")
 topo18 = Vector{Vector{Vector{Float64}}}(topo18_raw)
@@ -96,7 +87,6 @@ coords = [[topo] for topo in topo18_km]
 
 topo_arr = initialize_topography_field(FT; coords)
 
-#domain = Domain(; north = nboundary, south = sboundary, east = eboundary, west = wboundary)
 domain = Domain(; north = nboundary, south = sboundary, east = eboundary, west = wboundary, topography = topo_arr)
 coupling_settings = CouplingSettings(two_way_coupling_on = false,)
 bond_settings = BondSettings(bonds_on = true, k_b = 1e6, c_b = 1e8, λ_Rb = 1.0, λ_lb = 0.8, SF_b = 0.077, ζ_b = 0.7,)
