@@ -372,29 +372,28 @@ Reference:
     σt_max_bond :: FT = 1e5     # Tensile strength limit
     σc_max_bond :: FT = 1e6     # Compressive strength limit
     τ_max_bond  :: FT = 1e6     # Shear strength limit
+    cohesion    :: FT = 1e3     # Mohr-Coulomb cohesion
+    mu_bond     :: FT = 0.6     # friction coefficient
+    h_mean       :: FT = 1.0
+    r_mean       :: FT = 1.0
 
-    function Bond_FractureSettings{FT}(σt_max_bond, σc_max_bond, τ_max_bond) where {FT<:AbstractFloat}
-        if σt_max_bond < 0
-            @warn "Tensile strength (σt_max_bond) must be non-negative. Setting σt_max_bond = 0.0."
-            σt_max_bond = FT(0)
-        end
-        if σc_max_bond < 0
-            @warn "Compressive strength (σc_max_bond) must be non-negative. Setting σc_max_bond = 0.0."
-            σc_max_bond = FT(0)
-        end
-        if τ_max_bond < 0
-            @warn "Shear strength (τ_max_bond) must be non-negative. Setting τ_max_bond = 0.0."
-            τ_max_bond = FT(0)
-        end
+    function Bond_FractureSettings{FT}( σt_max_bond,σc_max_bond,τ_max_bond,cohesion,mu_bond,h_mean,r_mean) where {FT<:AbstractFloat}
 
-        new{FT}(σt_max_bond, σc_max_bond, τ_max_bond)
+        σt_max_bond = max(FT(0), σt_max_bond)
+        σc_max_bond = max(FT(0), σc_max_bond)
+        τ_max_bond  = max(FT(0), τ_max_bond)
+        cohesion    = max(FT(0), cohesion)
+        mu_bond     = max(FT(0), mu_bond)
+
+        new{FT}( σt_max_bond, σc_max_bond, τ_max_bond, cohesion, mu_bond, h_mean,r_mean)
     end
 
-    Bond_FractureSettings(σt_max_bond, σc_max_bond, τ_max_bond) =
-        Bond_FractureSettings{Float64}(σt_max_bond, σc_max_bond, τ_max_bond)
+    # outer constructor (Float64 default)
+    Bond_FractureSettings(σt_max_bond, σc_max_bond, τ_max_bond, cohesion, mu_bond, h_mean, r_mean) = 
+        Bond_FractureSettings{Float64}( σt_max_bond, σc_max_bond, τ_max_bond, cohesion, mu_bond, h_mean,r_mean)
 
 end
- 
+
 """
     Bond_FractureSettings(::Type{FT}, kwargs...)
 
@@ -404,6 +403,8 @@ other arguments to the correct constructor.
 """
 Bond_FractureSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
 Bond_FractureSettings{FT}(;kwargs...)
+
+
 
 """
     struct SimplificationSettings{FT<:AbstractFloat}

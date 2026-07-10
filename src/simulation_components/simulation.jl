@@ -124,6 +124,7 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
                 sim.model.floes,
                 sim.model.domain,
                 sim.consts,
+                sim.Δt,
                 sim.Δt*tstep,
                 sim.bond_settings,
             )

@@ -75,8 +75,9 @@ Singular sea ice floe with fields describing current state.
     collision_trq::FT = 0.0
     bond_force::Matrix{FT} = zeros(1, 2)  # bond force aggregate
     bond_trq::FT = 0.0                    # bond torque aggregate
-    ind_bond_force::Vector{Vector{FT}} = Vector{Vector{FT}}() 
-    ind_bond_stiff::Vector{FT} = Vector{FT}() 
+    ind_bond_force_xy::Vector{Vector{FT}} = Vector{Vector{FT}}()
+    ind_bond_force_nt::Vector{Vector{FT}} = Vector{Vector{FT}}() 
+    ind_bond_stiff_nt::Vector{FT} = Vector{Vector{FT}}()
     stress_bond::Matrix{FT} = zeros(2, 2) # stress in a floe due to bonds
     interactions::Matrix{FT} = zeros(0, 7)
     num_inters::Int = 0
@@ -413,8 +414,9 @@ function _initialize_floe_field(
         floe = floe_arr[i_idx]
         coords_array = floe.coords[1]
         nedges = length(coords_array) - 1
-        floe.ind_bond_force = [zeros(FT, 2) for _ in 1:nedges]
-        floe.ind_bond_stiff = zeros(FT, nedges)
+        floe.ind_bond_force_xy = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_force_nt = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_stiff_nt = [zeros(FT, 2) for _ in 1:nedges]
         floe_arr[i_idx] = floe
     end
     # Warn about floes with area less than minimum floe size
@@ -681,8 +683,9 @@ function _initialize_floe_field(
         floe = floe_arr[i_idx]
         coords_array = floe.coords[1]
         nedges = length(coords_array) - 1
-        floe.ind_bond_force = [zeros(FT, 2) for _ in 1:nedges]
-        floe.ind_bond_stiff = zeros(FT, nedges)
+        floe.ind_bond_force_xy = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_force_nt = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_stiff_nt = [zeros(FT, 2) for _ in 1:nedges]
         floe_arr[i_idx] = floe
     end
 
