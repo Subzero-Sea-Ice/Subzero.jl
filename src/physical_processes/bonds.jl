@@ -147,15 +147,18 @@ function timestep_bonds!(
                     v_rel_t  = v_rel_x * local_tx + v_rel_y * local_ty
                     
                     # Geometrical properties
+                    r_i = sqrt(floes.area[idx] / π)
+                    r_j = sqrt(floes.area[nei_idx] / π)
+                    r_eff = (2 * r_i * r_j) / (r_i + r_j + eps(FT))
                     h_eff = min(floes.height[idx], floes.height[nei_idx])
-                    area_b = h_eff * Lb
-                    wi = (floei_edge.points[1] + floei_edge.points[2]) / 2.0  
-                    wj = (floej_edge.points[1] + floej_edge.points[2]) / 2.0
-                    width_b = norm(wj - wi)
+                    area_b = 2 * λ_Rb * r_eff * h_eff
+                    dxc = floes.centroid[nei_idx][1] - floes.centroid[idx][1]
+                    dyc = floes.centroid[nei_idx][2] - floes.centroid[idx][2]
+                    len_b = sqrt(dxc^2 + dyc^2) + eps(FT)
                     
                     # Stiffness criteria
-                    k_b_val = consts.E * area_b / (width_b + eps(FT))
-                    G_b_val = (consts.E / (2 * (1 + consts.ν))) * area_b / (width_b + eps(FT))
+                    k_b_val = consts.E * area_b / (len_b + eps(FT))
+                    G_b_val = (consts.E / (2 * (1 + consts.ν))) * area_b / (len_b + eps(FT))
 
                     # 1. Load previous values from historical storage arrays
                     Fn_old = floes.ind_bond_force_nt[idx][edge_idx][1]
@@ -168,7 +171,8 @@ function timestep_bonds!(
                     Ft_old_rotated = -Fn_old * sin_dθ + Ft_old * cos_dθ 
                     Fn_bond = (k_b_val * v_rel_n * Δt) + (Fn_old_rotated * ζ_b)
                     Ft_bond = (G_b_val * v_rel_t * Δt) + (Ft_old_rotated * ζ_b)
-                    
+                    #println("Time: $curr_time | Bond [$id <-> $neighbor_id] | Old: ($(round(Fn_old, digits=2)), $(round(Ft_old, digits=2))) -> Rotated: ($(round(Fn_old_rotated, digits=2)), $(round(Ft_old_rotated, digits=2))) | New Incr: ($(round(k_b_val * v_rel_n * Δt, digits=2)), $(round(G_b_val * v_rel_t * Δt, digits=2)))")
+                    #println("Time: $curr_time | dθ (rad): $delta_theta | Old: $(Fn_old) -> Rotated: $(Fn_old_rotated)")
                     # Convert accumulated local states back to global x-y frames
                     Fx_bond = (Fn_bond * local_nx) + (Ft_bond * local_tx)
                     Fy_bond = (Fn_bond * local_ny) + (Ft_bond * local_ty)
@@ -182,6 +186,19 @@ function timestep_bonds!(
                     # Cache active material stiffnesses for diagnostics
                     floes.ind_bond_stiff_nt[idx][edge_idx][1] = k_b_val
                     floes.ind_bond_stiff_nt[idx][edge_idx][2] = G_b_val
+                    #if curr_time == 50
+                    #        println("==================================================")
+                    #        println("BOND DIAGNOSTICS AT curr_time = 0")
+                    #        println("Interaction Pair: Floe ID ($id) <-> Neighbor ID ($neighbor_id)")
+                    #        println("--------------------------------------------------")
+                    #        println("  p1         : ", p1)
+                    #        println("  p2         : ", p2)
+                    #        println("  Midpoint   : ", m)
+                    #        println("  Length (Lb): ", Lb)
+                    #        println("  Normal Vec : nx = ", local_nx, ", ny = ", local_ny)
+                    #        println("  Tangential : tx = ", local_tx, ", ty = ", local_ty)
+                    #end
+                    #println("Time: $curr_time | All local bond forces: ", floes.ind_bond_force_nt)
                 end
             end
         end
@@ -199,6 +216,8 @@ function timestep_bonds!(
                      nei_edge_idx = findfirst(x -> x == id, floes.bonds[nei_idx_act])
                      floes.ind_bond_force_xy[idx][edge_idx][1] = -floes.ind_bond_force_xy[nei_idx_act][nei_edge_idx][1]
                      floes.ind_bond_force_xy[idx][edge_idx][2] = -floes.ind_bond_force_xy[nei_idx_act][nei_edge_idx][2]
+                     floes.ind_bond_force_nt[idx][edge_idx][1] = -floes.ind_bond_force_nt[nei_idx_act][nei_edge_idx][1]
+                     floes.ind_bond_force_nt[idx][edge_idx][2] = -floes.ind_bond_force_nt[nei_idx_act][nei_edge_idx][2]
                      floes.ind_bond_stiff_nt[idx][edge_idx][1] = floes.ind_bond_stiff_nt[nei_idx_act][nei_edge_idx][1]
                      floes.ind_bond_stiff_nt[idx][edge_idx][2] = floes.ind_bond_stiff_nt[nei_idx_act][nei_edge_idx][2]
                end

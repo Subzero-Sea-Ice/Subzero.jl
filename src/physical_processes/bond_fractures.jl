@@ -7,63 +7,6 @@ function polygon_edges(poly_coords::Vector{Vector{Float64}})
     [GB.Line(pts[i], pts[mod1(i+1, n)]) for i in 1:n]
 end
 
-
-function bond_fracture_floes!(
-    floes::StructArray{<:Floe{FT}},
-    bond_fracture_settings,
-    bond_settings,
-    ) where {FT<:AbstractFloat}
-
-    σt_max_bond = bond_fracture_settings.σt_max_bond
-    σc_max_bond = bond_fracture_settings.σc_max_bond
-    τ_max_bond  = bond_fracture_settings.τ_max_bond
-    c0          = bond_fracture_settings.cohesion
-    μ_bond      = bond_fracture_settings.mu_bond
-    h_mean = bond_fracture_settings.h_mean
-    r_mean = bond_fracture_settings.r_mean
-    Threads.@threads for index in eachindex(floes)
-        bonds = floes.bonds[index]
-        idx_floe = floes.id[index]
-        for bond_id in bonds
-            if bond_id != 0
-                idx_neighbour = findfirst(==(bond_id), floes.id)
-                idx_nei = findfirst(==(bond_id), bonds)
-                idx_floe_in_nei = findfirst(==(idx_floe), floes.bonds[idx_neighbour])
-                Fx_bond, Fy_bond = floes.ind_bond_force[index][idx_nei]
-                r_i = sqrt(floes.area[index] / π)
-                r_j = sqrt(floes.area[idx_neighbour] / π)
-                r_eff = (2 * r_i * r_j) / (r_i + r_j)                          # reduced (harmonic) radius
-                h_eff = min(floes.height[index], floes.height[idx_neighbour])   # conservative effective height
-                area_b = 2 * bond_settings.λ_Rb * r_eff * h_eff                # bond cross-section area
-                Ft = σt_max_bond * area_b * (h_eff/h_mean)^(1.0) * (r_eff/r_mean)^(-0.3) 
-                tol = sqrt(eps(FT))
-                Ft_sq = (Ft * (1.0 - tol))^2
-                if (Fx_bond^2 + Fy_bond^2) >= Ft_sq
-                    floes.bonds[index][idx_nei] = 0
-                end
-            end
-        end
-    end
-
-    for (index, bonds) in enumerate(floes.bonds)
-        floe_id = floes.id[index]
-        for bond_id in bonds
-            if bond_id != 0
-		 idx_neighbour = findfirst(==(bond_id), floes.id)
-                 idx_pos = findfirst(==(bond_id), bonds)
-                 bonds_nei = floes.bonds[idx_neighbour] 
-                 if findfirst(==(floe_id), bonds_nei) === nothing
-                    floes.bonds[index][idx_pos] = 0
-                 end 
-            end
-        end
-    end
-
-
-end
-
-
-
 function bond_fracture_floes!(
     floes::StructArray{<:Floe{FT}},
     bond_fracture_settings,
@@ -71,11 +14,13 @@ function bond_fracture_floes!(
 ) where {FT<:AbstractFloat}
 
     σt_max_bond = bond_fracture_settings.σt_max_bond
+    σc_max_bond = bond_fracture_settings.σc_max_bond
     τ_max_bond  = bond_fracture_settings.τ_max_bond
     c0          = bond_fracture_settings.cohesion
     μ_bond      = bond_fracture_settings.mu_bond
     h_mean      = bond_fracture_settings.h_mean
     r_mean      = bond_fracture_settings.r_mean
+    λ_Rb  = bond_settings.λ_Rb
 
     # --- Step 1. Build fast ID lookup table ---
     id_to_indices = Dict{Int, Int}()
@@ -99,30 +44,16 @@ function bond_fracture_floes!(
                 if neighbor_id != 0 && id < neighbor_id
                     
                     nei_idx = id_to_indices[neighbor_id]
-                    edges_j = polygon_edges(floes.coords[nei_idx][1])
-                    
-                    edge_idx_j = findfirst(x -> x == id, floes.bonds[nei_idx])
-                    
-                    # 1. Grab local normal and shear forces from your history storage
+                    # 1. Grab local normal and shear forces from history storage
                     Fn_bond = floes.ind_bond_force_nt[idx][edge_idx][1]
                     Ft_bond = floes.ind_bond_force_nt[idx][edge_idx][2]
-                    
-                    # 2. Re-calculate the exact geometry of this specific bond
-                    floei_edge = edges_i[edge_idx]
-                    floej_edge = edges_j[edge_idx_j]
-                    
-                    p1 = (floei_edge.points[1] + floej_edge.points[2]) / 2.0  
-                    p2 = (floei_edge.points[2] + floej_edge.points[1]) / 2.0  
-                    Lb = norm(p2 - p1)
-                    
-                    h_eff = min(floes.height[idx], floes.height[nei_idx])
-                    area_b = h_eff * Lb
-                    
-                    # Calculate effective radius for the scale-dependent properties
+
                     r_i = sqrt(floes.area[idx] / π)
                     r_j = sqrt(floes.area[nei_idx] / π)
-                    r_eff = (2.0 * r_i * r_j) / (r_i + r_j + eps(FT))
-                    
+                    r_eff = (2 * r_i * r_j) / (r_i + r_j + eps(FT))
+                    h_eff = min(floes.height[idx], floes.height[nei_idx])
+                    area_b = 2 * λ_Rb * r_eff * h_eff
+
                     # 3. Calculate scale-dependent critical limits
                     # Normal tensile limit (scaling factor)
                     σt_lim = σt_max_bond * (h_eff / h_mean)^(1.0) * (r_eff / r_mean)^(-0.3)

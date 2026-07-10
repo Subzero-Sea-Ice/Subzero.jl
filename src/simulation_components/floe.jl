@@ -77,7 +77,7 @@ Singular sea ice floe with fields describing current state.
     bond_trq::FT = 0.0                    # bond torque aggregate
     ind_bond_force_xy::Vector{Vector{FT}} = Vector{Vector{FT}}()
     ind_bond_force_nt::Vector{Vector{FT}} = Vector{Vector{FT}}() 
-    ind_bond_stiff_nt::Vector{FT} = Vector{Vector{FT}}()
+    ind_bond_stiff_nt::Vector{Vector{FT}} = Vector{Vector{FT}}()
     stress_bond::Matrix{FT} = zeros(2, 2) # stress in a floe due to bonds
     interactions::Matrix{FT} = zeros(0, 7)
     num_inters::Int = 0
