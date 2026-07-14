@@ -44,6 +44,16 @@ function bond_fracture_floes!(
                 if neighbor_id != 0 && id < neighbor_id
                     
                     nei_idx = id_to_indices[neighbor_id]
+                    edges_j = polygon_edges(floes.coords[nei_idx][1])
+                    floei_edge = edges_i[edge_idx]
+                    edge_idx_j = findfirst(x -> x == id, floes.bonds[nei_idx])
+                    floej_edge = edges_j[edge_idx_j]
+                    # Midline averaging calculations
+                    p1 = (floei_edge.points[1] + floej_edge.points[2]) / 2.0  
+                    p2 = (floei_edge.points[2] + floej_edge.points[1]) / 2.0  
+                    m = (p1 + p2) / 2.0
+                    Lb = norm(p2 - p1)
+
                     # 1. Grab local normal and shear forces from history storage
                     Fn_bond = floes.ind_bond_force_nt[idx][edge_idx][1]
                     Ft_bond = floes.ind_bond_force_nt[idx][edge_idx][2]
@@ -52,7 +62,7 @@ function bond_fracture_floes!(
                     r_j = sqrt(floes.area[nei_idx] / π)
                     r_eff = (2 * r_i * r_j) / (r_i + r_j + eps(FT))
                     h_eff = min(floes.height[idx], floes.height[nei_idx])
-                    area_b = 2 * λ_Rb * r_eff * h_eff
+                    area_b = Lb * h_eff
 
                     # 3. Calculate scale-dependent critical limits
                     # Normal tensile limit (scaling factor)
@@ -64,26 +74,30 @@ function bond_fracture_floes!(
                     F_shear_max = τ_lim * area_b
                     
                    is_broken = false
+                   break_mode = 0
             
                    if Fn_bond > 0.0
                        # 1. Tensile Check: Positive Fn means the floes are pulling apart
                        if Fn_bond > F_ten_max
-                           is_broken = true
+                           break_mode = 1
                        end
                    else
                        # 2. Compressive Check: Negative (or zero) Fn means the floes are pushing together
                        if abs(Fn_bond) > F_comp_max
-                           is_broken = true
+                           break_mode = 2
                        end
                    end
                    
                    # 3. Shear Check: Tangential force exceeds the shear capacity
-                   if abs(Ft_bond) > F_shear_max
-                       is_broken = true
+                   if break_mode == 0 && abs(Ft_bond) > F_shear_max
+                       break_mode = 3
                    end
                     
                     # 5. Break the bond if thresholds are exceeded
-                    if is_broken
+                    if break_mode > 0
+                        edge_idx_j = findfirst(x -> x == id, floes.bonds[nei_idx])
+                        floes.bond_break_mode[idx][edge_idx] = break_mode
+                        floes.bond_break_mode[nei_idx][edge_idx_j] = break_mode
                         floes.bonds[idx][edge_idx] = 0
                     end
                 end

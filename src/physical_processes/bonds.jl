@@ -151,7 +151,7 @@ function timestep_bonds!(
                     r_j = sqrt(floes.area[nei_idx] / π)
                     r_eff = (2 * r_i * r_j) / (r_i + r_j + eps(FT))
                     h_eff = min(floes.height[idx], floes.height[nei_idx])
-                    area_b = 2 * λ_Rb * r_eff * h_eff
+                    area_b = Lb * h_eff
                     dxc = floes.centroid[nei_idx][1] - floes.centroid[idx][1]
                     dyc = floes.centroid[nei_idx][2] - floes.centroid[idx][2]
                     len_b = sqrt(dxc^2 + dyc^2) + eps(FT)
@@ -163,16 +163,29 @@ function timestep_bonds!(
                     # 1. Load previous values from historical storage arrays
                     Fn_old = floes.ind_bond_force_nt[idx][edge_idx][1]
                     Ft_old = floes.ind_bond_force_nt[idx][edge_idx][2]
-                    omega_bond = 0.5 * (floes.ξ[idx] + floes.ξ[nei_idx])
-                    delta_theta = omega_bond * Δt
-                    cos_dθ = cos(delta_theta)
-                    sin_dθ = sin(delta_theta)
+                    nx_old = floes.ind_bond_normal_old[idx][edge_idx][1]
+                    ny_old = floes.ind_bond_normal_old[idx][edge_idx][2]
+                    if nx_old == 0.0 && ny_old == 0.0
+                        nx_old = local_nx
+                        ny_old = local_ny
+                    end
+                    cos_dθ = nx_old * local_nx + ny_old * local_ny
+                    sin_dθ = nx_old * local_ny - ny_old * local_nx
                     Fn_old_rotated =  Fn_old * cos_dθ + Ft_old * sin_dθ
                     Ft_old_rotated = -Fn_old * sin_dθ + Ft_old * cos_dθ 
                     Fn_bond = (k_b_val * v_rel_n * Δt) + (Fn_old_rotated * ζ_b)
                     Ft_bond = (G_b_val * v_rel_t * Δt) + (Ft_old_rotated * ζ_b)
-                    #println("Time: $curr_time | Bond [$id <-> $neighbor_id] | Old: ($(round(Fn_old, digits=2)), $(round(Ft_old, digits=2))) -> Rotated: ($(round(Fn_old_rotated, digits=2)), $(round(Ft_old_rotated, digits=2))) | New Incr: ($(round(k_b_val * v_rel_n * Δt, digits=2)), $(round(G_b_val * v_rel_t * Δt, digits=2)))")
-                    #println("Time: $curr_time | dθ (rad): $delta_theta | Old: $(Fn_old) -> Rotated: $(Fn_old_rotated)")
+                    floes.ind_bond_normal_old[idx][edge_idx][1] = local_nx
+                    floes.ind_bond_normal_old[idx][edge_idx][2] = local_ny
+                    #if id < neighbor_id  
+                    #    println(
+                    #        "Time: $curr_time | Bond [$id <-> $neighbor_id] | Edge: $edge_idx\n" *
+                    #        "  -> Normal Vec: Old=[$(round(nx_old, digits=4)), $(round(ny_old, digits=4))] " *
+                    #        "--> New=[$(round(local_nx, digits=4)), $(round(local_ny, digits=4))]\n" *
+                    #        "  -> Rotation  : cos(dθ)=$(round(cos_dθ, digits=4)), sin(dθ)=$(round(sin_dθ, digits=4))\n" *
+                    #        "  -> Forces    : Fn_old=$(round(Fn_old, digits=2)) -> Fn_rot=$(round(Fn_old_rotated, digits=2)) -> Fn_new=$(round(Fn_bond, digits=2))"
+                    #    )
+                    #end
                     # Convert accumulated local states back to global x-y frames
                     Fx_bond = (Fn_bond * local_nx) + (Ft_bond * local_tx)
                     Fy_bond = (Fn_bond * local_ny) + (Ft_bond * local_ty)
@@ -186,19 +199,19 @@ function timestep_bonds!(
                     # Cache active material stiffnesses for diagnostics
                     floes.ind_bond_stiff_nt[idx][edge_idx][1] = k_b_val
                     floes.ind_bond_stiff_nt[idx][edge_idx][2] = G_b_val
-                    #if curr_time == 50
-                    #        println("==================================================")
-                    #        println("BOND DIAGNOSTICS AT curr_time = 0")
-                    #        println("Interaction Pair: Floe ID ($id) <-> Neighbor ID ($neighbor_id)")
-                    #        println("--------------------------------------------------")
-                    #        println("  p1         : ", p1)
-                    #        println("  p2         : ", p2)
-                    #        println("  Midpoint   : ", m)
-                    #        println("  Length (Lb): ", Lb)
-                    #        println("  Normal Vec : nx = ", local_nx, ", ny = ", local_ny)
-                    #        println("  Tangential : tx = ", local_tx, ", ty = ", local_ty)
-                    #end
-                    #println("Time: $curr_time | All local bond forces: ", floes.ind_bond_force_nt)
+                   #if curr_time == 0
+                   #        println("==================================================")
+                   #        println("BOND DIAGNOSTICS AT curr_time = 0")
+                   #        println("Interaction Pair: Floe ID ($id) <-> Neighbor ID ($neighbor_id)")
+                   #        println("--------------------------------------------------")
+                   #        println("  p1         : ", p1)
+                   #        println("  p2         : ", p2)
+                   #        println("  Midpoint   : ", m)
+                   #        println("  Length (Lb): ", Lb)
+                   #        println("  Normal Vec : nx = ", local_nx, ", ny = ", local_ny)
+                   #        println("  Tangential : tx = ", local_tx, ", ty = ", local_ty)
+                   #end
+                   #println("Time: $curr_time | All local bond forces: ", floes.ind_bond_force_nt)
                 end
             end
         end

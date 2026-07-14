@@ -36,6 +36,7 @@ Singular sea ice floe with fields describing current state.
     angles::Vector{FT}      # interior angles of floe in degrees
     # Bonds (Adjacenct floes information) ----------------------------------------
     bonds::Vector{Int}  # Indices of neighboring floes
+    bond_break_mode :: Vector{Int}
     # Monte Carlo Points ---------------------------------------------------
     x_subfloe_points::Vector{FT}        # x-coordinates for monte carlo integration centered
                             #   at origin
@@ -78,6 +79,7 @@ Singular sea ice floe with fields describing current state.
     ind_bond_force_xy::Vector{Vector{FT}} = Vector{Vector{FT}}()
     ind_bond_force_nt::Vector{Vector{FT}} = Vector{Vector{FT}}() 
     ind_bond_stiff_nt::Vector{Vector{FT}} = Vector{Vector{FT}}()
+    ind_bond_normal_old::Vector{Vector{FT}} = Vector{Vector{FT}}()
     stress_bond::Matrix{FT} = zeros(2, 2) # stress in a floe due to bonds
     interactions::Matrix{FT} = zeros(0, 7)
     num_inters::Int = 0
@@ -207,6 +209,7 @@ function Floe{FT}(
         moment = moment,
         angles = angles,
         bonds = get(kwargs, :bonds, []), 
+        bond_break_mode = get(kwargs, :bond_break_mode, []), 
         x_subfloe_points = x_subfloe_points,
         y_subfloe_points = y_subfloe_points,
         stress_instant = stress_instant,
@@ -414,9 +417,12 @@ function _initialize_floe_field(
         floe = floe_arr[i_idx]
         coords_array = floe.coords[1]
         nedges = length(coords_array) - 1
+        floe.bonds = zeros(Int, nedges)
+        floe.bond_break_mode = zeros(Int, nedges)
         floe.ind_bond_force_xy = [zeros(FT, 2) for _ in 1:nedges]
         floe.ind_bond_force_nt = [zeros(FT, 2) for _ in 1:nedges]
         floe.ind_bond_stiff_nt = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_normal_old = [zeros(FT, 2) for _ in 1:nedges]
         floe_arr[i_idx] = floe
     end
     # Warn about floes with area less than minimum floe size
@@ -683,9 +689,12 @@ function _initialize_floe_field(
         floe = floe_arr[i_idx]
         coords_array = floe.coords[1]
         nedges = length(coords_array) - 1
+        floe.bonds = zeros(Int, nedges)
+        floe.bond_break_mode = zeros(Int, nedges)
         floe.ind_bond_force_xy = [zeros(FT, 2) for _ in 1:nedges]
         floe.ind_bond_force_nt = [zeros(FT, 2) for _ in 1:nedges]
         floe.ind_bond_stiff_nt = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_normal_old = [zeros(FT, 2) for _ in 1:nedges]
         floe_arr[i_idx] = floe
     end
 
