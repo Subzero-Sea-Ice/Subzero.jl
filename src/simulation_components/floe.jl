@@ -80,6 +80,7 @@ Singular sea ice floe with fields describing current state.
     ind_bond_force_nt::Vector{Vector{FT}} = Vector{Vector{FT}}() 
     ind_bond_stiff_nt::Vector{Vector{FT}} = Vector{Vector{FT}}()
     ind_bond_normal_old::Vector{Vector{FT}} = Vector{Vector{FT}}()
+    ind_bond_bm::Vector{FT} = Vector{FT}() 
     stress_bond::Matrix{FT} = zeros(2, 2) # stress in a floe due to bonds
     interactions::Matrix{FT} = zeros(0, 7)
     num_inters::Int = 0
@@ -423,6 +424,7 @@ function _initialize_floe_field(
         floe.ind_bond_force_nt = [zeros(FT, 2) for _ in 1:nedges]
         floe.ind_bond_stiff_nt = [zeros(FT, 2) for _ in 1:nedges]
         floe.ind_bond_normal_old = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_bm = zeros(FT, nedges)
         floe_arr[i_idx] = floe
     end
     # Warn about floes with area less than minimum floe size
@@ -695,6 +697,7 @@ function _initialize_floe_field(
         floe.ind_bond_force_nt = [zeros(FT, 2) for _ in 1:nedges]
         floe.ind_bond_stiff_nt = [zeros(FT, 2) for _ in 1:nedges]
         floe.ind_bond_normal_old = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_bm = zeros(FT, nedges)
         floe_arr[i_idx] = floe
     end
 

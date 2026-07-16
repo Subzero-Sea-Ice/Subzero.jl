@@ -20,7 +20,7 @@ function bond_fracture_floes!(
     μ_bond      = bond_fracture_settings.mu_bond
     h_mean      = bond_fracture_settings.h_mean
     r_mean      = bond_fracture_settings.r_mean
-    λ_Rb  = bond_settings.λ_Rb
+    λ_Rb        = bond_settings.λ_Rb
 
     # --- Step 1. Build fast ID lookup table ---
     id_to_indices = Dict{Int, Int}()
@@ -48,52 +48,76 @@ function bond_fracture_floes!(
                     floei_edge = edges_i[edge_idx]
                     edge_idx_j = findfirst(x -> x == id, floes.bonds[nei_idx])
                     floej_edge = edges_j[edge_idx_j]
-                    # Midline averaging calculations
+                    
+                    # Midline averaging calculations to find physical edge length (Lb)
                     p1 = (floei_edge.points[1] + floej_edge.points[2]) / 2.0  
                     p2 = (floei_edge.points[2] + floej_edge.points[1]) / 2.0  
-                    m = (p1 + p2) / 2.0
                     Lb = norm(p2 - p1)
 
-                    # 1. Grab local normal and shear forces from history storage
+                    # 1. Grab local normal force, shear force, and bending moment from history storage
                     Fn_bond = floes.ind_bond_force_nt[idx][edge_idx][1]
                     Ft_bond = floes.ind_bond_force_nt[idx][edge_idx][2]
+                    Mb_bond = floes.ind_bond_bm[idx][edge_idx]
 
+                    # 2. Geometric calculations
                     r_i = sqrt(floes.area[idx] / π)
                     r_j = sqrt(floes.area[nei_idx] / π)
                     r_eff = (2 * r_i * r_j) / (r_i + r_j + eps(FT))
                     h_eff = min(floes.height[idx], floes.height[nei_idx])
                     area_b = Lb * h_eff
 
-                    # 3. Calculate scale-dependent critical limits
-                    # Normal tensile limit (scaling factor)
-                    σt_lim = σt_max_bond * (h_eff / h_mean)^(1.0) * (r_eff / r_mean)^(-0.3)
-                    σc_lim = σc_max_bond * (h_eff / h_mean)^(1.0) * (r_eff / r_mean)^(-0.3)
-                    τ_lim  = τ_max_bond * (h_eff / h_mean)^(1.0) * (r_eff / r_mean)^(-0.3)
-                    F_ten_max   = σt_lim * area_b
-                    F_comp_max  = σc_lim * area_b
-                    F_shear_max = τ_lim * area_b
+                    # 3. Calculate scale-dependent critical stress limits
+                    σt_lim = σt_max_bond * (h_eff / h_mean)^(1.0) * (r_eff / r_mean)^(-0.5)
+                    σc_lim = σc_max_bond * (h_eff / h_mean)^(1.0) * (r_eff / r_mean)^(-0.5)
+                    τ_lim  = τ_max_bond  * (h_eff / h_mean)^(1.0) * (r_eff / r_mean)^(-0.5)
+
+                    # 4. Stress Calculations
+                    # Normal axial stress (tension is positive, compression is negative)
+                    σ_axial = Fn_bond / (area_b + eps(FT))
+
+                    # Bending stress
+                    σ_bend = (6.0 * abs(Mb_bond)) / (h_eff * Lb^2 + eps(FT))
+
+                    # Interface shear stress
+                    τ_shear = abs(Ft_bond) / (area_b + eps(FT))
+
+                    # --- Fiber A: Tensile side of bending ---
+                    σ_normal_A = σ_axial + σ_bend
+                    avg_A = σ_normal_A / 2.0
+                    τ_max_A = sqrt(avg_A^2 + τ_shear^2)  # Mohr's circle radius
+                    σ1_A  = avg_A + τ_max_A               # Max principal stress
+                    σ2_A  = avg_A - τ_max_A               # Min principal stress
+
+                    # --- Fiber B: Compressive side of bending ---
+                    σ_normal_B = σ_axial - σ_bend
+                    avg_B = σ_normal_B / 2.0
+                    τ_max_B = sqrt(avg_B^2 + τ_shear^2)  # Mohr's circle radius
+                    σ1_B  = avg_B + τ_max_B               # Max principal stress
+                    σ2_B  = avg_B - τ_max_B               # Min principal stress
                     
-                   is_broken = false
-                   break_mode = 0
+                    break_mode = 0
             
-                   if Fn_bond > 0.0
-                       # 1. Tensile Check: Positive Fn means the floes are pulling apart
-                       if Fn_bond > F_ten_max
-                           break_mode = 1
-                       end
-                   else
-                       # 2. Compressive Check: Negative (or zero) Fn means the floes are pushing together
-                       if abs(Fn_bond) > F_comp_max
-                           break_mode = 2
-                       end
-                   end
-                   
-                   # 3. Shear Check: Tangential force exceeds the shear capacity
-                   if break_mode == 0 && abs(Ft_bond) > F_shear_max
-                       break_mode = 3
-                   end
+                    # 5. Failure Check for Fiber A
+                    if σ1_A > σt_lim
+                        break_mode = 1 # Tensile failure
+                    elseif σ2_A < -σc_lim
+                        break_mode = 2 # Compressive failure
+                    elseif τ_max_A > τ_lim
+                        break_mode = 3 # Shear failure
+                    end
                     
-                    # 5. Break the bond if thresholds are exceeded
+                    # 6. Failure Check for Fiber B (Only if Fiber A did not fail)
+                    if break_mode == 0
+                        if σ1_B > σt_lim
+                            break_mode = 1 # Tensile failure
+                        elseif σ2_B < -σc_lim
+                            break_mode = 2 # Compressive failure
+                        elseif τ_max_B > τ_lim
+                            break_mode = 3 # Shear failure
+                        end
+                    end
+                    
+                    # 7. Break the bond if any thresholds are exceeded
                     if break_mode > 0
                         edge_idx_j = findfirst(x -> x == id, floes.bonds[nei_idx])
                         floes.bond_break_mode[idx][edge_idx] = break_mode
@@ -105,11 +129,12 @@ function bond_fracture_floes!(
         end
     end
 
+    # --- Step 3. Symmetrical bond clean-up check ---
     for (index, bonds) in enumerate(floes.bonds)
         floe_id = floes.id[index]
         for bond_id in bonds
             if bond_id != 0
-		         idx_neighbour = findfirst(==(bond_id), floes.id)
+                 idx_neighbour = findfirst(==(bond_id), floes.id)
                  idx_pos = findfirst(==(bond_id), bonds)
                  bonds_nei = floes.bonds[idx_neighbour] 
                  if findfirst(==(floe_id), bonds_nei) === nothing

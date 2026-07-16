@@ -155,10 +155,12 @@ function timestep_bonds!(
                     dxc = floes.centroid[nei_idx][1] - floes.centroid[idx][1]
                     dyc = floes.centroid[nei_idx][2] - floes.centroid[idx][2]
                     len_b = sqrt(dxc^2 + dyc^2) + eps(FT)
+                    I_z = (h_eff * Lb^3) / 12.0
                     
                     # Stiffness criteria
                     k_b_val = consts.E * area_b / (len_b + eps(FT))
                     G_b_val = (consts.E / (2 * (1 + consts.ν))) * area_b / (len_b + eps(FT))
+                    k_theta = consts.E * I_z / (len_b + eps(FT))
 
                     # 1. Load previous values from historical storage arrays
                     Fn_old = floes.ind_bond_force_nt[idx][edge_idx][1]
@@ -173,6 +175,9 @@ function timestep_bonds!(
                     sin_dθ = nx_old * local_ny - ny_old * local_nx
                     Fn_old_rotated =  Fn_old * cos_dθ + Ft_old * sin_dθ
                     Ft_old_rotated = -Fn_old * sin_dθ + Ft_old * cos_dθ 
+                    m_b = (floes.mass[idx] * floes.mass[nei_idx]) /
+                              (floes.mass[idx] + floes.mass[nei_idx] + eps(FT))
+                    c_b = 2 * ζ_b * sqrt(k_b_val * m_b)
                     Fn_bond = (k_b_val * v_rel_n * Δt) + (Fn_old_rotated * ζ_b)
                     Ft_bond = (G_b_val * v_rel_t * Δt) + (Ft_old_rotated * ζ_b)
                     floes.ind_bond_normal_old[idx][edge_idx][1] = local_nx
@@ -199,6 +204,13 @@ function timestep_bonds!(
                     # Cache active material stiffnesses for diagnostics
                     floes.ind_bond_stiff_nt[idx][edge_idx][1] = k_b_val
                     floes.ind_bond_stiff_nt[idx][edge_idx][2] = G_b_val
+
+                    # Calculating bending moment
+                    Δω_z = floes.ξ[nei_idx] - floes.ξ[idx]
+                    M_old = floes.ind_bond_bm[idx][edge_idx]
+                    M_bond = (k_theta * Δω_z * Δt) + (M_old * ζ_b)
+                    floes.ind_bond_bm[idx][edge_idx] = M_bond
+
                    #if curr_time == 0
                    #        println("==================================================")
                    #        println("BOND DIAGNOSTICS AT curr_time = 0")
@@ -216,6 +228,7 @@ function timestep_bonds!(
             end
         end
     end
+
     # --- Step 4a. Mirror forces for id > neighbor ---
     for idx in eachindex(floes)
         id = floes.id[idx]
@@ -233,6 +246,7 @@ function timestep_bonds!(
                      floes.ind_bond_force_nt[idx][edge_idx][2] = -floes.ind_bond_force_nt[nei_idx_act][nei_edge_idx][2]
                      floes.ind_bond_stiff_nt[idx][edge_idx][1] = floes.ind_bond_stiff_nt[nei_idx_act][nei_edge_idx][1]
                      floes.ind_bond_stiff_nt[idx][edge_idx][2] = floes.ind_bond_stiff_nt[nei_idx_act][nei_edge_idx][2]
+                     floes.ind_bond_bm[idx][edge_idx] = -floes.ind_bond_bm[nei_idx_act][nei_edge_idx]
                end
             end
         end
@@ -266,8 +280,8 @@ function timestep_bonds!(
                 r_y = mid_i[2] - floes.centroid[idx][2]
                 Fx_bond, Fy_bond = floes.ind_bond_force_xy[idx][edge_idx]
                 torque_xy = r_x * Fy_bond - r_y * Fx_bond
-
-                floes.bond_trq[idx] += torque_xy
+                BM_bond = floes.ind_bond_bm[idx][edge_idx]
+                floes.bond_trq[idx] += (torque_xy + BM_bond)
                 floe_stress_bond[1,1] += Fx_bond * r_x
                 floe_stress_bond[1,2] += Fx_bond * r_y + Fy_bond * r_x
                 floe_stress_bond[2,2] += Fy_bond * r_y

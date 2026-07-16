@@ -172,6 +172,7 @@ function deepcopy_floe(floe::LazyRow{Floe{FT}}) where {FT}
         ind_bond_force_xy = deepcopy(floe.ind_bond_force_xy),
         ind_bond_stiff_nt = deepcopy(floe.ind_bond_stiff_nt),
         ind_bond_normal_old = deepcopy(floe.ind_bond_normal_old),
+        ind_bond_bm = copy(floe.ind_bond_bm),
         stress_accum = copy(floe.stress_accum),
         stress_instant = copy(floe.stress_instant),
         strain = copy(floe.strain),
