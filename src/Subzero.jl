@@ -119,7 +119,7 @@ include("simulation_components/atmos.jl")
 include("simulation_components/model.jl")
 # Physical Processes
 include("physical_processes/fractures.jl")
-include("physical_processes/mohr_bond_fractures.jl")
+include("physical_processes/bond_fractures.jl")
 include("physical_processes/update_floe.jl")
 include("physical_processes/coupling.jl")
 include("physical_processes/collisions.jl")

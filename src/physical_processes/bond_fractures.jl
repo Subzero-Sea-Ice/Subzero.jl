@@ -49,75 +49,41 @@ function bond_fracture_floes!(
                     edge_idx_j = findfirst(x -> x == id, floes.bonds[nei_idx])
                     floej_edge = edges_j[edge_idx_j]
                     
-                    # Midline averaging calculations to find physical edge length (Lb)
                     p1 = (floei_edge.points[1] + floej_edge.points[2]) / 2.0  
                     p2 = (floei_edge.points[2] + floej_edge.points[1]) / 2.0  
                     Lb = norm(p2 - p1)
 
-                    # 1. Grab local normal force, shear force, and bending moment from history storage
                     Fn_bond = floes.ind_bond_force_nt[idx][edge_idx][1]
                     Ft_bond = floes.ind_bond_force_nt[idx][edge_idx][2]
                     Mb_bond = floes.ind_bond_bm[idx][edge_idx]
 
-                    # 2. Geometric calculations
                     r_i = sqrt(floes.area[idx] / π)
                     r_j = sqrt(floes.area[nei_idx] / π)
                     r_eff = (2 * r_i * r_j) / (r_i + r_j + eps(FT))
                     h_eff = min(floes.height[idx], floes.height[nei_idx])
                     area_b = Lb * h_eff
 
-                    # 3. Calculate scale-dependent critical stress limits
-                    σt_lim = σt_max_bond * (h_eff / h_mean)^(1.0) * (r_eff / r_mean)^(-0.5)
-                    σc_lim = σc_max_bond * (h_eff / h_mean)^(1.0) * (r_eff / r_mean)^(-0.5)
-                    τ_lim  = τ_max_bond  * (h_eff / h_mean)^(1.0) * (r_eff / r_mean)^(-0.5)
+                    σt_lim = σt_max_bond * (h_eff / h_mean)^(0.2) * (r_eff / r_mean)^(-0.5)
+                    σc_lim = σc_max_bond * (h_eff / h_mean)^(0.2) * (r_eff / r_mean)^(-0.5)
+                    τ_lim  = τ_max_bond  * (h_eff / h_mean)^(0.2) * (r_eff / r_mean)^(-0.5)
 
-                    # 4. Stress Calculations
-                    # Normal axial stress (tension is positive, compression is negative)
                     σ_axial = Fn_bond / (area_b + eps(FT))
-
-                    # Bending stress
                     σ_bend = (6.0 * abs(Mb_bond)) / (h_eff * Lb^2 + eps(FT))
+                    σ_n =   σ_bend +  σ_axial 
 
-                    # Interface shear stress
                     τ_shear = abs(Ft_bond) / (area_b + eps(FT))
-
-                    # --- Fiber A: Tensile side of bending ---
-                    σ_normal_A = σ_axial + σ_bend
-                    avg_A = σ_normal_A / 2.0
-                    τ_max_A = sqrt(avg_A^2 + τ_shear^2)  # Mohr's circle radius
-                    σ1_A  = avg_A + τ_max_A               # Max principal stress
-                    σ2_A  = avg_A - τ_max_A               # Min principal stress
-
-                    # --- Fiber B: Compressive side of bending ---
-                    σ_normal_B = σ_axial - σ_bend
-                    avg_B = σ_normal_B / 2.0
-                    τ_max_B = sqrt(avg_B^2 + τ_shear^2)  # Mohr's circle radius
-                    σ1_B  = avg_B + τ_max_B               # Max principal stress
-                    σ2_B  = avg_B - τ_max_B               # Min principal stress
                     
                     break_mode = 0
             
-                    # 5. Failure Check for Fiber A
-                    if σ1_A > σt_lim
+                    if σ_n > σt_lim
                         break_mode = 1 # Tensile failure
-                    elseif σ2_A < -σc_lim
+                    elseif σ_n < -σc_lim
                         break_mode = 2 # Compressive failure
-                    elseif τ_max_A > τ_lim
+                    elseif τ_shear > τ_lim
                         break_mode = 3 # Shear failure
                     end
                     
-                    # 6. Failure Check for Fiber B (Only if Fiber A did not fail)
-                    if break_mode == 0
-                        if σ1_B > σt_lim
-                            break_mode = 1 # Tensile failure
-                        elseif σ2_B < -σc_lim
-                            break_mode = 2 # Compressive failure
-                        elseif τ_max_B > τ_lim
-                            break_mode = 3 # Shear failure
-                        end
-                    end
                     
-                    # 7. Break the bond if any thresholds are exceeded
                     if break_mode > 0
                         edge_idx_j = findfirst(x -> x == id, floes.bonds[nei_idx])
                         floes.bond_break_mode[idx][edge_idx] = break_mode
