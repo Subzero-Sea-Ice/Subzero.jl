@@ -203,13 +203,13 @@ Outputs:
     u   <AbstractFloat> u velocity at point (x, y) assuming it is on given floe
     v   <AbstractFloat> v velocity at point (x, y) assuming it is on given floe
 """
-function _get_velocity(
-    floe::FloeType{FT},
-    x::FT,
-    y::FT,
-) where {FT}
-    u = floe.u + floe.ξ * (x - floe.centroid[1])
-    v = floe.v + floe.ξ * (y - floe.centroid[2])
+function _get_velocity(floe::FloeType{FT}, x::FT, y::FT) where {FT}
+    dx = x - floe.centroid[1]
+    dy = y - floe.centroid[2]
+
+    u = floe.u - floe.ξ * dy
+    v = floe.v + floe.ξ * dx
+
     return u, v
 end
 

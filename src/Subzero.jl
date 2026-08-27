@@ -56,7 +56,7 @@ import Base.@kwdef # this is being exported as of version 1.9
 import Base.show
 import GeometryOps as GO
 import GeometryOps.GeoInterface as GI
-import GeometryOps.GeometryBasics as GB
+#import GeometryOps.GeometryBasics as GB
 import GeometryBasics as GB
 import StaticArrays as SA
 using CoordinateTransformations, Dates, Extents,

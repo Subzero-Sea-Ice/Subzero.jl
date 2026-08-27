@@ -49,41 +49,59 @@ function bond_fracture_floes!(
                     edge_idx_j = findfirst(x -> x == id, floes.bonds[nei_idx])
                     floej_edge = edges_j[edge_idx_j]
                     
+                    # Midline averaging calculations to find physical edge length (Lb)
                     p1 = (floei_edge.points[1] + floej_edge.points[2]) / 2.0  
                     p2 = (floei_edge.points[2] + floej_edge.points[1]) / 2.0  
                     Lb = norm(p2 - p1)
 
+                    # 1. Grab local normal force, shear force, and bending moment from history storage
                     Fn_bond = floes.ind_bond_force_nt[idx][edge_idx][1]
                     Ft_bond = floes.ind_bond_force_nt[idx][edge_idx][2]
                     Mb_bond = floes.ind_bond_bm[idx][edge_idx]
 
+                    # 2. Geometric calculations
                     r_i = sqrt(floes.area[idx] / π)
                     r_j = sqrt(floes.area[nei_idx] / π)
                     r_eff = (2 * r_i * r_j) / (r_i + r_j + eps(FT))
                     h_eff = min(floes.height[idx], floes.height[nei_idx])
                     area_b = Lb * h_eff
 
-                    σt_lim = σt_max_bond * (h_eff / h_mean)^(0.2) * (r_eff / r_mean)^(-0.5)
-                    σc_lim = σc_max_bond * (h_eff / h_mean)^(0.2) * (r_eff / r_mean)^(-0.5)
-                    τ_lim  = τ_max_bond  * (h_eff / h_mean)^(0.2) * (r_eff / r_mean)^(-0.5)
+                    # 3. Calculate scale-dependent critical stress limits
+                    σt_lim = σt_max_bond * (h_eff / h_mean)^(0.5) * (r_eff / r_mean)^(-0.5)
+                    σc_lim = σc_max_bond * (h_eff / h_mean)^(0.5) * (r_eff / r_mean)^(-0.5)
+                    τ_lim  = τ_max_bond  * (h_eff / h_mean)^(0.5) * (r_eff / r_mean)^(-0.5)
 
+                    # 4. Stress Calculations
+                    # Normal axial stress (tension is positive, compression is negative)
                     σ_axial = Fn_bond / (area_b + eps(FT))
-                    σ_bend = (6.0 * abs(Mb_bond)) / (h_eff * Lb^2 + eps(FT))
-                    σ_n =   σ_bend +  σ_axial 
 
+                    # Bending stress
+                    σ_bend = (6.0 * abs(Mb_bond)) / (h_eff * Lb^2 + eps(FT))
+
+                    # Interface shear stress
                     τ_shear = abs(Ft_bond) / (area_b + eps(FT))
-                    
+       
+                    # Check maximum possible tension and compression for combined axial and bending
+                    peak_tension = σ_axial +  σ_bend           
+                    peak_compression = -σ_axial +  σ_bend
                     break_mode = 0
-            
-                    if σ_n > σt_lim
-                        break_mode = 1 # Tensile failure
-                    elseif σ_n < -σc_lim
-                        break_mode = 2 # Compressive failure
-                    elseif τ_shear > τ_lim
-                        break_mode = 3 # Shear failure
+
+                    # Gate 1 :  Tensile/ Shear Ellipse Failure
+                    if peak_tension > 0.0
+                        failure_index = (peak_tension/σt_lim)^2 + (τ_shear/τ_lim)^2
+                        if failure_index >= 1.0
+                            break_mode = 1
+                        end
                     end
-                    
-                    
+
+                    # Gate 2 :  Compressive Crushing
+                    if break_mode == 0 && peak_compression > 0.0
+                        if peak_compression >= σc_lim
+                            break_mode = 2
+                        end
+                    end
+
+                    # 5. Break the bond if any thresholds are exceeded
                     if break_mode > 0
                         edge_idx_j = findfirst(x -> x == id, floes.bonds[nei_idx])
                         floes.bond_break_mode[idx][edge_idx] = break_mode
@@ -111,4 +129,3 @@ function bond_fracture_floes!(
     end
 
 end
-
