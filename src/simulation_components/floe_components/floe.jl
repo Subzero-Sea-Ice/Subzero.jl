@@ -57,13 +57,29 @@ const FLOE_DEF = "`floe::Floe`: singular floe within the simulation"
 end
 
 struct FixedWidthFloes{FT<:AbstractFloat}
-    height::Vector{FT}              # floe height (m)
+    # Struct that can be moved to the GPU.
+    height::Vector{FT}
+    hflx_factor::Vector{FT}
+    mass::Vector{FT}
+    moment::Vector{FT}
 end
 
 function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
-    return FixedWidthFloes(floes.height)
+    return FixedWidthFloes(
+        floes.height,
+        floes.hflx_factor,
+        floes.mass,
+        floes.moment,
+    )
 end
 
+function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedWidthFloes{FT}) where FT
+    # Update an array of floes with the values from the fixed-width floes struct.
+    floes.height .= fixed_width_floes.height
+    # floes.hflx_factor .= fixed_width_floes.hflx_factor  # not modified in kernels?
+    floes.mass .= fixed_width_floes.mass
+    floes.moment .= fixed_width_floes.moment
+end
 
 """
     Floe{FT}

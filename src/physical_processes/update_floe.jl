@@ -416,10 +416,22 @@ function calc_strain!(floe::FloeType{FT}) where {FT}
 end
 
 @kernel function limit_height_kernel!(floes, max_height)
-    I = @index(Global)
-    if floes.height[I] > max_height
-        floes.height[I] = max_height
+    # Ensure no extreme height values due to model instability
+    i = @index(Global)
+    if floes.height[i] > max_height
+        floes.height[i] = max_height
     end
+end
+
+@kernel function thermodynamic_growth_kernel!(floes)
+    # Update floe based on thermodynamic growth
+    i = @index(Global)
+    h = floes.height[i]
+    Δh = floes.hflx_factor[i] / h
+    hfrac = (h + Δh) / h
+    floes.mass[i] *= hfrac
+    floes.moment[i] *= hfrac
+    floes.height[i] -= Δh
 end
 
 """
@@ -449,20 +461,14 @@ function timestep_floe_properties!(
 
     dev_floes = adapt(CuArray, FixedWidthFloes(floes))
     dev = get_backend(dev_floes.height)
-    # Ensure no extreme height values due to model instability
+
     limit_height_kernel!(dev, 512)(dev_floes, floe_settings.max_floe_height, ndrange=size(floes.height))
+    thermodynamic_growth_kernel!(dev, 512)(dev_floes, ndrange=size(floes.height))
+
     KernelAbstractions.synchronize(dev)
-    floes.height .= Array(dev_floes.height)
+    update_floes!(floes, adapt(Array, dev_floes))
 
     Threads.@threads for i in eachindex(floes)
-        # Update floe based on thermodynamic growth
-        h = floes.height[i]
-        Δh = floes.hflx_factor[i] / h
-        hfrac = (h + Δh) / h
-        floes.mass[i] *= hfrac
-        floes.moment[i] *= hfrac
-        floes.height[i] -= Δh
-
         # Update ice coordinates with velocities and rotation
         Δx = 1.5Δt*floes.u[i] - 0.5Δt*floes.p_dxdt[i]
         Δy = 1.5Δt*floes.v[i] - 0.5Δt*floes.p_dydt[i]
