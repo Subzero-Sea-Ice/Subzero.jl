@@ -15,6 +15,7 @@ import StaticArrays as SA
 using CoordinateTransformations, Dates, Extents, 
     Interpolations, JLD2, LinearAlgebra, Logging, Measures, NCDatasets,
     Printf, Random, Rotations, SplitApplyCombine, Statistics, StructArrays
+using Adapt, CUDA, KernelAbstractions
 
 
 const SIM_DEF = "`sim::Simulation`: simulation to be run"

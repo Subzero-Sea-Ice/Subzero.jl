@@ -13,6 +13,7 @@
 # completely covered with topography forming the edges of the domain. This is a good simulation
 # to understand how to setup topography and how to turn on fractures using the fracture settings.
 
+using Logging
 using Subzero, CairoMakie, GeoInterfaceMakie
 using JLD2, Random, Statistics
 
@@ -85,20 +86,30 @@ ridgeraft_settings = RidgeRaftSettings(;
 dir = "simple_strait"
 init_fn, floe_fn = "simple_strait_init_state.jld2", "simple_strait_floes.jld2"
 initwriter = InitialStateOutputWriter(dir = dir, filename = init_fn, overwrite = true)
-floewriter = FloeOutputWriter(50, dir = dir, filename = floe_fn, overwrite = true)
+floewriter = FloeOutputWriter(500, dir = dir, filename = floe_fn, overwrite = true)
 writers = OutputWriters(initwriter, floewriter)
 
 # ## Simulation Creation
 
-simulation = Simulation(; model, consts, writers, Δt, nΔt,
+simulation = Simulation(; model, consts,
+    #writers,
+    Δt, nΔt,
     floe_settings, fracture_settings, ridgeraft_settings,
     verbose = true, rng = Xoshiro(1))
     
 # ## Running the Simulation
-run!(simulation)
+# using ProfileView
+#@profview run!(simulation)
+# Avoid a crash on the world age of the SubzeroLogger by passing in a logger.
+# Avoid noisy output by disabling info-level logging.
+Logging.disable_logging(Logging.Info)
+logger = Logging.global_logger()
+start = time_ns()
+run!(simulation, logger = logger)
+print((time_ns() - start)/10e9)
 
 # ## Plotting the Simulation
-plot_sim(joinpath(dir, floe_fn), joinpath(dir, init_fn), Δt, joinpath(dir, "simple_strait.mp4"))
+#plot_sim(joinpath(dir, floe_fn), joinpath(dir, init_fn), Δt, joinpath(dir, "simple_strait.mp4"))
 
 # ```@raw html
 # <video width="auto" controls autoplay loop>

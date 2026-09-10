@@ -415,6 +415,13 @@ function calc_strain!(floe::FloeType{FT}) where {FT}
     return
 end
 
+@kernel function limit_height_kernel!(height, max_height)
+    I = @index(Global)
+    if height[I] > max_height
+        height[I] = max_height
+    end
+end
+
 """
     timestep_floe_properties!(...)
 
@@ -436,23 +443,18 @@ function timestep_floe_properties!(
     floe_settings,
 ) where FT
     Threads.@threads for i in eachindex(floes)
-        cforce = floes.collision_force[i]
-        ctrq = floes.collision_trq[i]
         # Update stress
         calc_stress!(get_floe(floes, i), floe_settings)
+    end
 
-        # Ensure no extreem values due to model instability
-        if floes.height[i] > floe_settings.max_floe_height
-            @info "Reducing height to $(floe_settings.max_floe_height) m" tstep = tstep
-            floes.height[i] = floe_settings.max_floe_height
-        end
+    height_dev = adapt(CuArray, floes.height)
+    dev = get_backend(height_dev)
+    # Ensure no extreme height values due to model instability
+    limit_height_kernel!(dev, 512)(height_dev, floe_settings.max_floe_height, ndrange=size(floes.height))
+    KernelAbstractions.synchronize(dev)
+    floes.height .= Array(height_dev)
 
-        while maximum(abs.(cforce)) > floes.mass[i]/(5Δt)
-            @info "Decreasing collision forces by a factor of 10" tstep = tstep
-            cforce = cforce ./ 10
-            ctrq = ctrq ./ 10
-        end
-        
+    Threads.@threads for i in eachindex(floes)
         # Update floe based on thermodynamic growth
         h = floes.height[i]
         Δh = floes.hflx_factor[i] / h
@@ -460,7 +462,6 @@ function timestep_floe_properties!(
         floes.mass[i] *= hfrac
         floes.moment[i] *= hfrac
         floes.height[i] -= Δh
-        h = floes.height[i]
 
         # Update ice coordinates with velocities and rotation
         Δx = 1.5Δt*floes.u[i] - 0.5Δt*floes.p_dxdt[i]
@@ -473,7 +474,17 @@ function timestep_floe_properties!(
         floes.p_dydt[i] = floes.v[i]
         floes.p_dαdt[i] = floes.ξ[i]
 
+        # Ensure no extreme collision forces due to model instability
+        cforce = floes.collision_force[i]
+        ctrq = floes.collision_trq[i]
+        while maximum(abs.(cforce)) > floes.mass[i]/(5Δt)
+            @info "Decreasing collision forces by a factor of 10" tstep = tstep
+            cforce = cforce ./ 10
+            ctrq = ctrq ./ 10
+        end
+
         # Update ice velocities with forces and torques
+        h = floes.height[i]
         dudt = (floes.fxOA[i] + cforce[1])/floes.mass[i]
         dvdt = (floes.fyOA[i] + cforce[2])/floes.mass[i]
         frac = if abs(Δt*dudt) > (h/2) && abs(Δt*dvdt) > (h/2)
