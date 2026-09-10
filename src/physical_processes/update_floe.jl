@@ -415,10 +415,10 @@ function calc_strain!(floe::FloeType{FT}) where {FT}
     return
 end
 
-@kernel function limit_height_kernel!(height, max_height)
+@kernel function limit_height_kernel!(floes, max_height)
     I = @index(Global)
-    if height[I] > max_height
-        height[I] = max_height
+    if floes.height[I] > max_height
+        floes.height[I] = max_height
     end
 end
 
@@ -447,12 +447,12 @@ function timestep_floe_properties!(
         calc_stress!(get_floe(floes, i), floe_settings)
     end
 
-    height_dev = adapt(CuArray, floes.height)
-    dev = get_backend(height_dev)
+    dev_floes = adapt(CuArray, FixedWidthFloes(floes))
+    dev = get_backend(dev_floes.height)
     # Ensure no extreme height values due to model instability
-    limit_height_kernel!(dev, 512)(height_dev, floe_settings.max_floe_height, ndrange=size(floes.height))
+    limit_height_kernel!(dev, 512)(dev_floes, floe_settings.max_floe_height, ndrange=size(floes.height))
     KernelAbstractions.synchronize(dev)
-    floes.height .= Array(height_dev)
+    floes.height .= Array(dev_floes.height)
 
     Threads.@threads for i in eachindex(floes)
         # Update floe based on thermodynamic growth

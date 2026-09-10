@@ -56,6 +56,15 @@ const FLOE_DEF = "`floe::Floe`: singular floe within the simulation"
     p_dαdt::FT = 0.0        # previous timestep angular-velocity
 end
 
+struct FixedWidthFloes{FT<:AbstractFloat}
+    height::Vector{FT}              # floe height (m)
+end
+
+function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
+    return FixedWidthFloes(floes.height)
+end
+
+
 """
     Floe{FT}
 
