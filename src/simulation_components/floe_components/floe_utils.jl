@@ -58,13 +58,30 @@ function _translate_floe!(::Type{FT}, floe, Δx, Δy) where FT
 end
 
 # translate floe by floe by Δx and Δy and rotate flow by Δα
-function _move_floe!(::Type{FT}, floe, Δx, Δy, Δα) where FT
-    cx, cy = floe.centroid
+function _move_floe!(floes, i, Δx, Δy, Δα) 
+    cx, cy = floes.centroid[i, :]
     # move centroid
-    floe.centroid[1] += Δx
-    floe.centroid[2] += Δy
+    floes.centroid[i, 1] += Δx
+    floes.centroid[i, 2] += Δy
     # move polygon
-    floe.poly = _move_poly(FT, floe.poly, Δx, Δy, Δα, cx, cy)::Polys{FT}
+    n_points = 0
+    for x in floes.poly[i, :, 1]
+        if x == FILL_VALUE
+            break
+        end
+        n_points += 1
+    end
+    points = [Tuple(floes.poly[i, j, :]) for j in 1:n_points]
+    polygon = GI.Polygon([GI.LinearRing(points)])
+    moved_polygon = _move_poly(polygon, Δx, Δy, Δα, cx, cy)
+    moved_points = GI.getpoint(moved_polygon)
+    for (j, point) in enumerate(moved_points)
+        floes.poly[i, j, :] .= point
+    end
+    points_dim = 2
+    for j in n_points+1:size(floes.poly, points_dim)
+        floes.poly[i, j, :] .= FILL_VALUE
+    end
     return 
 end
 

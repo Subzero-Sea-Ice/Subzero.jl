@@ -434,6 +434,20 @@ end
     floes.height[i] -= Δh
 end
 
+@kernel function update_ice_coordinates_kernel!(floes, Δt)
+    # Update ice coordinates with velocities and rotation
+    i = @index(Global)
+    Δx = 1.5Δt*floes.u[i] - 0.5Δt*floes.p_dxdt[i]
+    Δy = 1.5Δt*floes.v[i] - 0.5Δt*floes.p_dydt[i]
+    Δα = 1.5Δt*floes.ξ[i] - 0.5Δt*floes.p_dαdt[i]
+    floes.α[i] += Δα
+
+    _move_floe!(floes, i, Δx, Δy, Δα)
+    floes.p_dxdt[i] = floes.u[i]
+    floes.p_dydt[i] = floes.v[i]
+    floes.p_dαdt[i] = floes.ξ[i]
+end
+
 """
     timestep_floe_properties!(...)
 
@@ -464,22 +478,12 @@ function timestep_floe_properties!(
 
     limit_height_kernel!(dev, 512)(dev_floes, floe_settings.max_floe_height, ndrange=size(floes.height))
     thermodynamic_growth_kernel!(dev, 512)(dev_floes, ndrange=size(floes.height))
+    update_ice_coordinates_kernel!(dev, 512)(dev_floes, Δt, ndrange=size(floes.height))
 
     KernelAbstractions.synchronize(dev)
     update_floes!(floes, adapt(Array, dev_floes))
 
     Threads.@threads for i in eachindex(floes)
-        # Update ice coordinates with velocities and rotation
-        Δx = 1.5Δt*floes.u[i] - 0.5Δt*floes.p_dxdt[i]
-        Δy = 1.5Δt*floes.v[i] - 0.5Δt*floes.p_dydt[i]
-        Δα = 1.5Δt*floes.ξ[i] - 0.5Δt*floes.p_dαdt[i]
-        floes.α[i] += Δα
-
-        _move_floe!(FT, get_floe(floes, i), Δx, Δy, Δα)
-        floes.p_dxdt[i] = floes.u[i]
-        floes.p_dydt[i] = floes.v[i]
-        floes.p_dαdt[i] = floes.ξ[i]
-
         # Ensure no extreme collision forces due to model instability
         cforce = floes.collision_force[i]
         ctrq = floes.collision_trq[i]

@@ -93,7 +93,7 @@ function _calculate_hibler(::Type{FT}, mean_height, pstar, c) where FT
     ring_coords[end] = ring_coords[1] # make sure first and last element are exactly the same
     # TODO: eventually make with SVectors! 
     poly = GI.Polygon([ring_coords])
-    return _move_poly(FT, poly, -p/2, -p/2,  π/4)
+    return _move_poly(poly, -p/2, -p/2,  π/4)
 end
 
 """

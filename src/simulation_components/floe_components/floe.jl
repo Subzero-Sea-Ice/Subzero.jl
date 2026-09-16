@@ -1,7 +1,9 @@
 # Floe definition
-export Floe
+export Floe, FILL_VALUE
 
 const FLOE_DEF = "`floe::Floe`: singular floe within the simulation"
+
+const FILL_VALUE = 1e32
 
 # See documentation below
 @kwdef mutable struct Floe{FT<:AbstractFloat}
@@ -56,29 +58,84 @@ const FLOE_DEF = "`floe::Floe`: singular floe within the simulation"
     p_dαdt::FT = 0.0        # previous timestep angular-velocity
 end
 
-struct FixedWidthFloes{FT<:AbstractFloat}
+struct FixedWidthFloes{FT<:AbstractFloat, AT3<:AbstractArray{FT, 3}, AT2<:AbstractArray{FT, 2}, AT1<:AbstractArray{FT, 1}}
     # Struct that can be moved to the GPU.
-    height::Vector{FT}
-    hflx_factor::Vector{FT}
-    mass::Vector{FT}
-    moment::Vector{FT}
+    poly::AT3
+    centroid::AT2
+    height::AT1
+    hflx_factor::AT1
+    mass::AT1
+    moment::AT1
+    α::AT1
+    p_dxdt::AT1
+    p_dydt::AT1
+    p_dαdt::AT1
+    u::AT1
+    v::AT1
+    ξ::AT1
 end
 
 function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
+
+    # Convert complex data structures to arrays for GPU compatibility.
+    n_spatial_dims = 2
+    centroid = fill(FT(FILL_VALUE), (length(floes), n_spatial_dims))
+    max_poly_length = isempty(floes) ? 0 : maximum(length(floes.poly) for floe in floes)
+    poly = fill(FT(FILL_VALUE), (length(floes), max_poly_length, n_spatial_dims))
+    for (i, floe) in enumerate(floes)
+        centroid[i, :] .= floe.centroid
+        for (j, point) in enumerate(GI.getpoint(floe.poly))
+            poly[i, j, :] .= point
+        end
+    end
+
     return FixedWidthFloes(
+        poly,
+        centroid,
         floes.height,
         floes.hflx_factor,
         floes.mass,
         floes.moment,
+        floes.α,
+        floes.p_dxdt,
+        floes.p_dydt,
+        floes.p_dαdt,
+        floes.u,
+        floes.v,
+        floes.ξ,
     )
 end
 
+Adapt.@adapt_structure FixedWidthFloes
+
 function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedWidthFloes{FT}) where FT
     # Update an array of floes with the values from the fixed-width floes struct.
+
+    # Convert GPU arrays back to complex data structures.
+    for (i, floe) in enumerate(floes)
+        floe.centroid = fixed_width_floes.centroid[i, :]
+        n_points = 0
+        for x in fixed_width_floes.poly[i, :, 1]
+            if x == FILL_VALUE
+                break
+            end
+            n_points += 1
+        end
+        points = [Tuple(fixed_width_floes.poly[i, j, :]) for j in 1:n_points]
+        floe.poly = GI.Polygon([GI.LinearRing(points)])::Subzero.Polys{FT}
+    end
+
     floes.height .= fixed_width_floes.height
     # floes.hflx_factor .= fixed_width_floes.hflx_factor  # not modified in kernels?
     floes.mass .= fixed_width_floes.mass
     floes.moment .= fixed_width_floes.moment
+    floes.α .= fixed_width_floes.α
+    floes.p_dxdt .= fixed_width_floes.p_dxdt
+    floes.p_dydt .= fixed_width_floes.p_dydt
+    floes.p_dαdt .= fixed_width_floes.p_dαdt
+    # floes.u .= fixed_width_floes.u
+    # floes.v .= fixed_width_floes.v
+    # floes.ξ .= fixed_width_floes.ξ
 end
 
 """
