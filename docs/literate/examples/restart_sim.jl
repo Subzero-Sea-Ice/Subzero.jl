@@ -4,7 +4,7 @@
 # is to show how to use the restart functionality. 
 
 using Subzero, CairoMakie, GeoInterfaceMakie
-using JLD2, Random, Statistics
+using JLD2, Random, Statistics, Logging
 
 const FT = Float64
 const Δt = 20
@@ -16,92 +16,113 @@ const hmean = 2
 const concentration = 0.7
 const uomax = 2
 
+start = time_ns()
+
 dirs = [joinpath("restart_sim", "run" * string(i)) for i in 1:2]
 
-# ## Create Grid
-grid = RegRectilinearGrid(; x0 = 0.0, xf = L, y0 = 0.0, yf = L, Δx = Δgrid, Δy = Δgrid)
+# Avoid a crash on the world age of the SubzeroLogger by passing in a logger.
+# Avoid noisy output by disabling info-level logging.
+Logging.disable_logging(Logging.Info)
+logger = Logging.global_logger()
 
-# ## Create Domain
-nboundary = PeriodicBoundary(North; grid)
-sboundary = PeriodicBoundary(South; grid)
-eboundary = PeriodicBoundary(East; grid)
-wboundary = PeriodicBoundary(West; grid)
-domain = Domain(; north = nboundary, south = sboundary, east = eboundary,west =  wboundary)
+if ! isdir(dirs[1])
 
-# ## Create Ocean
-ngrid = Int(L/Δgrid) + 1
-ygrid = range(0,L,ngrid)
-uoprofile = @. uomax * (1 - abs(1 - 2 * ygrid/L))
-uvels_ocean = repeat(
-    uoprofile,
-    outer = (1, ngrid),
-)
-ocean = Ocean(;
-    u = uvels_ocean',
-    grid,
-    v = 0,
-    temp = 0,
-)
+    # ## Create Grid
+    grid = RegRectilinearGrid(; x0 = 0.0, xf = L, y0 = 0.0, yf = L, Δx = Δgrid, Δy = Δgrid)
 
-# ## Create Atmos
-atmos = Atmos(FT; grid, u = 0.0, v = 0.0, temp = 0.0)
+    # ## Create Domain
+    nboundary = PeriodicBoundary(North; grid)
+    sboundary = PeriodicBoundary(South; grid)
+    eboundary = PeriodicBoundary(East; grid)
+    wboundary = PeriodicBoundary(West; grid)
+    domain = Domain(; north = nboundary, south = sboundary, east = eboundary,west =  wboundary)
 
-# ## Create Floes
-floe_generator = VoronoiTesselationFieldGenerator(; nfloes, concentrations = [concentration], hmean, Δh = 0)
-floe_settings = FloeSettings(; subfloe_point_generator = SubGridPointsGenerator(; grid, npoint_per_cell = 2))
-floe_arr = initialize_floe_field(FT; generator = floe_generator,  domain, rng = Xoshiro(1), floe_settings)
+    # ## Create Ocean
+    ngrid = Int(L/Δgrid) + 1
+    ygrid = range(0,L,ngrid)
+    uoprofile = @. uomax * (1 - abs(1 - 2 * ygrid/L))
+    uvels_ocean = repeat(
+        uoprofile,
+        outer = (1, ngrid),
+    )
+    ocean = Ocean(;
+        u = uvels_ocean',
+        grid,
+        v = 0,
+        temp = 0,
+    )
 
-# ## Create Model
-model = Model(;grid, ocean, atmos, domain, floes = floe_arr)
+    # ## Create Atmos
+    atmos = Atmos(FT; grid, u = 0.0, v = 0.0, temp = 0.0)
 
-# ## Create Outout Writers
-initwriter = InitialStateOutputWriter(dir = dirs[1], overwrite = true)
-checkpointer = CheckpointOutputWriter(
-    250,
-    dir = dirs[1],
-    filename = "checkpoint.jld2",
-    overwrite = true,
-    jld2_kw = Dict{Symbol, Any}(),
-)
-floewriter = FloeOutputWriter(50, dir = dirs[1], overwrite = true)
-writers = OutputWriters(initwriter, floewriter, checkpointer)
+    # ## Create Floes
+    floe_generator = VoronoiTesselationFieldGenerator(; nfloes, concentrations = [concentration], hmean, Δh = 0)
+    floe_settings = FloeSettings(; subfloe_point_generator = SubGridPointsGenerator(; grid, npoint_per_cell = 2))
+    floe_arr = initialize_floe_field(FT; generator = floe_generator,  domain, rng = Xoshiro(1), floe_settings)
 
-# ## Create Simulation and Constants 
-modulus = 1.5e3*(mean(sqrt.(floe_arr.area)) + minimum(sqrt.(floe_arr.area)))
-consts = Constants(; E = modulus, f = 0, turnθ = 0)
-simulation = Simulation(;
-    model = model,
-    consts = consts,
-    Δt = Δt,
-    nΔt = nΔt,
-    verbose = true,
-    writers = writers,
-    rng = Xoshiro(1),
-    floe_settings,
-)
+    # ## Create Model
+    model = Model(;grid, ocean, atmos, domain, floes = floe_arr)
 
-# ## Run the first part of the simulation
-run!(simulation)
+    # ## Create Outout Writers
+    initwriter = InitialStateOutputWriter(dir = dirs[1], overwrite = true)
+    checkpointer = CheckpointOutputWriter(
+        250,
+        dir = dirs[1],
+        filename = "checkpoint.jld2",
+        overwrite = true,
+        jld2_kw = Dict{Symbol, Any}(),
+    )
+    floewriter = FloeOutputWriter(50, dir = dirs[1], overwrite = true)
+    writers = OutputWriters(
+        initwriter,
+        # floewriter,
+        checkpointer,
+    )
+
+    # ## Create Simulation and Constants 
+    modulus = 1.5e3*(mean(sqrt.(floe_arr.area)) + minimum(sqrt.(floe_arr.area)))
+    consts = Constants(; E = modulus, f = 0, turnθ = 0)
+    simulation = Simulation(;
+        model = model,
+        consts = consts,
+        Δt = Δt,
+        nΔt = nΔt,
+        verbose = true,
+        writers = writers,
+        rng = Xoshiro(1),
+        floe_settings,
+    )
+
+    # ## Run the first part of the simulation
+    run!(simulation; logger = logger)
+end
 
 # ## Run second part of the simulation
-new_initwriter = InitialStateOutputWriter(initwriter; dir = dirs[2])
-new_floewriter = FloeOutputWriter(floewriter; dir = dirs[2])
-writers = OutputWriters(new_initwriter, new_floewriter)  # didn't save checkpoint since not restarting
+new_initwriter = InitialStateOutputWriter(dir = dirs[2], overwrite = true)
+new_floewriter = FloeOutputWriter(50, dir = dirs[2], overwrite = true)
+writers = OutputWriters()# new_initwriter, new_floewriter)  # didn't save checkpoint since not restarting
+println("Setup took $((time_ns() - start)/1e9) s. Now restarting simulation..")
+start = time_ns()
 Subzero.restart!(
     dirs[1] * "/initial_state.jld2",
     dirs[1] * "/checkpoint.jld2",
-    nΔt, writers; start_tstep = nΔt)
+    100,
+    writers;
+    start_tstep = nΔt,
+    logger = logger,
+)
+println("Restart took $((time_ns() - start)/1e9) s")
 
 
-# ## Plot all simulation parts
-for i in 1:2
-    plot_sim(
-        joinpath(dirs[i], "floes.jld2"),
-        joinpath(dirs[i], "initial_state.jld2"),
-        Δt,
-        joinpath(dirs[i], "restart_floes.mp4"),
-    )
-end
+# # ## Plot all simulation parts
+# for i in 1:2
+#     plot_sim(
+#         joinpath(dirs[i], "floes.jld2"),
+#         joinpath(dirs[i], "initial_state.jld2"),
+#         Δt,
+#         joinpath(dirs[i], "restart_floes.mp4"),
+#     )
+# end
 
 # ### First Part of Simulation 
 # ```@raw html

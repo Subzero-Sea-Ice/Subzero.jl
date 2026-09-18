@@ -264,11 +264,14 @@ Simulation calculations will be done with Floats of type FT (Float64 of Float32)
 function run!(sim; logger = nothing, messages_per_tstep = 1, start_tstep = 0)
     startup_sim(sim, logger; messages_per_tstep)
     tstep = start_tstep
+    start = time_ns()
+    println("Starting simulation run at timestep $start_tstep")
     while tstep <= (start_tstep + sim.nΔt)
         # Timestep the simulation forward
         timestep_sim!(sim, tstep, start_tstep)
         tstep+=1
     end
+    println("Run of simulation took $((time_ns() - start)/1e9) s")
     teardown_sim(sim)
     return
 end
@@ -296,7 +299,8 @@ their own restart functions.
 ## _Returns_
     - None. The simulation will be run and outputs will be saved in the output folder. 
 """
-function restart!(initial_state_fn, checkpointer_fn, new_nΔt, new_output_writers; start_tstep = 0)
+function restart!(initial_state_fn, checkpointer_fn, new_nΔt, new_output_writers; logger = nothing, start_tstep = 0)
+    start = time_ns()
     is = jldopen(initial_state_fn)
     cp = jldopen(checkpointer_fn)
     last_tstep = maximum(parse.(Int, keys(cp["ocean"])))
@@ -329,7 +333,8 @@ function restart!(initial_state_fn, checkpointer_fn, new_nΔt, new_output_writer
         ridgeraft_settings = is["sim"].ridgeraft_settings,
         weld_settings = is["sim"].weld_settings,
     )
-    run!(new_simulation; start_tstep = start_tstep)
+    println("Preparing restart took $((time_ns() - start)/1e9) s")
+    run!(new_simulation; logger = logger, start_tstep = start_tstep)
     return
 end
 
