@@ -415,6 +415,49 @@ function calc_strain!(floe::FloeType{FT}) where {FT}
     return
 end
 
+#=
+Calculates the strain on floe i of a `FixedWidthFloes`. Same calculation as
+`calc_strain!(floe)`, written as scalar operations so it can be called from a GPU kernel.
+=#
+function calc_strain!(floes::FixedWidthFloes{FT}, i) where FT
+    cx = floes.centroid[i, 1]
+    cy = floes.centroid[i, 2]
+    u = floes.u[i]
+    ξ = floes.ξ[i]
+    ε11, ε12, ε22 = zero(FT), zero(FT), zero(FT)
+    # coordinates of floe centered at centroid
+    x1 = floes.poly[i, 1, 1] - cx
+    y1 = floes.poly[i, 1, 2] - cy
+    for j in 2:floes.n_points[i]
+        x2 = floes.poly[i, j, 1] - cx
+        y2 = floes.poly[i, j, 2] - cy
+        xdiff, ydiff = x2 - x1, y2 - y1
+        rad1, rad2 = sqrt(x1^2 + y1^2), sqrt(x2^2 + y2^2)
+        θ1, θ2 = atan(y1, x1), atan(y2, x2)
+        u1 = u - ξ * rad1 * sin(θ1)
+        u2 = u - ξ * rad2 * sin(θ2)
+        v1 = u + ξ * rad1 * cos(θ1)
+        v2 = u + ξ * rad2 * cos(θ2)
+        udiff, vdiff = u2 - u1, v2 - v1
+        ε11 += udiff * ydiff
+        ε12 += udiff * xdiff + vdiff * ydiff
+        ε22 += vdiff * xdiff
+        x1, y1 = x2, y2
+    end
+    ε12 *= FT(0.5)
+    area2 = 2floes.area[i]
+    floes.strain[i, 1, 1] = ε11 / area2
+    floes.strain[i, 1, 2] = ε12 / area2
+    floes.strain[i, 2, 1] = ε12 / area2
+    floes.strain[i, 2, 2] = ε22 / area2
+    return
+end
+
+@kernel function calc_strain_kernel!(floes)
+    i = @index(Global)
+    calc_strain!(floes, i)
+end
+
 # Bits in FixedWidthFloes.flags, set by kernels to report events to the host
 const FLAG_HEIGHT_LIMITED = 0x01
 const FLAG_FORCE_REDUCED = 0x02
@@ -570,15 +613,11 @@ function timestep_floe_properties!(
     thermodynamic_growth_kernel!(dev, 512)(dev_floes, ndrange=size(floes.height))
     update_ice_coordinates_kernel!(dev, 512)(dev_floes, Δt, ndrange=size(floes.height))
     update_velocities_kernel!(dev, 512)(dev_floes, Δt, floe_settings.maximum_ξ, ndrange=size(floes.height))
+    calc_strain_kernel!(dev, 512)(dev_floes, ndrange=size(floes.height))
 
     KernelAbstractions.synchronize(dev)
     host_floes = adapt(Array, dev_floes)
     update_floes!(floes, host_floes)
     _log_flags(host_floes.flags, tstep, floe_settings)
-
-    Threads.@threads for i in eachindex(floes)
-        # Update strain
-        calc_strain!(get_floe(floes, i))
-    end
     return
 end

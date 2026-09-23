@@ -224,6 +224,17 @@ end
             @test f.poly == Subzero.make_polygon(floe_dict["coords"][i])
         end
     end
+    @testset "calc_strain! on FixedWidthFloes" begin
+        for FT in (Float64, Float32)
+            floes = _make_timestep_test_floes(FT, FloeSettings(FT))
+            fwf = Subzero.FixedWidthFloes(floes)
+            for i in eachindex(floes)
+                Subzero.calc_strain!(Subzero.get_floe(floes, i))
+                Subzero.calc_strain!(fwf, i)
+                @test isapprox(fwf.strain[i, :, :], floes.strain[i]; rtol = 10eps(FT))
+            end
+        end
+    end
     @testset "Replace floe" begin
         # Test replace floe
         coords1 = [[
