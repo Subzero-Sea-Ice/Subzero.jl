@@ -42,8 +42,6 @@ over if/else flags.
   The `using` lines are the ones at the top of `test/runtests.jl`. Some tests read
   files from `test/inputs/` with relative paths, so run those from `test/` with
   `--project=..` and `include("utils.jl")`.
-- Run `test/test_output.jl` through `Pkg.test()`. Loaded on its own, it fails with a
-  world-age `MethodError` for `SubzeroLogger`.
 - When adding a test file, also `include` it from `test/runtests.jl`.
 - `test/qualitative_behavior.jl` and `test/compare_results.jl` aren't part of the
   test suite. The first runs simulations you check by eye. The second is out of
