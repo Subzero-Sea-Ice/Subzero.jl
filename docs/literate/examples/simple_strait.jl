@@ -13,7 +13,6 @@
 # completely covered with topography forming the edges of the domain. This is a good simulation
 # to understand how to setup topography and how to turn on fractures using the fracture settings.
 
-using Logging
 using Subzero, CairoMakie, GeoInterfaceMakie
 using JLD2, Random, Statistics
 
@@ -100,12 +99,8 @@ simulation = Simulation(; model, consts,
 # ## Running the Simulation
 # using ProfileView
 #@profview run!(simulation)
-# Avoid a crash on the world age of the SubzeroLogger by passing in a logger.
-# Avoid noisy output by disabling info-level logging.
-Logging.disable_logging(Logging.Info)
-logger = Logging.global_logger()
 start = time_ns()
-run!(simulation, logger = logger)
+run!(simulation)
 print((time_ns() - start)/10e9)
 
 # ## Plotting the Simulation

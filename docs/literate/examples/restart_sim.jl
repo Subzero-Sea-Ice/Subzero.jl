@@ -4,7 +4,7 @@
 # is to show how to use the restart functionality. 
 
 using Subzero, CairoMakie, GeoInterfaceMakie
-using JLD2, Random, Statistics, Logging
+using JLD2, Random, Statistics
 
 const FT = Float64
 const Δt = 20
@@ -19,11 +19,6 @@ const uomax = 2
 start = time_ns()
 
 dirs = [joinpath("restart_sim", "run" * string(i)) for i in 1:2]
-
-# Avoid a crash on the world age of the SubzeroLogger by passing in a logger.
-# Avoid noisy output by disabling info-level logging.
-Logging.disable_logging(Logging.Info)
-logger = Logging.global_logger()
 
 if ! isdir(dirs[1])
 
@@ -94,7 +89,7 @@ if ! isdir(dirs[1])
     )
 
     # ## Run the first part of the simulation
-    run!(simulation; logger = logger)
+    run!(simulation)
 end
 
 # ## Run second part of the simulation
@@ -109,7 +104,6 @@ Subzero.restart!(
     100,
     writers;
     start_tstep = nΔt,
-    logger = logger,
 )
 println("Restart took $((time_ns() - start)/1e9) s")
 
