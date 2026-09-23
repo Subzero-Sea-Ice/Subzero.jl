@@ -144,7 +144,9 @@ function _reference_timestep_floe_properties!(
 end
 
 @testset "Update floe" begin
-    @testset "timestep_floe_properties" begin
+    backends = Any[Subzero.KernelAbstractions.CPU()]
+    CUDA.functional() && push!(backends, CUDA.CUDABackend())
+    @testset "timestep_floe_properties on $backend" for backend in backends
         FT = Float64
         Δt, tstep = 10, 1
         floe_settings = FloeSettings()
@@ -159,7 +161,7 @@ end
             (:info, "Adjusting u and v velocities to prevent too high"),
             (:info, "Shrinking ξ"),
             match_mode = :any,
-            Subzero.timestep_floe_properties!(floes, tstep, Δt, floe_settings),
+            Subzero.timestep_floe_properties!(floes, tstep, Δt, floe_settings; backend),
         )
         rtol = 1e-10
         @testset "floe $i" for i in eachindex(floes)

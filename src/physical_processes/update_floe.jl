@@ -631,15 +631,19 @@ other floes.
 - `tstep::Int`: simulation timestep
 - $ΔT_DEF
 - $FLOE_SETTINGS_DEF
+
+## _Keyword arguments_
+- `backend::KernelAbstractions.Backend`: backend to run the calculations on (Default = `CPU()`)
 """
 function timestep_floe_properties!(
     floes::StructArray{<:Floe{FT}},
     tstep,
     Δt,
-    floe_settings,
+    floe_settings;
+    backend = CPU(),
 ) where FT
-    dev_floes = adapt(CuArray, FixedWidthFloes(floes))
-    dev = get_backend(dev_floes.height)
+    dev_floes = adapt(backend, FixedWidthFloes(floes))
+    dev = backend
 
     calc_stress_kernel!(dev, 512)(dev_floes, floe_settings.stress_calculator, ndrange=size(floes.height))
     limit_height_kernel!(dev, 512)(dev_floes, floe_settings.max_floe_height, ndrange=size(floes.height))

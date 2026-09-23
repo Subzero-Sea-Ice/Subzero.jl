@@ -3,7 +3,7 @@ export Simulation, timestep_sim!, run!, restart!
 const ΔT_DEF = "`Δt::Int`:length of timestep in integer seconds"
 
 """
-    Simulation{FT, MT, CT, PT, ST, RT, OT}
+    Simulation{FT, MT, CT, PT, ST, RT, OT, BT}
 
 Simulation which holds a model and the parameters, settings, and output writers needed for running the simulation.
 
@@ -16,6 +16,8 @@ Only keyword arguments are used!
 - `rng::RT`: Random number generator (default = Xoshiro())
 - `verbose::Bool`: String output printed during run (Default = false)
 - `name::String`: Simulation name for printing/saving (Default = "sim")
+- `backend::BT`: KernelAbstractions backend that runs the parts of the simulation that are
+    ported to kernels, e.g. `CUDABackend()` after `using CUDA` (Default = `CPU()`)
 ### _Timesteping Information_
 - `Δt::Int`: Simulation timestep in seconds
 - `nΔt::Int`: Total timesteps simulation runs for
@@ -51,12 +53,14 @@ Only keyword arguments are used!
         <:StructVector{<:GridOutputWriter},
         <:StructVector{<:CheckpointOutputWriter},
     },
+    BT<:KernelAbstractions.Backend,
 }
     model::MT                               # Model to simulate
     consts::Constants{FT} = Constants()     # Constants used in Simulation
     rng::RT = Xoshiro()                     # Random number generator 
     verbose::Bool = false                   # String output printed during run
     name::String = "sim"                    # Simulation name for printing/saving
+    backend::BT = CPU()                     # Backend to run kernels on
     # Timesteps ----------------------------------------------------------------
     Δt::Int                     # Simulation timestep (seconds)
     nΔt::Int                    # Total timesteps simulation runs for
@@ -165,7 +169,8 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
             sim.model.floes,
             tstep,
             sim.Δt,
-            sim.floe_settings,
+            sim.floe_settings;
+            backend = sim.backend,
         )
         # Fracture floes
         if sim.fracture_settings.fractures_on && mod(tstep, sim.fracture_settings.Δt) == 0
@@ -295,11 +300,12 @@ their own restart functions.
 
 ## _Keyword arguments_
     - `start_tstep::Int`: which timestep to start the simulation on (Default = 0)
+    - `backend::KernelAbstractions.Backend`: backend to run kernels on, e.g. `CUDABackend()` after `using CUDA` (Default = `CPU()`)
 
 ## _Returns_
     - None. The simulation will be run and outputs will be saved in the output folder. 
 """
-function restart!(initial_state_fn, checkpointer_fn, new_nΔt, new_output_writers; logger = nothing, start_tstep = 0)
+function restart!(initial_state_fn, checkpointer_fn, new_nΔt, new_output_writers; logger = nothing, start_tstep = 0, backend = CPU())
     start = time_ns()
     is = jldopen(initial_state_fn)
     cp = jldopen(checkpointer_fn)
@@ -324,6 +330,7 @@ function restart!(initial_state_fn, checkpointer_fn, new_nΔt, new_output_writer
         Δt = is["sim"].Δt,
         nΔt = new_nΔt,
         verbose = is["sim"].verbose,
+        backend = backend,
         writers = new_output_writers,
         floe_settings = is["sim"].floe_settings,
         coupling_settings = is["sim"].coupling_settings,

@@ -2,6 +2,7 @@ using JLD2, Logging, NCDatasets, Random, SplitApplyCombine,
     Statistics, StructArrays, Subzero
 import GeometryOps as GO
 import GeometryOps.GeoInterface as GI
+import CUDA
 using Test
 
 @testset "Subzero.jl" begin

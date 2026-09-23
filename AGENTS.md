@@ -35,7 +35,7 @@ over if/else flags.
   ```sh
   julia --project=. -e 'using TestEnv; TestEnv.activate()
       using JLD2, Logging, NCDatasets, Random, SplitApplyCombine, Statistics, StructArrays, Subzero, Test
-      import GeometryOps as GO; import GeometryOps.GeoInterface as GI
+      import GeometryOps as GO; import GeometryOps.GeoInterface as GI; import CUDA
       include("test/utils.jl"); include("test/test_floe_utils.jl")'
   ```
 
