@@ -237,4 +237,53 @@
         0.1;
         floe_settings = fs_no_min_area,
     )) <: StructArray{<:Floe{Float32}}
+
+    @testset "FixedWidthFloes" begin
+        FT = Float64
+        floes = _make_timestep_test_floes(FT, FloeSettings())
+        fwf = Subzero.FixedWidthFloes(floes)
+        # Ragged fields are padded to the longest floe
+        n_points = [GI.npoint(p) for p in floes.poly]
+        @test fwf.n_points == n_points
+        @test size(fwf.poly) == (length(floes), maximum(n_points), 2)
+        @test fwf.num_inters == floes.num_inters
+        @test size(fwf.interactions) == (length(floes), maximum(floes.num_inters), 7)
+        for i in eachindex(floes)
+            @test all(fwf.poly[i, (n_points[i] + 1):end, :] .== FILL_VALUE)
+            @test [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:n_points[i]] ==
+                collect(GI.getpoint(floes.poly[i]))
+            ninters = floes.num_inters[i]
+            @test fwf.interactions[i, 1:ninters, :] == floes.interactions[i][1:ninters, :]
+            @test all(fwf.interactions[i, (ninters + 1):end, :] .== 0)
+            @test fwf.collision_force[i, :] == vec(floes.collision_force[i])
+            @test fwf.stress_accum[i, :, :] == floes.stress_accum[i]
+        end
+        # Does not share memory with floes
+        fwf.height .= 0
+        fwf.centroid .= 0
+        @test all(floes.height .> 0)
+        @test all(c -> all(c .> 0), floes.centroid)
+        # Round trip leaves floes unchanged
+        floes = _make_timestep_test_floes(FT, FloeSettings())
+        expected = deepcopy(floes)
+        Subzero.update_floes!(floes, Subzero.adapt(Array, Subzero.FixedWidthFloes(floes)))
+        for field in propertynames(floes)
+            field == :status && continue  # Status has no ==, compared below
+            @test getproperty(floes, field) == getproperty(expected, field)
+        end
+        @test [s.tag for s in floes.status] == [s.tag for s in expected.status]
+        # Changes are written back to floes
+        fwf = Subzero.FixedWidthFloes(floes)
+        fwf.poly[3, 1:fwf.n_points[3], :] .+= 1
+        fwf.centroid[3, :] .+= 1
+        fwf.strain[3, 1, 2] = 42
+        fwf.u[3] = 42
+        Subzero.update_floes!(floes, fwf)
+        @test collect(GI.getpoint(floes.poly[3])) ==
+            [(x + 1, y + 1) for (x, y) in GI.getpoint(expected.poly[3])]
+        @test floes.centroid[3] == expected.centroid[3] .+ 1
+        @test floes.strain[3][1, 2] == 42
+        @test floes.u[3] == 42
+        @test floes.poly[3] isa Subzero.Polys{FT}
+    end
 end
