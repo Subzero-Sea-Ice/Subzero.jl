@@ -439,6 +439,7 @@ function calc_strain!(floe::FloeType{FT}) where {FT}
         θ1, θ2 = atan(y1, x1), atan(y2, x2)
         u1 = floe.u - floe.ξ * rad1 * sin(θ1)
         u2 = floe.u - floe.ξ * rad2 * sin(θ2)
+        # TODO: probably should be floe.v, kept as is to not change results
         v1 = floe.u + floe.ξ * rad1 * cos(θ1)
         v2 = floe.u + floe.ξ * rad2 * cos(θ2)
         udiff, vdiff = u2 - u1, v2 - v1
@@ -474,6 +475,7 @@ function calc_strain!(floes::FixedWidthFloes{FT}, i) where FT
         θ1, θ2 = atan(y1, x1), atan(y2, x2)
         u1 = u - ξ * rad1 * sin(θ1)
         u2 = u - ξ * rad2 * sin(θ2)
+        # TODO: probably should be v, kept as is to match calc_strain!(floe)
         v1 = u + ξ * rad1 * cos(θ1)
         v2 = u + ξ * rad2 * cos(θ2)
         udiff, vdiff = u2 - u1, v2 - v1
