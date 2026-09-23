@@ -50,4 +50,28 @@
     tri_poly = Subzero.make_polygon([[[0, 1], [0, 0], [1, 0], [0, 1]]] .* 6.67)
     tri_moment = Subzero._calc_moment_inertia(Float64, tri_poly, GO.centroid(tri_poly), 0.5)
     @test isapprox(tri_moment, 50581.145, atol = 0.001)
+
+    @testset "_move_floe! matches _move_poly" begin
+        rng = Xoshiro(1)
+        for FT in (Float64, Float32)
+            floes = _make_timestep_test_floes(FT, FloeSettings(FT))
+            fwf = Subzero.FixedWidthFloes(floes)
+            for i in eachindex(floes)
+                Δx, Δy = 100 .* (rand(rng, FT, 2) .- FT(0.5))
+                Δα = FT(π) * (rand(rng, FT) - FT(0.5))
+                cx, cy = floes.centroid[i]
+                expected = Subzero._move_poly(floes.poly[i], Δx, Δy, Δα, cx, cy)
+                Subzero._move_floe!(fwf, i, Δx, Δy, Δα)
+                n = fwf.n_points[i]
+                moved = [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:n]
+                @test isapprox(
+                    reinterpret(FT, moved),
+                    reinterpret(FT, collect(GI.getpoint(expected)));
+                    rtol = 10eps(FT),
+                )
+                @test fwf.centroid[i, :] ≈ [cx + Δx, cy + Δy]
+                @test all(fwf.poly[i, (n + 1):end, :] .== FT(FILL_VALUE))
+            end
+        end
+    end
 end

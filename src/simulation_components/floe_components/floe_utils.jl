@@ -57,33 +57,26 @@ function _translate_floe!(::Type{FT}, floe, Δx, Δy) where FT
     return
 end
 
-# translate floe by floe by Δx and Δy and rotate flow by Δα
+#=
+Rotate floe i by Δα around its centroid and then translate it by Δx and Δy. Same result as
+`_move_poly`, but written as scalar operations on the arrays of a `FixedWidthFloes`, so it
+can be called from a GPU kernel.
+=#
 function _move_floe!(floes::FixedWidthFloes{FT}, i, Δx, Δy, Δα) where FT
     cx = floes.centroid[i, 1]
     cy = floes.centroid[i, 2]
     # move centroid
-    floes.centroid[i, 1] += Δx
-    floes.centroid[i, 2] += Δy
+    floes.centroid[i, 1] = cx + Δx
+    floes.centroid[i, 2] = cy + Δy
     # move polygon
-    n_points = 0
-    for x in 1:size(floes.poly, 2)
-        if x == FILL_VALUE
-            break
-        end
-        n_points += 1
+    sinα, cosα = sincos(FT(Δα))
+    for j in 1:floes.n_points[i]
+        x = floes.poly[i, j, 1] - cx
+        y = floes.poly[i, j, 2] - cy
+        floes.poly[i, j, 1] = cosα * x - sinα * y + cx + Δx
+        floes.poly[i, j, 2] = sinα * x + cosα * y + cy + Δy
     end
-    points = [(floes.poly[i, j, 1], floes.poly[i, j, 2]) for j in 1:n_points]
-    polygon = GI.Polygon([GI.LinearRing(points)])
-    moved_polygon = _move_poly(polygon, Δx, Δy, Δα, cx, cy)
-    moved_points = GI.getpoint(moved_polygon)
-    for (j, point) in enumerate(moved_points)
-        floes.poly[i, j, :] .= point
-    end
-    points_dim = 2
-    for j in n_points+1:size(floes.poly, points_dim)
-        floes.poly[i, j, :] .= FILL_VALUE
-    end
-    return 
+    return
 end
 
 
