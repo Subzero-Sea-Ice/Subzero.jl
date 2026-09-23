@@ -224,6 +224,19 @@ end
             @test f.poly == Subzero.make_polygon(floe_dict["coords"][i])
         end
     end
+    @testset "calc_stress! on FixedWidthFloes" begin
+        for FT in (Float64, Float32)
+            floe_settings = FloeSettings(FT)
+            floes = _make_timestep_test_floes(FT, floe_settings)
+            fwf = Subzero.FixedWidthFloes(floes)
+            for i in eachindex(floes)
+                Subzero.calc_stress!(Subzero.get_floe(floes, i), floe_settings)
+                Subzero.calc_stress!(fwf, i, floe_settings.stress_calculator)
+                @test isapprox(fwf.stress_instant[i, :, :], floes.stress_instant[i]; rtol = 10eps(FT))
+                @test isapprox(fwf.stress_accum[i, :, :], floes.stress_accum[i]; rtol = 10eps(FT))
+            end
+        end
+    end
     @testset "calc_strain! on FixedWidthFloes" begin
         for FT in (Float64, Float32)
             floes = _make_timestep_test_floes(FT, FloeSettings(FT))

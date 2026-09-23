@@ -374,6 +374,44 @@ function calc_stress!(floe::FloeType{FT}, floe_settings) where {FT}
     return
 end
 
+#=
+Calculates the stress on floe i of a `FixedWidthFloes`. Same calculation as
+`calc_stress!(floe, floe_settings)`, written as scalar operations so it can be called from a
+GPU kernel.
+=#
+function calc_stress!(floes::FixedWidthFloes{FT}, i, stress_calculator) where FT
+    xi = floes.centroid[i, 1]
+    yi = floes.centroid[i, 2]
+    σ11, σ12, σ22 = zero(FT), zero(FT), zero(FT)
+    if floes.num_inters[i] > 0
+        for k in 1:floes.num_inters[i]
+            xp = floes.interactions[i, k, Int(xpoint)]
+            yp = floes.interactions[i, k, Int(ypoint)]
+            fx = floes.interactions[i, k, Int(xforce)]
+            fy = floes.interactions[i, k, Int(yforce)]
+            σ11 += (xp - xi) * fx
+            σ12 += (yp - yi) * fx + (xp - xi) * fy
+            σ22 += (yp - yi) * fy
+        end
+        σ12 *= FT(0.5)
+        scale = 1/(floes.area[i] * floes.height[i])
+        σ11 *= scale
+        σ12 *= scale
+        σ22 *= scale
+    end
+    floes.stress_instant[i, 1, 1] = σ11
+    floes.stress_instant[i, 1, 2] = σ12
+    floes.stress_instant[i, 2, 1] = σ12
+    floes.stress_instant[i, 2, 2] = σ22
+    _update_stress_accum!(stress_calculator, floes, i)
+    return
+end
+
+@kernel function calc_stress_kernel!(floes, stress_calculator)
+    i = @index(Global)
+    calc_stress!(floes, i, stress_calculator)
+end
+
 """
     calc_strain!(...)
 
@@ -600,14 +638,10 @@ function timestep_floe_properties!(
     Δt,
     floe_settings,
 ) where FT
-    Threads.@threads for i in eachindex(floes)
-        # Update stress
-        calc_stress!(get_floe(floes, i), floe_settings)
-    end
-
     dev_floes = adapt(CuArray, FixedWidthFloes(floes))
     dev = get_backend(dev_floes.height)
 
+    calc_stress_kernel!(dev, 512)(dev_floes, floe_settings.stress_calculator, ndrange=size(floes.height))
     limit_height_kernel!(dev, 512)(dev_floes, floe_settings.max_floe_height, ndrange=size(floes.height))
     limit_collision_force_kernel!(dev, 512)(dev_floes, Δt, ndrange=size(floes.height))
     thermodynamic_growth_kernel!(dev, 512)(dev_floes, ndrange=size(floes.height))
