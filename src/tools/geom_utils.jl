@@ -62,6 +62,9 @@ end
 # Wrappers for calling GeometryOps (GO) functions within the code!!! If you wanted to use a
 # different library or dispatch for a specific type of polygon (i.e. disks) then you would need
 # to re-write most of these (unless you don't want the specific functionality they offer, like fracturing)
+GI.crstrait(::Polys) = GI.ProjectedTrait()
+GI.crstrait(::MultiPolys) = GI.ProjectedTrait()
+GI.crstrait(::StaticQuadrilateral) = GI.ProjectedTrait()
 
 # find the intersection of two polygons and return as a list of polygons
 intersect_polys(p1, p2, ::Type{FT} = Float64; kwargs...) where FT = GO.intersection(p1, p2, FT; target = GI.PolygonTrait(), fix_multipoly = nothing)

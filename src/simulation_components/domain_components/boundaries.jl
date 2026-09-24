@@ -204,14 +204,14 @@ julia> g = RegRectilinearGrid(x0 = 0.0, xf = 5e5, y0 = 0.0, yf = 5e5, Nx = 20, N
 
 julia> OpenBoundary(North; grid = g)
 OpenBoundary{North, Float64}
-  ⊢polygon points are defined by the following set: (-250000.0, 750000.0), (750000.0, 500000.0), (750000.0, 750000.0), (-250000.0, 500000.0)
+  ⊢polygon points are defined by the following set: (-250000.0, 500000.0), (-250000.0, 750000.0), (750000.0, 500000.0), (750000.0, 750000.0)
   ∟val is 500000.0
 ```
 - Defining a Southern `OpenBoundary` with Float32 data using the `x0`, `xf`, `y0` and `yf` keywords.
 ```jldoctest
 julia> OpenBoundary(South, Float32; x0 = 0.0, xf = 5e5, y0 = 0.0, yf = 5e5)
 OpenBoundary{South, Float32}
-  ⊢polygon points are defined by the following set: (750000.0f0, 0.0f0), (750000.0f0, -250000.0f0), (-250000.0f0, 0.0f0), (-250000.0f0, -250000.0f0)
+  ⊢polygon points are defined by the following set: (-250000.0f0, -250000.0f0), (-250000.0f0, 0.0f0), (750000.0f0, -250000.0f0), (750000.0f0, 0.0f0)
   ∟val is 0.0
 ```
 """
@@ -291,14 +291,14 @@ julia> g = RegRectilinearGrid(Float32; x0 = 0.0, xf = 5e5, y0 = 0.0, yf = 5e5, N
 
 julia> PeriodicBoundary(East; grid = g)
 PeriodicBoundary{East, Float64}
-  ⊢polygon points are defined by the following set: (750000.0, -250000.0), (500000.0, -250000.0), (750000.0, 750000.0), (500000.0, 750000.0)
+  ⊢polygon points are defined by the following set: (500000.0, -250000.0), (500000.0, 750000.0), (750000.0, -250000.0), (750000.0, 750000.0)
   ∟val is 500000.0
 ```
 - Defining a Western `PeriodicBoundary` with Float64 data using the `x0`, `xf`, `y0` and `yf` keywords.
 ```jldoctest
 julia> PeriodicBoundary(West, Float64; x0 = 0.0, xf = 5e5, y0 = 0.0, yf = 5e5)
 PeriodicBoundary{West, Float64}
-  ⊢polygon points are defined by the following set: (0.0, -250000.0), (-250000.0, 750000.0), (0.0, 750000.0), (-250000.0, -250000.0)
+  ⊢polygon points are defined by the following set: (-250000.0, -250000.0), (-250000.0, 750000.0), (0.0, -250000.0), (0.0, 750000.0)
   ∟val is 0.0
 ```
 """
@@ -379,14 +379,14 @@ julia> g = RegRectilinearGrid(Float32; x0 = 0.0, xf = 5e5, y0 = 0.0, yf = 5e5, N
 
 julia> CollisionBoundary(North; grid = g)
 CollisionBoundary{North, Float64}
-  ⊢polygon points are defined by the following set: (-250000.0, 750000.0), (750000.0, 500000.0), (750000.0, 750000.0), (-250000.0, 500000.0)
+  ⊢polygon points are defined by the following set: (-250000.0, 500000.0), (-250000.0, 750000.0), (750000.0, 500000.0), (750000.0, 750000.0)
   ∟val is 500000.0
 ```
 - Defining a Western `CollisionBoundary` with Float64 data using the `x0`, `xf`, `y0` and `yf` keywords.
 ```jldoctest
 julia> CollisionBoundary(West, Float32; x0 = 0.0, xf = 5e5, y0 = 0.0, yf = 5e5)
 CollisionBoundary{West, Float32}
-  ⊢polygon points are defined by the following set: (0.0f0, -250000.0f0), (-250000.0f0, 750000.0f0), (0.0f0, 750000.0f0), (-250000.0f0, -250000.0f0)
+  ⊢polygon points are defined by the following set: (-250000.0f0, -250000.0f0), (-250000.0f0, 750000.0f0), (0.0f0, -250000.0f0), (0.0f0, 750000.0f0)
   ∟val is 0.0
 ```
 """
@@ -484,7 +484,7 @@ julia> g = RegRectilinearGrid(Float32; x0 = 0.0, xf = 5e5, y0 = 0.0, yf = 5e5, N
 
 julia> MovingBoundary(North; u = 0.5, grid = g)
 MovingBoundary{North, Float64}
-  ⊢polygon points are defined by the following set: (-250000.0, 750000.0), (750000.0, 500000.0), (750000.0, 750000.0), (-250000.0, 500000.0)
+  ⊢polygon points are defined by the following set: (-250000.0, 500000.0), (-250000.0, 750000.0), (750000.0, 500000.0), (750000.0, 750000.0)
   ⊢val is 500000.0
   ⊢u-velocity of 0.5 m/s
   ∟v-velocity of 0.0 m/s
@@ -494,7 +494,7 @@ Assigning u-velocity of 0.3 m/s and v-velocity of 0.25 m/s
 ```jldoctest
 julia> MovingBoundary(South, Float32; u = 0.3, v = 0.25, x0 = 0.0, xf = 5e5, y0 = 0.0, yf = 5e5)
 MovingBoundary{South, Float32}
-  ⊢polygon points are defined by the following set: (750000.0f0, 0.0f0), (750000.0f0, -250000.0f0), (-250000.0f0, 0.0f0), (-250000.0f0, -250000.0f0)
+  ⊢polygon points are defined by the following set: (-250000.0f0, -250000.0f0), (-250000.0f0, 0.0f0), (750000.0f0, -250000.0f0), (750000.0f0, 0.0f0)
   ⊢val is 0.0
   ⊢u-velocity of 0.3 m/s
   ∟v-velocity of 0.25 m/s

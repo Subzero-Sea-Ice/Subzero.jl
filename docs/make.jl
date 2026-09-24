@@ -43,8 +43,8 @@ jl_to_md(examples_input, examples_output)
 
 # Documentation formatting
 format = Documenter.HTML(;
-    repolink = "https://github.com/Caltech-OCTO/Subzero.jl",
-    canonical = "https://Caltech-OCTO.github.io/SubzeroDocumentation/stable",
+    repolink = "https://github.com/Subzero-Sea-Ice/Subzero.jl",
+    canonical = "https://Subzero-Sea-Ice.github.io/SubzeroDocumentation/stable",
     mathengine = MathJax3(),
     size_threshold = 5*10^6,  # 500 KiB
     collapselevel = 3,
@@ -83,6 +83,6 @@ write("docs/build/.gitignore", "examples/**/*.jld2");
 println("Deploying docs...")
 deploydocs(;
     target = "build",
-    repo="https://github.com/Caltech-OCTO/Subzero.jl",
+    repo="https://github.com/Subzero-Sea-Ice/Subzero.jl",
     push_preview = true,
 )

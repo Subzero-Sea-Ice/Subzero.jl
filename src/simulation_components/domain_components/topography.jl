@@ -150,7 +150,7 @@ julia> initialize_topography_field(Float32; polys)
 - Creating an empty topography field without polys or coords
 ```jldoctest
 julia> initialize_topography_field(Float64)
-0-element TopographyField{Float64} list
+TopographyElement{Float64}[]
 ```
 """
 function initialize_topography_field(::Type{FT} = Float64; polys = nothing, coords = nothing) where FT

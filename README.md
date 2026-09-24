@@ -1,8 +1,8 @@
-![Subzero.jl](https://github.com/Caltech-OCTO/Subzero.jl/blob/main/docs/src/assets/title.gif?raw=true)
+![Subzero.jl](https://github.com/Subzero-Sea-Ice/Subzero.jl/blob/main/docs/src/assets/title.gif?raw=true)
 
-[![Docs](https://img.shields.io/badge/docs-latest-blue.svg)](https://caltech-octo.github.io/Subzero.jl/dev/)
-[![CI](https://github.com/Caltech-OCTO/Subzero.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/Caltech-OCTO/Subzero.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![CodeCov](https://codecov.io/gh/Caltech-OCTO/Subzero.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/Caltech-OCTO/Subzero.jl)
+[![Docs](https://img.shields.io/badge/docs-latest-blue.svg)](https://subzero-sea-ice.github.io/Subzero.jl/dev/)
+[![CI](https://github.com/Subzero-Sea-Ice/Subzero.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/Subzero-Sea-Ice/Subzero.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![CodeCov](https://codecov.io/gh/Subzero-Sea-Ice/Subzero.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/Subzero-Sea-Ice/Subzero.jl)
 [![Status](https://www.repostatus.org/badges/latest/active.svg?style=flat-square)](https://www.repostatus.org/#active)
 
 
@@ -17,7 +17,7 @@ Subzero.jl is a native [Julia](https://julialang.org/) discrete-element model (D
 
 ## _Documentation_
 
-To learn how to build and run simulations, [check out our documentation and tutorials](https://caltech-octo.github.io/Subzero.jl/dev/)!
+To learn how to build and run simulations, [check out our documentation and tutorials](https://subzero-sea-ice.github.io/Subzero.jl/dev/)!
 
 ## _Installation_
 
@@ -56,6 +56,6 @@ We are currently working on a JOSS paper, which will be linked here. If you are 
 
 - Primary Author: [**Skylar Gering (@skygering)**](https://github.com/skygering)
 
-The list of [Subzero contributors](https://github.com/Caltech-OCTO/Subzero.jl/graphs/contributors):
+The list of [Subzero contributors](https://github.com/Subzero-Sea-Ice/Subzero.jl/graphs/contributors):
 
-[![Contributers](https://contrib.rocks/image?repo=Caltech-OCTO/Subzero.jl)](https://github.com/Caltech-OCTO/Subzero.jl/graphs/contributors)
+[![Contributers](https://contrib.rocks/image?repo=Subzero-Sea-Ice/Subzero.jl)](https://github.com/Subzero-Sea-Ice/Subzero.jl/graphs/contributors)

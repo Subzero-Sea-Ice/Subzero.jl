@@ -322,7 +322,7 @@ fracture_settings = FractureSettings(
 # pass each output writer created as an argument to the `OutputWriters` constructor. 
 
 # Here, we will create an [`InitialStateOutputWriter`](@ref), a [`CheckpointOutputWriter`](@ref) (that outputs every 1000 timesteos), and a
-# [ `FloeOutputWriter`](@ref) (that outputs every 50 timesteps) and then combine them into a [`OutputWriter`](@ref).
+# [ `FloeOutputWriter`](@ref) (that outputs every 100 timesteps) and then combine them into a [`OutputWriter`](@ref).
 
 dir = "tutorial"
 init_fn, checkpoint_fn, floe_fn = "tutorial_init_state.jld2", "tutorial_checkpoint.jld2", "tutorial_floes.jld2"
@@ -334,7 +334,7 @@ initwriter = InitialStateOutputWriter(; dir = dir, filename = init_fn, overwrite
 checkpointer = CheckpointOutputWriter(1000; dir = dir, filename = checkpoint_fn, overwrite = true)
 
 # Finally, we make a [`FloeOutputWriter`](@ref):
-floewriter = FloeOutputWriter(50; dir = dir, filename = floe_fn, overwrite = true)
+floewriter = FloeOutputWriter(100; dir = dir, filename = floe_fn, overwrite = true)
 
 # We can then combine these into an `OutputWriters` object:
 writers = OutputWriters(initwriter, checkpointer, floewriter)

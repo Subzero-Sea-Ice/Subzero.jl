@@ -44,7 +44,7 @@ For more information on documentation see:
 
 ## Reporting issues
 
-If you have found a bug or a problem with Subzero you can open an [issue](https://github.com/Caltech-OCTO/Subzero.jl/issues/new). Try
+If you have found a bug or a problem with Subzero you can open an [issue](https://github.com/Subzero-Sea-Ice/Subzero.jl/issues/new). Try
 to include as much information about the problem as possible and some code that
 can be copy-pasted to reproduce it (see [How to create a Minimal, Reproducible
 Example](https://stackoverflow.com/help/minimal-reproducible-example)).
@@ -56,7 +56,7 @@ issue, see [Code changes](#code-changes).
 
 Bug fixes and improvements to the code, or to the unit tests are always welcome. If you have
 ideas about new features or functionality it might be good to first open an
-[issue](https://github.com/Caltech-OCTO/Subzero.jl/issues/new) to get feedback before spending too much time implementing something.
+[issue](https://github.com/Subzero-Sea-Ice/Subzero.jl/issues/new) to get feedback before spending too much time implementing something.
 
 When you are ready to make changes, check out the developer docs section of the documentation for insight into how the code is written and organized.
 
@@ -68,9 +68,9 @@ The most important thing to know about Subzero.jl is that the code has been writ
 
 To do this, Subzero relies heavily on the Julia paradigm of multiple dispatch. If you don't know much about Julia, the first step would be to gain some intuition about [how to write good Julia code](https://modernjuliaworkflows.org/), how [multiple dispatch works](https://www.youtube.com/live/kc9HwsxE1OY), and [examples of multiple dispatch](https://www.matecdev.com/posts/julia-multiple-dispatch.html). 
 
-You can see examples of this in the existing code, both in the model/simulation setup, as well as the scientific aspects of the code. For example, there are multiple types of boundary walls the user can choose from. A new user could easily add a new boundary type within their own code by declaring their new boundary a subtype of `AbstractBoundary` and implementing the two needed functions: `_update_boundary!(boundary::AbstractBoundary, Δt::Int)` and `_periodic_compat(boundary1::AbstractBoundary, boundary2::AbstractBoundary)`. To understand how multiple dispatch is set up within this code, please read through the [abstract_domains.jl](https://github.com/Caltech-OCTO/Subzero.jl/blob/main/src/simulation_components/domain_components/abstract_domains.jl) file. 
+You can see examples of this in the existing code, both in the model/simulation setup, as well as the scientific aspects of the code. For example, there are multiple types of boundary walls the user can choose from. A new user could easily add a new boundary type within their own code by declaring their new boundary a subtype of `AbstractBoundary` and implementing the two needed functions: `_update_boundary!(boundary::AbstractBoundary, Δt::Int)` and `_periodic_compat(boundary1::AbstractBoundary, boundary2::AbstractBoundary)`. To understand how multiple dispatch is set up within this code, please read through the [abstract_domains.jl](https://github.com/Subzero-Sea-Ice/Subzero.jl/blob/main/src/simulation_components/domain_components/abstract_domains.jl) file. 
 
-Another example is the ability of the user to create and select new fracture criteria to determine when a floe within the simulation will break. This can be seen in the [fractures.jl](https://github.com/Caltech-OCTO/Subzero.jl/blob/main/src/physical_processes/fractures.jl) file. Within the file, there are three subtypes of `AbstractFractureCriteria`, which each have a different method of the `update_criteria!` function.
+Another example is the ability of the user to create and select new fracture criteria to determine when a floe within the simulation will break. This can be seen in the [fractures.jl](https://github.com/Subzero-Sea-Ice/Subzero.jl/blob/main/src/physical_processes/fractures.jl) file. Within the file, there are three subtypes of `AbstractFractureCriteria`, which each have a different method of the `update_criteria!` function.
 
 With these examples in mind, if you are a developer are working with the code, and realize there is a functionality that the code doesn’t currently have, try to make it as modular as possible! If you want to add a new science functionality, this could mean adding a subtype to an existing abstract type and adding the needed methods for required functions (e.g. new fracture criteria) However, this could also mean adding in a new modular component to the code. The most important thing to remember is that if you start adding functionality to the code and start adding an if/else statement or some type of boolean flag, you should probably be using multiple dispatch instead! Make things modular where you can. 
 

@@ -123,9 +123,11 @@ abstract type AbstractBoundary{
 
 # Helper function for boundary pretty printing for boundaries with `poly` and `val` fields
 function show_boundary_poly_val_strings(boundary::AbstractBoundary; digits)
-    points = join(Set(GI.getpoint(boundary.poly))|>collect, ", ")
+    pts = collect(Set(GI.getpoint(boundary.poly)))
+    sort!(pts; by = p -> (GI.x(p), GI.y(p)))   # deterministic order
+    points = join(pts, ", ")
     points_summary = "polygon points are defined by the following set: $points"
-    val_summary = "val is $(round(boundary.val; digits))"
+    val_summary = "val is $(round(boundary.val; digits=digits))"
     return points_summary, val_summary
 end
 

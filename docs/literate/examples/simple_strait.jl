@@ -38,10 +38,10 @@ eboundary = CollisionBoundary(East; grid)
 wboundary = CollisionBoundary(West; grid)
 
 island1 = [[[6e4, 4e4], [6e4, 4.5e4], [6.5e4, 4.5e4], [6.5e4, 4e4], [6e4, 4e4]]]
-island2 = [[[4e4, 6e4], [4e4, 6.5e4], [4.5e4, 6.5e4], [4.5e4, 6e4], [4e4, 6e4]]]
+island2 = [[[2e4, 6e4], [4e4, 6.5e4], [4.5e4, 6.5e4], [4.5e4, 6e4], [2e4, 6e4]]]
 topo1 = [[[0, 0.0], [0, 1e5], [2e4, 1e5], [3e4, 5e4], [2e4, 0], [0.0, 0.0]]]
 topo2 = [[[8e4, 0], [7e4, 5e4], [8e4, 1e5], [1e5, 1e5], [1e5, 0], [8e4, 0]]]
-topo_arr = initialize_topography_field(FT; coords = [island1, topo1, topo2])
+topo_arr = initialize_topography_field(FT; coords = [island1, island2, topo1, topo2])
 
 domain = Domain(; north = nboundary, south = sboundary, east = eboundary, west = wboundary, topography = topo_arr)
 
@@ -53,7 +53,7 @@ atmos = Atmos(; grid, u = 0.0, v = 0.0, temp = 0.0)
 
 # ## Floe Creation
 floe_settings = FloeSettings(
-    subfloe_point_generator = SubGridPointsGenerator(; grid, npoint_per_cell = 2),
+    subfloe_point_generator = MonteCarloPointsGenerator(; npoints = 100, ntries = 10, err = 0.1),
     stress_calculator = DecayAreaScaledCalculator(),
 )
 floe_generator = VoronoiTesselationFieldGenerator(; nfloes = 75, concentrations = [0.7], hmean, Δh)
@@ -78,33 +78,28 @@ fracture_settings = FractureSettings(;
 # ### Ridge Raft Settings
 ridgeraft_settings = RidgeRaftSettings(;
     ridge_raft_on = true,
-    Δt = 150
+    Δt = 10
 )
 
 # ## Output Creation
+nout = 50
 dir = "simple_strait"
 init_fn, floe_fn = "simple_strait_init_state.jld2", "simple_strait_floes.jld2"
 initwriter = InitialStateOutputWriter(dir = dir, filename = init_fn, overwrite = true)
-floewriter = FloeOutputWriter(500, dir = dir, filename = floe_fn, overwrite = true)
+floewriter = FloeOutputWriter(nout, dir = dir, filename = floe_fn, overwrite = true)
 writers = OutputWriters(initwriter, floewriter)
 
 # ## Simulation Creation
 
-simulation = Simulation(; model, consts,
-    #writers,
-    Δt, nΔt,
+simulation = Simulation(; model, consts, writers, Δt, nΔt,
     floe_settings, fracture_settings, ridgeraft_settings,
     verbose = true, rng = Xoshiro(1))
     
 # ## Running the Simulation
-# using ProfileView
-#@profview run!(simulation)
-start = time_ns()
-run!(simulation)
-print((time_ns() - start)/10e9)
+@time run!(simulation)
 
 # ## Plotting the Simulation
-#plot_sim(joinpath(dir, floe_fn), joinpath(dir, init_fn), Δt, joinpath(dir, "simple_strait.mp4"))
+plot_sim(joinpath(dir, floe_fn), joinpath(dir, init_fn), Δt, joinpath(dir, "simple_strait.mp4"))
 
 # ```@raw html
 # <video width="auto" controls autoplay loop>

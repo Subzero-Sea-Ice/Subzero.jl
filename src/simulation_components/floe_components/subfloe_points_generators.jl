@@ -211,7 +211,7 @@ julia> grid = RegRectilinearGrid(; x0 = 0.0, xf = 5e5, y0 = 0.0, yf = 5e5, Nx = 
 
 julia> SubGridPointsGenerator(Float32; grid, npoint_per_cell = 10)
 SubGridPointsGenerator{Float32}(707.1068f0)
-````
+```
 """
 function SubGridPointsGenerator(::Type{FT} = Float64;
     Δg = nothing, grid = nothing, npoint_per_cell = nothing,

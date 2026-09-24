@@ -74,7 +74,7 @@ writers = OutputWriters(initwriter, floewriter)
 simulation = Simulation(; model, consts, writers, Δt, nΔt, floe_settings, verbose = true, rng = Xoshiro(1))
 
 # ## Running the Simulation
-run!(simulation)
+@time run!(simulation)
 
 # ## Plotting the Simulation
 plot_sim(joinpath(dir, floe_fn), joinpath(dir, init_fn), Δt, joinpath(dir, "shear_flow.mp4"))
