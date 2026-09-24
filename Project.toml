@@ -1,6 +1,6 @@
 name = "Subzero"
 uuid = "21f28ab0-737f-4f26-8d5f-51b5b12fb6de"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Skylar Gering"]
 
 [deps]
