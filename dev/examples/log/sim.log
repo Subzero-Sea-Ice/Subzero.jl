@@ -2,4 +2,4 @@ WARN  failed to run `@example` block in docs/src/examples/simple_strait.md:142-1
 ```@example simple_strait
 @time run!(simulation)
 ```
- [2026/09/19 15:29:44.889] --> /home/runner/.julia/packages/Documenter/13nbQ/src/utilities/utilities.jl:49
+ [2026/09/24 21:20:29.119] --> /home/runner/.julia/packages/Documenter/13nbQ/src/utilities/utilities.jl:49
