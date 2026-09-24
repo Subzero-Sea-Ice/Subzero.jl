@@ -1,0 +1,5 @@
+WARN  failed to run `@example` block in docs/src/examples/simple_strait.md:142-144
+```@example simple_strait
+@time run!(simulation)
+```
+ [2026/09/24 21:38:09.757] --> /home/runner/.julia/packages/Documenter/13nbQ/src/utilities/utilities.jl:49

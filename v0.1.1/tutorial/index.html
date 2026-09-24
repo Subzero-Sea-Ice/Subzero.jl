@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Tutorial · Subzero.jl</title><meta name="title" content="Tutorial · Subzero.jl"/><meta property="og:title" content="Tutorial · Subzero.jl"/><meta property="twitter:title" content="Tutorial · Subzero.jl"/><meta name="description" content="Documentation for Subzero.jl."/><meta property="og:description" content="Documentation for Subzero.jl."/><meta property="twitter:description" content="Documentation for Subzero.jl."/><meta property="og:url" content="https://Subzero-Sea-Ice.github.io/SubzeroDocumentation/stable/tutorial/"/><meta property="twitter:url" content="https://Subzero-Sea-Ice.github.io/SubzeroDocumentation/stable/tutorial/"/><link rel="canonical" href="https://Subzero-Sea-Ice.github.io/SubzeroDocumentation/stable/tutorial/"/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.63.2/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">Subzero.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li class="is-active"><a class="tocitem" href>Tutorial</a><ul class="internal"><li><a class="tocitem" href="#Core-ideas-behind-Subzero.jl-simulations"><span>Core ideas behind Subzero.jl simulations</span></a></li><li><a class="tocitem" href="#Creating-a-Grid"><span>Creating a Grid</span></a></li><li><a class="tocitem" href="#Creating-Boundaries"><span>Creating Boundaries</span></a></li><li><a class="tocitem" href="#Creating-Topography"><span>Creating Topography</span></a></li><li><a class="tocitem" href="#Creating-a-Domian"><span>Creating a Domian</span></a></li><li><a class="tocitem" href="#Creating-an-Ocean"><span>Creating an Ocean</span></a></li><li><a class="tocitem" href="#Creating-an-Atmosphere"><span>Creating an Atmosphere</span></a></li><li><a class="tocitem" href="#Creating-the-Floes"><span>Creating the Floes</span></a></li><li><a class="tocitem" href="#Creating-a-Model"><span>Creating a Model</span></a></li><li><a class="tocitem" href="#Constants"><span>Constants</span></a></li><li><a class="tocitem" href="#Settings"><span>Settings</span></a></li><li><a class="tocitem" href="#Output-Writers"><span>Output Writers</span></a></li><li><a class="tocitem" href="#Create-a-Simulation"><span>Create a Simulation</span></a></li><li><a class="tocitem" href="#Running-the-Simulation"><span>Running the Simulation</span></a></li><li><a class="tocitem" href="#Plotting-the-Simulation"><span>Plotting the Simulation</span></a></li><li><a class="tocitem" href="#Reproducibility"><span>Reproducibility</span></a></li></ul></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../examples/shear_flow/">Shear Flow with Periodic Boundaries</a></li><li><a class="tocitem" href="../examples/simple_strait/">Simple Strait Simulation</a></li><li><a class="tocitem" href="../examples/forcing_contained_floes/">Floes Bounded by Ocean Currents</a></li><li><a class="tocitem" href="../examples/moving_bounds/">Moving Boundaries</a></li><li><a class="tocitem" href="../examples/restart_sim/">Restart Simulation</a></li></ul></li><li><a class="tocitem" href="../api/">API Reference</a></li><li><a class="tocitem" href="../contribute/">Contributing to Subzero</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Tutorial</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Tutorial</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/Subzero-Sea-Ice/Subzero.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/Subzero-Sea-Ice/Subzero.jl/blob/main/docs/literate/tutorial.jl" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Tutorial"><a class="docs-heading-anchor" href="#Tutorial">Tutorial</a><a id="Tutorial-1"></a><a class="docs-heading-anchor-permalink" href="#Tutorial" title="Permalink"></a></h1><p>This is the user tutorial for Subzero.jl. It will walk you through the typical workflow of buidling a discrete-element model (DEM) with Subzero.jl as well as running and plotting your simulatuion.</p><h2 id="Core-ideas-behind-Subzero.jl-simulations"><a class="docs-heading-anchor" href="#Core-ideas-behind-Subzero.jl-simulations">Core ideas behind Subzero.jl simulations</a><a id="Core-ideas-behind-Subzero.jl-simulations-1"></a><a class="docs-heading-anchor-permalink" href="#Core-ideas-behind-Subzero.jl-simulations" title="Permalink"></a></h2><p>The very first step of running a Subzero simulation is to bring the package into scope.</p><pre><code class="language-julia hljs">using Subzero  # bring Subzero into scope
+using CairoMakie, GeoInterfaceMakie # bring plotting packages into scope
+import GeoInterface as GI
+using Random, Logging</code></pre><h2 id="Creating-a-Grid"><a class="docs-heading-anchor" href="#Creating-a-Grid">Creating a Grid</a><a id="Creating-a-Grid-1"></a><a class="docs-heading-anchor-permalink" href="#Creating-a-Grid" title="Permalink"></a></h2><p>Each Subzero model requires a grid object. The grid object defines the grid for the ocean and atmosphere. Ocean and atmosphere vectors (like <code>u</code> and <code>v</code> velocities) and tracers (like temperature) are recorded on these grid points and grid lines. The grid points are then used for interpolation for coupling between the ice, ocean, and atmosphere.</p><p>All Subzero grid objects are concrete types of the abstract type <a href="../api/#Subzero.AbstractRectilinearGrid"><code>AbstractRectilinearGrid</code></a>. Right now, all grid objects must be Rectilinear. Currently the only implemented concrete type is a <a href="../api/#Subzero.RegRectilinearGrid"><code>RegRectilinearGrid</code></a>. If you are interested in implementing another type of grid, see the <a href="&quot;devdocs.md&quot;">developer documentation</a>.</p><p>Here, we will go ahead and create an instance of <code>RegRectilinearGrid</code>. We need to specify the grid endpoints and either the number of grid cells in both directions, or the size of the grid cells. Here we will specity the number of grid cells in the x-direction, <code>Nx</code>, and in the y-direction, <code>Ny</code>.</p><pre><code class="language-julia hljs">grid = RegRectilinearGrid(; x0 = -1e5, xf = 1e5, y0 = 0.0, yf = 1e5, Nx = 20, Ny = 10)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">RegRectilinearGrid{Float64}
+  ⊢x extent (-100000.0 to 100000.0) with 20 grid cells of size 10000.0 m
+  ∟y extent (0.0 to 100000.0) with 10 grid cells of size 10000.0 m</code></pre><p>We plot a dashed box around the grid so that we can see the that the grid matches the extent given. We also place tick-marks at the desired grid cell lengths. Finally, set the plot&#39;s aspect ration to <code>2</code> as the x-extent is two-times larger than the y-extent.</p><pre><code class="language-julia hljs">fig = Figure();
+ax1 = Axis(fig[1, 1];  # set up axis tick marks to match grid cells
+    title = &quot;Grid Setup&quot;,
+    xticks = range(grid.x0, grid.xf, 5), xminorticks = IntervalsBetween(5),
+    xminorticksvisible = true, xminorgridvisible = true, xticklabelrotation = pi/4,
+    yticks = range(grid.y0, grid.yf, 3), yminorticks = IntervalsBetween(5),
+    yminorticksvisible = true, yminorgridvisible = true,
+)
+lines!(  # plot boundary of grid with a dashed line
+    [grid.x0, grid.x0, grid.xf, grid.xf, grid.x0],  # point x-values
+    [grid.y0, grid.yf, grid.yf, grid.y0, grid.y0];  # point y-values
+    linestyle = :dash, linewidth = 3.0)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Makie.Lines{Tuple{Vector{GeometryBasics.Point{2, Float64}}}}</code></pre><p>Resize grid to layout</p><pre><code class="language-julia hljs">colsize!(fig.layout, 1, Aspect(1, 2))
+resize_to_layout!(fig)
+fig  # display the figure</code></pre><img src="a6ff28ff.png" alt="Example block output"/><h2 id="Creating-Boundaries"><a class="docs-heading-anchor" href="#Creating-Boundaries">Creating Boundaries</a><a id="Creating-Boundaries-1"></a><a class="docs-heading-anchor-permalink" href="#Creating-Boundaries" title="Permalink"></a></h2><p>Next, each Subzero.jl model needs a <code>Domain</code>. A <code>Domain</code> defines the region of the grid that the ice floes are allowed in, what happens to them when they reach the boundaries of that region, and if there is any topography in the model, along with the ice, in that region.</p><p>Similarly to the <code>grid</code> above, the <code>Domain</code> will be rectilinear, defined by four boundaries, one for each of the cardinal direction. You will be able to pass each of the cardinal directions (<a href="../api/#Subzero.North"><code>North</code></a>, <a href="../api/#Subzero.South"><code>South</code></a>, <a href="../api/#Subzero.East"><code>East</code></a>, and <a href="../api/#Subzero.West"><code>West</code></a>), defined as types by Subzero, to the boundary constructors. Each boundary can have different behavior, allowing the user to create a wide variety of domain behavior. Right now, four types of <code>AbstractBoundaries</code> are implemented: <a href="../api/#Subzero.OpenBoundary"><code>OpenBoundary</code></a>, <a href="../api/#Subzero.PeriodicBoundary"><code>PeriodicBoundary</code></a>, <a href="../api/#Subzero.CollisionBoundary"><code>CollisionBoundary</code></a>, and <a href="../api/#Subzero.MovingBoundary"><code>MovingBoundary</code></a>.</p><p>In this example, we will use two <code>CollisionBoundary</code> walls and two <code>PeriodicBoundary</code> walls to create a channel that the ice can infinitly flow through, from the east back to the west. In the north and the south, the ice will collide with the boundaries, as if there was shoreline preventing it from leaving the channel.</p><p>We will use the grid we made above to define the boundaries so that they exactly border the grid.</p><pre><code class="language-julia hljs">north_bound = CollisionBoundary(North; grid)
+south_bound = CollisionBoundary(South; grid)
+east_bound = PeriodicBoundary(East; grid)
+west_bound = PeriodicBoundary(West; grid)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">PeriodicBoundary{West, Float64}
+  ⊢polygon points are defined by the following set: (-200000.0, -50000.0), (-200000.0, 150000.0), (-100000.0, -50000.0), (-100000.0, 150000.0)
+  ∟val is -100000.0</code></pre><p>If we plot the polygons that are created within each boundary object, we can see that they border the grid. These polygons are how we well when the ice floes are interacting with each of the boundaries. We can also see that the boundaries overlap in the corners to ensure there is a solid border around the grid. The <code>PeriodicBoundary</code> elements are in purple while the <code>CollisionBoundary</code> elements are in teal.</p><pre><code class="language-julia hljs">poly!(   # plot each of the boundaries with a 50% transparent color so we can see the overlap
+    [north_bound.poly, south_bound.poly, east_bound.poly, west_bound.poly];
+    color = [(:purple, 0.5), (:purple, 0.5), (:teal, 0.5), (:teal, 0.5)],
+)
+ax1.title = &quot;Grid and Boundary Setup&quot;
+fig  # display the figure</code></pre><img src="020708c1.png" alt="Example block output"/><h2 id="Creating-Topography"><a class="docs-heading-anchor" href="#Creating-Topography">Creating Topography</a><a id="Creating-Topography-1"></a><a class="docs-heading-anchor-permalink" href="#Creating-Topography" title="Permalink"></a></h2><p>We then have the option to add in a <a href="../api/#Subzero.TopographyField"><code>TopographyField</code></a>, which is a collection of <a href="../api/#Subzero.TopographyElement"><code>TopographyElement</code></a>s. If we want to add in topography field, we can create one using the <a href="../api/#Subzero.initialize_topography_field"><code>initialize_topography_field</code></a> function. Here we will create two islands in the channel. For simplcity, both will be triangles. I create the polygons that define the shape of each island using <a href="https://github.com/JuliaGeo/GeoInterface.jl"><code>GeoInterface</code></a> and defining the points with tuples:</p><pre><code class="language-julia hljs">island1 = GI.Polygon([[(-6e4, 7.5e4), (-4e4, 5e4), (-2.5e4, 7e4), (-6e4, 7.5e4)]])
+island2 = GI.Polygon([[(5e4, 2.5e4), (5e4, 5.5e4), (7.5e4, 3e4), (5e4, 2.5e4)]])
+topo_list = [island1, island2]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">2-element Vector{GeoInterface.Wrappers.Polygon{false, false, Vector{GeoInterface.Wrappers.LinearRing{false, false, Vector{Tuple{Float64, Float64}}, Nothing, Nothing}}, Nothing, Nothing}}:
+ GeoInterface.Wrappers.Polygon{false, false}([GeoInterface.Wrappers.LinearRing([(-60000.0, 75000.0), … (2) … , (-60000.0, 75000.0)])])
+ GeoInterface.Wrappers.Polygon{false, false}([GeoInterface.Wrappers.LinearRing([(50000.0, 25000.0), … (2) … , (50000.0, 25000.0)])])</code></pre><p>We can then pass these to <code>initialize_topography_field</code> with the <code>polys</code> keyword. We could also have defined them just by their coordinates and passed in the coordiantes by the <code>coords</code> keyword.</p><pre><code class="language-julia hljs">topo_field = initialize_topography_field(; polys = topo_list)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">2-element TopographyField{Float64} list:
+ TopographyElement{Float64}
+  ⊢centroid is (-41666.66667, 65000.0) in meters
+  ∟maximum radius is 20883.27348 meters
+ TopographyElement{Float64}
+  ⊢centroid is (58333.33333, 36666.66667) in meters
+  ∟maximum radius is 20138.40996 meters</code></pre><p>We can now plot the topography within the domain.</p><pre><code class="language-julia hljs">topo_color = RGBf(115/255, 93/255, 55/255)  # brown color for topography
+poly!(topo_field.poly; color = topo_color) # plot the topography
+ax1.title = &quot;Grid and Domain Setup&quot;
+fig  # display the figure</code></pre><img src="c7ee5e7b.png" alt="Example block output"/><h2 id="Creating-a-Domian"><a class="docs-heading-anchor" href="#Creating-a-Domian">Creating a Domian</a><a id="Creating-a-Domian-1"></a><a class="docs-heading-anchor-permalink" href="#Creating-a-Domian" title="Permalink"></a></h2><p>We now have all of the pieces needed to create a <a href="../api/#Subzero.Domain"><code>Domain</code></a>. We will combine the four (4) boundaries we created, and the topography, into one <code>Domain</code> object. The collection of boundaries and topography define where the floes can and cannot go in the simulation and add in boundary behavior.We can do that as follows:</p><pre><code class="language-julia hljs">domain = Domain(; north = north_bound, south = south_bound, east = east_bound, west = west_bound, topography = topo_field)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Domain
+  ⊢Northern boundary of type CollisionBoundary{North, Float64}
+  ⊢Southern boundary of type CollisionBoundary{South, Float64}
+  ⊢Eastern boundary of type PeriodicBoundary{East, Float64}
+  ⊢Western boundary of type PeriodicBoundary{West, Float64}
+  ∟2-element TopograpahyElement{Float64} list</code></pre><div class="admonition is-info" id="Note-9c7f73042717db51"><header class="admonition-header">Note<a class="admonition-anchor" href="#Note-9c7f73042717db51" title="Permalink"></a></header><div class="admonition-body"><p>We could have skipped adding the topography to the domain. That is an optional   keyword and an empty <code>topography</code> field will be automatically created if the user does not   provide one.</p></div></div><p>At this point, we have already plotted all of the <code>Domain</code> objects, so we will move in to adding environmental forcing from the ocean and the atmosphere.</p><h2 id="Creating-an-Ocean"><a class="docs-heading-anchor" href="#Creating-an-Ocean">Creating an Ocean</a><a id="Creating-an-Ocean-1"></a><a class="docs-heading-anchor-permalink" href="#Creating-an-Ocean" title="Permalink"></a></h2><p>We can provide a ocean velocity and temperature fields to drive the floes within the simulatation. By default, this is a static vector field and does not change throughout the simulation. However, if you are interested in updating the code to make it easier to update the ocean/atmosphere fields throughout the simulation please see issue <a href="https://github.com/Subzero-Sea-Ice/Subzero.jl/issues/111">#111</a>.</p><p>You can either provide a single constant value for each of the fields (and then also provide the <code>grid</code> as input) or provide a user-defined field. If providing a user-defined field, the field should be of size <code>(grid.Nx + 1, grid.Ny + 1)</code>. The rows represent velocities at the <code>x</code>-values of the grid (from <code>x0</code> to <code>xf</code>), while the columns represent velocities at the the <code>y</code>-values of the grid (from <code>y0</code> to <code>yf</code>). This makes it easy to index into the grid for values at point <code>(x, y)</code>. If <code>x</code> is the <code>i</code>th x-value between <code>x0</code> to <code>xf</code> and <code>y</code> is the <code>j</code>the <code>j</code>th y-value between <code>y0</code> to <code>yf</code> then you simply retrive the field values at index <code>[i, j]</code>. This does mean that the fields provided don&#39;t &quot;look&quot; like the grid when output directly in the terminal and would need to be transposed instead.</p><p>Here we will then define a <code>u</code>-velocity field that will impose a shear flow on the floes so that ocean is flowing faster in the middle of the y-values (at 0.25 m/s) and then symetrically slowing to 0m/s at the edges where the <code>CollisionBoundary</code> elements are. We will then provide a constant <code>temp</code>erature of -1 C and a constant <code>v</code>-velocity of 0m/s.</p><pre><code class="language-julia hljs">function shear_flow_velocities(Nx, Ny, min_u, max_u)
+    u_vals = fill(min_u, Nx, Ny)  # fill in field with min value
+    increasing = true  # velocity values start by going up
+    Δu = (max_u - min_u) / fld(Ny, 2)  # must reach max_u in the middle of the field
+    curr_u = min_u + Δu  # first column already set to min_u
+    for (i, col) in enumerate(eachcol(u_vals))
+        (i == 1 || i == Ny) &amp;&amp; continue  # edges already set to 0m/s
+        col .= curr_u
+        if increasing &amp;&amp; curr_u == max_u  # reach max value and start decreasing velocity
+            increasing = false
+        end
+        if increasing  # update velocity for next column
+            curr_u += Δu
+        else
+            curr_u -= Δu
+        end
+    end
+    return u_vals
+end
+
+u_vals = shear_flow_velocities(grid.Nx + 1, grid.Ny + 1, 0.0, 0.35)
+ocean = Ocean(; u = u_vals, v = 0.0, temp = -1.0, grid)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Ocean{Float64}
+  ⊢Vector fields of dimension (21, 11)
+  ⊢Tracer fields of dimension (21, 11)
+  ⊢Average u-velocity of: 0.15909 m/s
+  ⊢Average v-velocity of: 0.0 m/s
+  ∟Average temperature of: -1.0 C</code></pre><p>We can now plot our ocean velocity values on an axis below our <code>grid</code> and <code>domain</code> setup.</p><pre><code class="language-julia hljs">ax2 = Axis(fig[2, 1]; title = &quot;Ocean U-Velocities [m/s]&quot;, xticklabelrotation = pi/4)
+xs = grid.x0:grid.Δx:grid.xf
+ys = grid.y0:grid.Δy:grid.yf
+u_hm = heatmap!(ax2, xs, ys, ocean.u)
+Colorbar(fig[2, end+1], u_hm)
+resize_to_layout!(fig)
+fig</code></pre><img src="f4110463.png" alt="Example block output"/><div class="admonition is-info" id="Note-7fad6839aaecad82"><header class="admonition-header">Note<a class="admonition-anchor" href="#Note-7fad6839aaecad82" title="Permalink"></a></header><div class="admonition-body"><p>The <a href="https://docs.makie.org/v0.21/reference/plots/heatmap"><code>heatmap</code></a>   already transposes the matrix input, assuming, as we do, that you index into the   matrix with x-values for rows and y-values for columns. If you want to see your   input as it would look on the grid, rather than manually transposing, just use the   <code>heatmap</code> function.</p></div></div><p>Since the other ocean fields are constant values for each index, we won&#39;t plot these.</p><h2 id="Creating-an-Atmosphere"><a class="docs-heading-anchor" href="#Creating-an-Atmosphere">Creating an Atmosphere</a><a id="Creating-an-Atmosphere-1"></a><a class="docs-heading-anchor-permalink" href="#Creating-an-Atmosphere" title="Permalink"></a></h2><p>The atmosphere works almost iddntically to the <code>Ocean</code>. It also requires inputs for <code>u</code>-velocities, <code>v</code>-velocities, and <code>temp</code>erature and these fields are considered static throughtout the simulation by default. Again, if you are interested in changing this, please see issue <a href="https://github.com/Subzero-Sea-Ice/Subzero.jl/issues/111">#111</a>.</p><p>Just like with the <code>Ocean</code> constructor, you can either provide the <code>Atmos</code> constructor a single constant value for each of the fields (and then also provide the grid as input) or provide a user-defined field.</p><p>Here, we will just provide constant values of 5m/s for the <code>u</code>-velocities, 0.0m/s for the <code>v</code>-velocities and 0 C for the <code>temp</code>erature. If you are intersted in providing non-constant fields, see the <code>Ocean</code> example above.</p><pre><code class="language-julia hljs">atmos = Atmos(; grid, u = 5.0, v = 0.0, temp = -2.0)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Atmos{Float64}
+  ⊢Vector fields of dimension (21, 11)
+  ⊢Tracer fields of dimension (21, 11)
+  ⊢Average u-velocity of: 5.0 m/s
+  ⊢Average v-velocity of: 0.0 m/s
+  ∟Average temperature of: -2.0 C</code></pre><p>Again since all of the fields are constant, we won&#39;t plot them, but you can, using the <code>heatmap</code> function as shown above.</p><h2 id="Creating-the-Floes"><a class="docs-heading-anchor" href="#Creating-the-Floes">Creating the Floes</a><a id="Creating-the-Floes-1"></a><a class="docs-heading-anchor-permalink" href="#Creating-the-Floes" title="Permalink"></a></h2><p>Within the simulation, there is a floe field, which is a list of <a href="../api/#Subzero.Floe"><code>Floe</code></a> structs. For more information on these structs, see <a href="../api/#Subzero.Floe"><code>Floe</code></a> documentation. However, it is <strong>not</strong> recommended for users to create individual floes. Rather, users should use the <code>initialize_floe_field</code> function to create a field of floes to start the simulation. Individual floes should only be created by developers when adding new simulation functionality.</p><h3 id="Creating-a-AbstractFloeFieldGenerator"><a class="docs-heading-anchor" href="#Creating-a-AbstractFloeFieldGenerator">Creating a <code>AbstractFloeFieldGenerator</code></a><a id="Creating-a-AbstractFloeFieldGenerator-1"></a><a class="docs-heading-anchor-permalink" href="#Creating-a-AbstractFloeFieldGenerator" title="Permalink"></a></h3><p>To use <a href="../api/#Subzero.initialize_floe_field"><code>initialize_floe_field</code></a>, you first need to create a concrete subtype of <a href="../api/#Subzero.AbstractFloeFieldGenerator"><code>AbstractFloeFieldGenerator</code></a>. Right now, there are two implemented. The first is the <a href="../api/#Subzero.CoordinateListFieldGenerator"><code>CoordinateListFieldGenerator</code></a>. This generator takes in a list of floe coordinates (along with other arguments) to create a list of floes. The second is the <a href="../api/#Subzero.VoronoiTesselationFieldGenerator"><code>VoronoiTesselationFieldGenerator</code></a>. This generator tesselates the domain with floes and then randomly keeps various floes to match the user-provided floe concentration.</p><p>Here we will use the <code>VoronoiTesselationFieldGenerator</code> to generate a floe field. This generator object requires an input of the number of floes to be created (<code>nfloes</code>), a vector/matrix of concentrations to split the field into (<code>concentrations</code>), a mean height for the generated floe field (<code>hmean</code>), and a maximum range of heights (<code>Δh</code>) such that all floes have a height between <code>hmean - Δh</code> and <code>hmean + Δh</code>.</p><pre><code class="language-julia hljs">nfloes = 30
+concentrations = [0.5 0.0]  # the left half of the domain is 85% packed and the right has no floes
+hmean, Δh = 1.0, 0.25
+generator = VoronoiTesselationFieldGenerator(; nfloes, concentrations, hmean, Δh)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">VoronoiTesselationFieldGenerator:
+  ⊢Requested number of floes: 30
+  ⊢Requested concentrations [0.5 0.0]
+  ⊢Mean height: 1.0
+  ∟Height range: 0.25</code></pre><h3 id="Creating-FloeSettings"><a class="docs-heading-anchor" href="#Creating-FloeSettings">Creating <code>FloeSettings</code></a><a id="Creating-FloeSettings-1"></a><a class="docs-heading-anchor-permalink" href="#Creating-FloeSettings" title="Permalink"></a></h3><p><a href="../api/#Subzero.FloeSettings"><code>FloeSettings</code></a> can be used to set things like the minimum allowed floe area, the maximum hieght, the density of ice, and the <code>subfloe_point_generator</code>, which determines how to couple between the ice and ocean/atmosphere. There are also other fields within the <a href="../api/#Subzero.FloeSettings"><code>FloeSettings</code></a>!! It is important to understand all of its fields.</p><div class="admonition is-info" id="Note-927235a78753cdbe"><header class="admonition-header">Note<a class="admonition-anchor" href="#Note-927235a78753cdbe" title="Permalink"></a></header><div class="admonition-body"><p>For consistency, <code>FloeSettings</code> also must be passed into the <a href="../api/#Subzero.Simulation"><code>Simulation</code></a> struct.</p></div></div><p>Here we will just create a <code>FloeSettings</code> struct with just a few of the keyword options.</p><pre><code class="language-julia hljs">floe_settings = FloeSettings(;
+  min_floe_area = 1e5,
+  max_floe_height = 5,
+  subfloe_point_generator = SubGridPointsGenerator(; grid, npoint_per_cell = 2),
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">FloeSettings{Float64, SubGridPointsGenerator{Float64}, DecayAreaScaledCalculator{Float64}}
+  ⊢ ρi = 920.0
+  ⊢ min_floe_area = 100000.0
+  ⊢ min_floe_height = 0.1
+  ⊢ max_floe_height = 5.0
+  ⊢ min_aspect_ratio = 0.05
+  ⊢ maximum_ξ = 1.0e-5
+  ⊢ subfloe_point_generator = SubGridPointsGenerator{Float64}(3535.5339059327375)
+  ⊢ stress_calculator = DecayAreaScaledCalculator{Float64}(0.2, 0.0)
+</code></pre><h3 id="Calling-initialize_floe_field"><a class="docs-heading-anchor" href="#Calling-initialize_floe_field">Calling <code>initialize_floe_field</code></a><a id="Calling-initialize_floe_field-1"></a><a class="docs-heading-anchor-permalink" href="#Calling-initialize_floe_field" title="Permalink"></a></h3><p>This generator is then the first keyword argument to the <a href="../api/#Subzero.initialize_floe_field"><code>initialize_floe_field</code></a> function. The other required keyword is the simulation domain. After that, we have optional keywords, including but not limited to <code>supress_warnings</code>, <code>rng</code>, and <code>floe_settings</code>. <code>supress_warnings</code> is a boolean that can turn off checks to ensure that all floe&#39;s have at least the minimum set area (see <a href="../api/#Subzero.FloeSettings"><code>FloeSettings</code></a> below) and that all floe centroids are within the <code>domain</code>. <code>rng</code> is a random number generator, possibly seeded for reproducability, used to generate floe heights and other random choices, like which floes to keep/remove to meet the requested concentrations.</p><pre><code class="language-julia hljs">floes = initialize_floe_field(; generator, domain, floe_settings, rng = Xoshiro(2))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">30-element StructArray(::Vector{GeoInterface.Wrappers.Polygon{false, false, Vector{GeoInterface.Wrappers.LinearRing{false, false, Vector{Tuple{Float64, Float64}}, Nothing, Nothing}}, Nothing, Nothing}}, ::Vector{Vector{Float64}}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Vector{Float64}}, ::Vector{Vector{Float64}}, ::Vector{Vector{Float64}}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Subzero.Status}, ::Vector{Int64}, ::Vector{Int64}, ::Vector{Vector{Int64}}, ::Vector{Vector{Int64}}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Matrix{Float64}}, ::Vector{Float64}, ::Vector{Matrix{Float64}}, ::Vector{Int64}, ::Vector{Matrix{Float64}}, ::Vector{Matrix{Float64}}, ::Vector{Matrix{Float64}}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}) with eltype Floe{Float64}:
+ Floe{Float64}
+  ⊢Centroid of (-28433.44964, 77614.73948) m
+  ⊢Height of 0.88413 m
+  ⊢Area of 1.2214077840437e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-82855.20431, 77664.77353) m
+  ⊢Height of 1.17143 m
+  ⊢Area of 3.3875802991949e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-94312.95697, 61176.02829) m
+  ⊢Height of 1.19787 m
+  ⊢Area of 1.2650748762842e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-93455.03284, 31969.08023) m
+  ⊢Height of 0.78511 m
+  ⊢Area of 1.238916050177e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-3853.90218, 50675.00378) m
+  ⊢Height of 1.1966 m
+  ⊢Area of 1.9300004160695e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-83440.61905, 17906.20091) m
+  ⊢Height of 0.85615 m
+  ⊢Area of 1.0198213286204e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-86047.12452, 55100.88707) m
+  ⊢Height of 1.23663 m
+  ⊢Area of 1.2945560385123e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-58258.08622, 53949.454) m
+  ⊢Height of 1.10879 m
+  ⊢Area of 2.3123725622522e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-69172.18558, 63972.41165) m
+  ⊢Height of 1.1725 m
+  ⊢Area of 2.3287467169655e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-34916.5513, 97462.99567) m
+  ⊢Height of 0.885 m
+  ⊢Area of 4.179013170122e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ ⋮
+ Floe{Float64}
+  ⊢Centroid of (-41149.62231, 81092.42556) m
+  ⊢Height of 0.84236 m
+  ⊢Area of 1.6419499065856e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-43658.94363, 97518.74224) m
+  ⊢Height of 1.01154 m
+  ⊢Area of 5.534831978365e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-74896.08451, 44864.82045) m
+  ⊢Height of 1.19886 m
+  ⊢Area of 2.1589697496724e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-10542.08342, 73406.16081) m
+  ⊢Height of 1.0371 m
+  ⊢Area of 2.5681233071673e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-38600.93795, 74022.05197) m
+  ⊢Height of 1.11642 m
+  ⊢Area of 4.893587044457e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-79969.66576, 62991.93681) m
+  ⊢Height of 0.97673 m
+  ⊢Area of 9.959791056972e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-40174.60903, 29824.87499) m
+  ⊢Height of 0.88991 m
+  ⊢Area of 2.3522567210968e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-64275.67525, 7300.38609) m
+  ⊢Height of 1.12323 m
+  ⊢Area of 1.6938036704088e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (-33601.67227, 2413.74685) m
+  ⊢Height of 1.15386 m
+  ⊢Area of 8.4731506629e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+</code></pre><p>We can add the floes to the domain above.</p><pre><code class="language-julia hljs">floe_color = RGBf(217/255, 226/255, 225/255)  # blue color for floes
+poly!(ax1, floes.poly; color = floe_color) # plot the topography
+ax1.title = &quot;Grid, Domain, and Floe Setup&quot;
+fig  # display the figure</code></pre><img src="6704f16e.png" alt="Example block output"/><h2 id="Creating-a-Model"><a class="docs-heading-anchor" href="#Creating-a-Model">Creating a Model</a><a id="Creating-a-Model-1"></a><a class="docs-heading-anchor-permalink" href="#Creating-a-Model" title="Permalink"></a></h2><p>A <code>Model</code> combines all of the above components into the <code>Struct</code> that defines the physical aspects of a Subzero simulation. There are a few constraints: the domain must fall within the grid, the ocean and atmosphere must share the same grid (which can always be updated when the infrastructure for different grids is in place), and all fields must share the same Float type (i.e. <code>Float64</code> or <code>Float32</code>). This Float type will then be the Float type of the model, so it cannot be directly specified like it can when creating the <code>Model</code> fields.</p><p>A model can be made as follows:</p><pre><code class="language-julia hljs">model = Model(; grid, domain, ocean, atmos, floes)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Model{Float64, ...}
+ ⊢RegRectilinearGrid{Float64}
+  ⊢x extent (-100000.0 to 100000.0) with 20 grid cells of size 10000.0 m
+  ∟y extent (0.0 to 100000.0) with 10 grid cells of size 10000.0 m
+ ⊢Domain
+  ⊢Northern boundary of type CollisionBoundary{North, Float64}
+  ⊢Southern boundary of type CollisionBoundary{South, Float64}
+  ⊢Eastern boundary of type PeriodicBoundary{East, Float64}
+  ⊢Western boundary of type PeriodicBoundary{West, Float64}
+  ∟2-element TopograpahyElement{Float64} list
+ ⊢Ocean{Float64}
+  ⊢Vector fields of dimension (21, 11)
+  ⊢Tracer fields of dimension (21, 11)
+  ⊢Average u-velocity of: 0.15909 m/s
+  ⊢Average v-velocity of: 0.0 m/s
+  ∟Average temperature of: -1.0 C
+ ⊢Atmos{Float64}
+  ⊢Vector fields of dimension (21, 11)
+  ⊢Tracer fields of dimension (21, 11)
+  ⊢Average u-velocity of: 5.0 m/s
+  ⊢Average v-velocity of: 0.0 m/s
+  ∟Average temperature of: -2.0 C
+ ∟Floe List:
+  ⊢Number of floes: 30
+  ⊢Total floe area: 4.84616127874614e9
+  ∟Average floe height: 1.01453</code></pre><h2 id="Constants"><a class="docs-heading-anchor" href="#Constants">Constants</a><a id="Constants-1"></a><a class="docs-heading-anchor-permalink" href="#Constants" title="Permalink"></a></h2><p>We can then set a group of <a href="../api/#Subzero.Constants"><code>Constants</code></a>, which are a set of important physical parameters, like the ocean coriolis frequency and the air density. All constants have a default value, so you only need to change the ones that specifically affect your simulation. All constants and default values are listed in the <a href="../api/#Subzero.Constants"><code>Constants</code></a> documentation.</p><p>Here, I will just use the default values:</p><pre><code class="language-julia hljs">consts = Constants()</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Constants{Float64}
+  ⊢ ρo = 1027.0
+  ⊢ ρa = 1.2
+  ⊢ Cd_io = 0.003
+  ⊢ Cd_ia = 0.001
+  ⊢ Cd_ao = 0.00125
+  ⊢ f = 0.00014
+  ⊢ turnθ = 0.2617993877991494
+  ⊢ L = 293000.0
+  ⊢ k = 2.14
+  ⊢ ν = 0.3
+  ⊢ μ = 0.2
+  ⊢ E = 6.0e6
+</code></pre><h2 id="Settings"><a class="docs-heading-anchor" href="#Settings">Settings</a><a id="Settings-1"></a><a class="docs-heading-anchor-permalink" href="#Settings" title="Permalink"></a></h2><p>In addition to the <a href="../api/#Subzero.FloeSettings"><code>FloeSettings</code></a> discussed above, there are also settings for all of the other physical processes that can happen during a Subzero run. Here, I will just use all default settings except for the <code>FractureSettings</code>, but each of the following settings have documentation detailing how to turn features on/off and tune their behavior.</p><p>The list of existing settings is:</p><ul><li><a href="../api/#Subzero.FloeSettings"><code>FloeSettings</code></a></li><li><a href="../api/#Subzero.CouplingSettings"><code>CouplingSettings</code></a></li><li><a href="../api/#Subzero.CollisionSettings"><code>CollisionSettings</code></a></li><li><a href="../api/#Subzero.FractureSettings"><code>FractureSettings</code></a></li><li><a href="../api/#Subzero.SimplificationSettings"><code>SimplificationSettings</code></a></li><li><a href="../api/#Subzero.RidgeRaftSettings"><code>RidgeRaftSettings</code></a></li><li><a href="../api/#Subzero.WeldSettings"><code>WeldSettings</code></a></li></ul><pre><code class="language-julia hljs">fracture_settings = FractureSettings(
+        fractures_on = true,
+        criteria = HiblerYieldCurve(floes),
+        Δt = 500,
+        npieces = 3,
+        deform_on = false,
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">FractureSettings{HiblerYieldCurve{Float64}}
+  ⊢ fractures_on = true
+  ⊢ criteria = HiblerYieldCurve{Float64}
+  ⊢ Δt = 500
+  ⊢ deform_on = false
+  ⊢ npieces = 3
+</code></pre><h2 id="Output-Writers"><a class="docs-heading-anchor" href="#Output-Writers">Output Writers</a><a id="Output-Writers-1"></a><a class="docs-heading-anchor-permalink" href="#Output-Writers" title="Permalink"></a></h2><p>You also need to create a set of output writers to record the data from your simulation. You can add four types of output writers, and as many of each type as you would like. The four types are as follows: <a href="../api/#Subzero.InitialStateOutputWriter"><code>InitialStateOutputWriter</code></a>, <a href="../api/#Subzero.CheckpointOutputWriter"><code>CheckpointOutputWriter</code></a>,<a href="@ref"> <code>FloeOutputWriter</code></a>, and <a href="../api/#Subzero.GridOutputWriter"><code>GridOutputWriter</code></a>. When any of these objects are created, the file that they will write to is also created automatically. You can read more about each of these types of output writers within the API guide. You must then combine all of your output writers into an <a href="../api/#Subzero.OutputWriters"><code>OutputWriters</code></a> struct. You can simply pass each output writer created as an argument to the <code>OutputWriters</code> constructor.</p><p>Here, we will create an <a href="../api/#Subzero.InitialStateOutputWriter"><code>InitialStateOutputWriter</code></a>, a <a href="../api/#Subzero.CheckpointOutputWriter"><code>CheckpointOutputWriter</code></a> (that outputs every 1000 timesteos), and a <a href="@ref"> <code>FloeOutputWriter</code></a> (that outputs every 100 timesteps) and then combine them into a <a href="@ref"><code>OutputWriter</code></a>.</p><pre><code class="language-julia hljs">dir = &quot;tutorial&quot;
+init_fn, checkpoint_fn, floe_fn = &quot;tutorial_init_state.jld2&quot;, &quot;tutorial_checkpoint.jld2&quot;, &quot;tutorial_floes.jld2&quot;</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(&quot;tutorial_init_state.jld2&quot;, &quot;tutorial_checkpoint.jld2&quot;, &quot;tutorial_floes.jld2&quot;)</code></pre><p>We first make the <a href="../api/#Subzero.InitialStateOutputWriter"><code>InitialStateOutputWriter</code></a>:</p><pre><code class="language-julia hljs">initwriter = InitialStateOutputWriter(; dir = dir, filename = init_fn, overwrite = true)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">InitialStateOutputWriter(&quot;tutorial/tutorial_init_state.jld2&quot;, true)</code></pre><p>We then make the <a href="../api/#Subzero.CheckpointOutputWriter"><code>CheckpointOutputWriter</code></a>:</p><pre><code class="language-julia hljs">checkpointer = CheckpointOutputWriter(1000; dir = dir, filename = checkpoint_fn, overwrite = true)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">CheckpointOutputWriter(1000, &quot;tutorial/tutorial_checkpoint.jld2&quot;, true)</code></pre><p>Finally, we make a <a href="../api/#Subzero.FloeOutputWriter"><code>FloeOutputWriter</code></a>:</p><pre><code class="language-julia hljs">floewriter = FloeOutputWriter(100; dir = dir, filename = floe_fn, overwrite = true)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">FloeOutputWriter(100, [:poly, :centroid, :height, :area, :mass, :rmax, :moment, :angles, :x_subfloe_points, :y_subfloe_points  …  :stress_accum, :stress_instant, :strain, :damage, :p_dxdt, :p_dydt, :p_dudt, :p_dvdt, :p_dξdt, :p_dαdt], &quot;tutorial/tutorial_floes.jld2&quot;, true)</code></pre><p>We can then combine these into an <code>OutputWriters</code> object:</p><pre><code class="language-julia hljs">writers = OutputWriters(initwriter, checkpointer, floewriter)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">OutputWriters
+  ⊢1 InitialStateOuputWriter(s)
+  ⊢1 CheckpointOutputWriter(s)
+  ⊢1 FloeOutputWriter(s)
+  ∟0 GridOutputWriter(s)</code></pre><h2 id="Create-a-Simulation"><a class="docs-heading-anchor" href="#Create-a-Simulation">Create a Simulation</a><a id="Create-a-Simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Create-a-Simulation" title="Permalink"></a></h2><p>At this point, you are ready to make a <code>Simulation</code>. A <code>Simulation</code> has quite a few fields, all of which are talked about above in more detail. Since there are so many fields, they are keyword defined, so you must provide a keyword when creating the struct. The only necessary arguments are the <code>model</code> (to specify the simulation physical setup) and <code>floe_settings</code> (to ensure they match the argument used when creatting the <code>floes</code>). See the <a href="../api/#Subzero.Simulation"><code>Simulation</code></a> documentation for a full list of keyword arguments and their default values.</p><p>In this tutorial, we create a simulation using all of the structs we created above. We will also need to set the simulation timestep <code>Δt</code> and the total number of timesteps to run for <code>nΔt</code>.</p><pre><code class="language-julia hljs">sim = Simulation(;
+    model = model,
+    consts = consts,
+    Δt = 10, # timestep of 5 seconds
+    nΔt = 20000, # run for 20,000 timesteps
+    floe_settings = floe_settings,
+    fracture_settings = fracture_settings,
+    writers = writers,
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Simulation
+  ⊢Timestep: 10 seconds
+  ⊢Runtime: 20000 timesteps
+  ⊢RNG: Xoshiro(0x699af7fb843985a2, 0xedc6b1157b6b9180, 0x5c387541deb919a0, 0xb4153af250024860, 0xec9df2258029b4e2)
+  ⊢verbose: false
+  ⊢model
+  ⊢consts
+  ⊢floe_settings
+  ⊢collision_settings
+  ∟ ...</code></pre><div class="admonition is-info" id="Note-32044cbb386155bd"><header class="admonition-header">Note<a class="admonition-anchor" href="#Note-32044cbb386155bd" title="Permalink"></a></header><div class="admonition-body"><p>Subzero also has a custom logger, <a href="../api/#Subzero.SubzeroLogger"><code>SubzeroLogger</code></a>, which logs all of the info and warning messages that Subzero throws over   the course of a simularion into a log file. It will only output each unique message <code>messages_per_tstep</code> times, which can be passed   to the <code>run!</code> function. You can also create your own <code>SubzeroLogger</code>. However, here, for simplicity of the tutorial, I will turn off   all logging at or below <code>Info</code>.</p></div></div><pre><code class="language-julia hljs">Logging.disable_logging(Logging.Info)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">LogLevel(1)</code></pre><h2 id="Running-the-Simulation"><a class="docs-heading-anchor" href="#Running-the-Simulation">Running the Simulation</a><a id="Running-the-Simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Running-the-Simulation" title="Permalink"></a></h2><p>You can now use the <a href="../api/#Subzero.run!"><code>run!</code></a> function to run the simulation.</p><pre><code class="language-julia hljs">run!(sim)</code></pre><div class="admonition is-info" id="Note-3ed0397835b3973e"><header class="admonition-header">Note<a class="admonition-anchor" href="#Note-3ed0397835b3973e" title="Permalink"></a></header><div class="admonition-body"><p>If you wish to couple to Oceananigans, you will need to run each model timestep by timestep   and pass the needed fields back and forth. You can run a single timestep of the simulation   using the <a href="../api/#Subzero.timestep_sim!"><code>timestep_sim!</code></a> function.</p></div></div><p>If you run your simulation in multiple parts and need to re-start your simulation from files, the <a href="../api/#Subzero.restart!"><code>restart!</code></a> function will be a good place to start. However, note that it is quite simple and users may need to write their own restart function if they want more complex behavior.</p><h2 id="Plotting-the-Simulation"><a class="docs-heading-anchor" href="#Plotting-the-Simulation">Plotting the Simulation</a><a id="Plotting-the-Simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Plotting-the-Simulation" title="Permalink"></a></h2><p>If your simulation has both a <a href="../api/#Subzero.FloeOutputWriter"><code>FloeOutputWriter</code></a> and an <a href="../api/#Subzero.InitialStateOutputWriter"><code>InitialStateOutputWriter</code></a>, you can use the built in plotting function to make an MP4 file with each frame as a timestep saved by the <code>FloeOutputWriter</code>. This plotting function <code>plot_sim</code> is quite simple and just meant to get you started. You may need to add more complex plotting code to suit your needs.</p><pre><code class="language-julia hljs">plot_sim(joinpath(dir, floe_fn), joinpath(dir, init_fn), sim.Δt, joinpath(dir, &quot;tutorial.mp4&quot;))</code></pre><video width="auto" controls autoplay loop>
+<source src="../tutorial/tutorial.mp4" type="video/mp4">
+</video><h2 id="Reproducibility"><a class="docs-heading-anchor" href="#Reproducibility">Reproducibility</a><a id="Reproducibility-1"></a><a class="docs-heading-anchor-permalink" href="#Reproducibility" title="Permalink"></a></h2><p>The simulations are currently completly reproducible when run single-threaded. The simulation takes a <code>rng</code> argument, and if it is provided with a seeded random number generator, then two simulations with the same set of starting floes will produce the exact same results. Note that the same set of floes can be reproduced by providing a seeded random number generator to the floe creation functions. Simulation reproducability has not been achieved for multi-threaded runs.</p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Introduction</a><a class="docs-footer-nextpage" href="../examples/shear_flow/">Shear Flow with Periodic Boundaries »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Thursday 24 September 2026 21:39">Thursday 24 September 2026</span>. Using Julia version 1.13.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
