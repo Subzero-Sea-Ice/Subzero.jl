@@ -91,7 +91,9 @@ over if/else flags.
   copies, so changes made to them are lost.
 - Put the per-floe logic in a plain function that takes `(floes::FixedWidthFloes, i, …)`,
   and make it a method of the CPU function when there is one (e.g. `calc_strain!`).
-  Keep the `@kernel` a thin wrapper, so the function can be unit-tested on the CPU.
+  Don't write a `@kernel` for it: run it with `launch_per_floe!(f, backend, floes, args...)`,
+  which calls `f(floes, i, args...)` for every floe from one generic kernel. That way the
+  function can be unit-tested on the CPU.
 - Test against the CPU version: add a unit test per function, and make sure the
   reference test in `test/test_physical_processes/test_update_floe.jl` still
   passes. It compares against a copy of the original CPU code, on `CPU()` and on

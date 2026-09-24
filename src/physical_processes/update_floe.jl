@@ -407,11 +407,6 @@ function calc_stress!(floes::FixedWidthFloes{FT}, i, stress_calculator) where FT
     return
 end
 
-@kernel function calc_stress_kernel!(floes, stress_calculator)
-    i = @index(Global)
-    calc_stress!(floes, i, stress_calculator)
-end
-
 """
     calc_strain!(...)
 
@@ -498,31 +493,26 @@ function calc_strain!(floes::FixedWidthFloes{FT}, i) where FT
     return
 end
 
-@kernel function calc_strain_kernel!(floes)
-    i = @index(Global)
-    calc_strain!(floes, i)
-end
-
 # Bits in FixedWidthFloes.flags, set by kernels to report events to the host
 const FLAG_HEIGHT_LIMITED = 0x01
 const FLAG_FORCE_REDUCED = 0x02
 const FLAG_VELOCITY_ADJUSTED = 0x04
 const FLAG_ξ_SHRUNK = 0x08
 
-@kernel function limit_height_kernel!(floes, max_height)
-    # Ensure no extreme height values due to model instability
-    i = @index(Global)
+# Ensure no extreme height values of floe i due to model instability
+function limit_height!(floes::FixedWidthFloes, i, max_height)
     if floes.height[i] > max_height
         floes.height[i] = max_height
         floes.flags[i] |= FLAG_HEIGHT_LIMITED
     end
+    return
 end
 
 #=
 Ensure no extreme collision forces due to model instability. Reduces the collision force and
 torque of floe i in place, so it must run before the floe's mass changes.
 =#
-function _limit_collision_force!(floes::FixedWidthFloes, i, Δt)
+function limit_collision_force!(floes::FixedWidthFloes, i, Δt)
     cfx = floes.collision_force[i, 1]
     cfy = floes.collision_force[i, 2]
     ctrq = floes.collision_trq[i]
@@ -538,25 +528,19 @@ function _limit_collision_force!(floes::FixedWidthFloes, i, Δt)
     return
 end
 
-@kernel function limit_collision_force_kernel!(floes, Δt)
-    i = @index(Global)
-    _limit_collision_force!(floes, i, Δt)
-end
-
-@kernel function thermodynamic_growth_kernel!(floes)
-    # Update floe based on thermodynamic growth
-    i = @index(Global)
+# Update floe i based on thermodynamic growth
+function thermodynamic_growth!(floes::FixedWidthFloes, i)
     h = floes.height[i]
     Δh = floes.hflx_factor[i] / h
     hfrac = (h + Δh) / h
     floes.mass[i] *= hfrac
     floes.moment[i] *= hfrac
     floes.height[i] -= Δh
+    return
 end
 
-@kernel function update_ice_coordinates_kernel!(floes, Δt)
-    # Update ice coordinates with velocities and rotation
-    i = @index(Global)
+# Update ice coordinates of floe i with velocities and rotation
+function update_ice_coordinates!(floes::FixedWidthFloes, i, Δt)
     Δx = 1.5Δt*floes.u[i] - 0.5Δt*floes.p_dxdt[i]
     Δy = 1.5Δt*floes.v[i] - 0.5Δt*floes.p_dydt[i]
     Δα = 1.5Δt*floes.ξ[i] - 0.5Δt*floes.p_dαdt[i]
@@ -566,10 +550,11 @@ end
     floes.p_dxdt[i] = floes.u[i]
     floes.p_dydt[i] = floes.v[i]
     floes.p_dαdt[i] = floes.ξ[i]
+    return
 end
 
 # Update ice velocities of floe i with forces and torques
-function _update_velocities!(floes::FixedWidthFloes{FT}, i, Δt, maximum_ξ) where FT
+function update_velocities!(floes::FixedWidthFloes{FT}, i, Δt, maximum_ξ) where FT
     h = floes.height[i]
     dudt = (floes.fxOA[i] + floes.collision_force[i, 1])/floes.mass[i]
     dvdt = (floes.fyOA[i] + floes.collision_force[i, 2])/floes.mass[i]
@@ -604,11 +589,6 @@ function _update_velocities!(floes::FixedWidthFloes{FT}, i, Δt, maximum_ξ) whe
     floes.ξ[i] = ξ
     floes.p_dξdt[i] = dξdt
     return
-end
-
-@kernel function update_velocities_kernel!(floes, Δt, maximum_ξ)
-    i = @index(Global)
-    _update_velocities!(floes, i, Δt, maximum_ξ)
 end
 
 # Log the events that kernels reported in flags, once per type of event
@@ -650,17 +630,16 @@ function timestep_floe_properties!(
     backend = CPU(),
 ) where FT
     dev_floes = adapt(backend, FixedWidthFloes(floes))
-    dev = backend
 
-    calc_stress_kernel!(dev, 512)(dev_floes, floe_settings.stress_calculator, ndrange=size(floes.height))
-    limit_height_kernel!(dev, 512)(dev_floes, floe_settings.max_floe_height, ndrange=size(floes.height))
-    limit_collision_force_kernel!(dev, 512)(dev_floes, Δt, ndrange=size(floes.height))
-    thermodynamic_growth_kernel!(dev, 512)(dev_floes, ndrange=size(floes.height))
-    update_ice_coordinates_kernel!(dev, 512)(dev_floes, Δt, ndrange=size(floes.height))
-    update_velocities_kernel!(dev, 512)(dev_floes, Δt, floe_settings.maximum_ξ, ndrange=size(floes.height))
-    calc_strain_kernel!(dev, 512)(dev_floes, ndrange=size(floes.height))
+    launch_per_floe!(calc_stress!, backend, dev_floes, floe_settings.stress_calculator)
+    launch_per_floe!(limit_height!, backend, dev_floes, floe_settings.max_floe_height)
+    launch_per_floe!(limit_collision_force!, backend, dev_floes, Δt)
+    launch_per_floe!(thermodynamic_growth!, backend, dev_floes)
+    launch_per_floe!(update_ice_coordinates!, backend, dev_floes, Δt)
+    launch_per_floe!(update_velocities!, backend, dev_floes, Δt, floe_settings.maximum_ξ)
+    launch_per_floe!(calc_strain!, backend, dev_floes)
 
-    KernelAbstractions.synchronize(dev)
+    KernelAbstractions.synchronize(backend)
     host_floes = adapt(Array, dev_floes)
     update_floes!(floes, host_floes)
     _log_flags(host_floes.flags, tstep, floe_settings)
