@@ -31,26 +31,22 @@ end
     make_simulation = _shear_flow_simulation_factory()
     @test make_simulation(Subzero.KernelAbstractions.CPU()).backend isa
         Subzero.KernelAbstractions.CPU
-    if CUDA.functional()
-        @testset "CPU and CUDA backends give the same result" begin
-            sims = [
-                make_simulation(backend)
-                for backend in (Subzero.KernelAbstractions.CPU(), CUDA.CUDABackend())
-            ]
-            with_logger(NullLogger()) do
-                for sim in sims, tstep in 0:sim.nΔt
-                    timestep_sim!(sim, tstep)
-                end
+    gpu_backends = filter(b -> b isa Subzero.KernelAbstractions.GPU, test_backends())
+    @testset "CPU and $backend give the same result" for backend in gpu_backends
+        sims = [make_simulation(Subzero.KernelAbstractions.CPU()), make_simulation(backend)]
+        with_logger(NullLogger()) do
+            for sim in sims, tstep in 0:sim.nΔt
+                timestep_sim!(sim, tstep)
             end
-            cpu_floes, gpu_floes = (sim.model.floes for sim in sims)
-            @test length(cpu_floes) == length(gpu_floes)
-            if length(cpu_floes) == length(gpu_floes)
-                @test cpu_floes.id == gpu_floes.id
-                @test reduce(vcat, cpu_floes.centroid) ≈ reduce(vcat, gpu_floes.centroid) rtol = 1e-8
-                @test cpu_floes.u ≈ gpu_floes.u rtol = 1e-8
-                @test cpu_floes.v ≈ gpu_floes.v rtol = 1e-8
-                @test cpu_floes.ξ ≈ gpu_floes.ξ rtol = 1e-8
-            end
+        end
+        cpu_floes, gpu_floes = (sim.model.floes for sim in sims)
+        @test length(cpu_floes) == length(gpu_floes)
+        if length(cpu_floes) == length(gpu_floes)
+            @test cpu_floes.id == gpu_floes.id
+            @test reduce(vcat, cpu_floes.centroid) ≈ reduce(vcat, gpu_floes.centroid) rtol = 1e-8
+            @test cpu_floes.u ≈ gpu_floes.u rtol = 1e-8
+            @test cpu_floes.v ≈ gpu_floes.v rtol = 1e-8
+            @test cpu_floes.ξ ≈ gpu_floes.ξ rtol = 1e-8
         end
     end
     @testset "run! does not change the global logger" begin

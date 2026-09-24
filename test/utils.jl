@@ -1,4 +1,20 @@
 #=
+KernelAbstractions backends to run the kernel tests on: the CPU, JLArrays' reference GPU
+backend (which runs on the CPU, so the GPU code path is tested without a GPU), and CUDA if a
+GPU is available. To test another GPU, add its package to the test dependencies and push its
+backend here.
+=#
+function test_backends()
+    backends = Any[Subzero.KernelAbstractions.CPU(), JLArrays.JLBackend()]
+    CUDA.functional() && push!(backends, CUDA.CUDABackend())
+    return backends
+end
+
+# JLArrays (0.3.3) doesn't define `synchronize` for its backend. Its kernels run
+# synchronously, so there is nothing to wait for.
+Subzero.KernelAbstractions.synchronize(::JLArrays.JLBackend) = nothing
+
+#=
     find_poly_coords(poly)
 
 Syntactic sugar for to find a polygon's coordinates

@@ -28,14 +28,14 @@ over if/else flags.
 - Full suite, the same as CI (about 4 min):
   `julia --project=. -e 'using Pkg; Pkg.test()'`
   The output is long; redirect it to a file and read the `Test Summary` table at the end.
-- Single file: test deps (LibGEOS, Test) are in `[extras]` in `Project.toml`, so
-  there is no `test/Project.toml`. Use TestEnv.jl, which you install once with
+- Single file: test deps (CUDA, JLArrays, LibGEOS, Test) are in `[extras]` in
+  `Project.toml`, so there is no `test/Project.toml`. Use TestEnv.jl, which you install once with
   `julia -e 'using Pkg; Pkg.add("TestEnv")'`:
 
   ```sh
   julia --project=. -e 'using TestEnv; TestEnv.activate()
       using JLD2, Logging, NCDatasets, Random, SplitApplyCombine, Statistics, StructArrays, Subzero, Test
-      import GeometryOps as GO; import GeometryOps.GeoInterface as GI; import CUDA
+      import GeometryOps as GO; import GeometryOps.GeoInterface as GI; import CUDA, JLArrays
       include("test/utils.jl"); include("test/test_floe_utils.jl")'
   ```
 
@@ -77,9 +77,23 @@ over if/else flags.
 - `timestep_sim!` is being ported to KernelAbstractions kernels one function at a
   time. So far `timestep_floe_properties!` is done. The backend comes from
   `Simulation(; backend)` (default `CPU()`), and the same kernels run on the CPU.
-  Subzero doesn't load CUDA: users `using CUDA` and pass `CUDABackend()`.
-- Check `julia --project=. -e 'using CUDA; @show CUDA.functional()'` before running
-  GPU code. The tests skip the CUDA backend when it's `false`.
+- The goal is to run on any GPU that KernelAbstractions supports (NVIDIA, AMD, Apple,
+  Intel), not just CUDA. Subzero doesn't depend on any GPU package: users load one
+  (`using CUDA`, `using AMDGPU`, `using Metal`, …) and pass its backend
+  (`CUDABackend()`, `ROCBackend()`, `MetalBackend()`, …). Don't add a GPU package to
+  `[deps]` or call vendor-specific functions (`CUDA.@cuda`, `CuArray`, …) in `src/`.
+  Move data with `adapt(backend, x)` and `adapt(Array, x)`, and wait with
+  `KernelAbstractions.synchronize(backend)`. If vendor-specific code is ever needed,
+  put it in a package extension in `ext/`.
+- Metal and some Intel GPUs don't support Float64 at all, so kernels must be able to
+  run on Float32 floes without any Float64 maths (see the note on Float64 literals below).
+- The tests run the kernels on every backend in `test_backends()` (`test/utils.jl`):
+  `CPU()`, `JLBackend()` from JLArrays (a reference GPU backend that runs on the CPU,
+  so CI tests the GPU code path without a GPU), and `CUDABackend()` if
+  `CUDA.functional()`. CUDA and JLArrays are test-only dependencies. Check
+  `julia --project=. -e 'using TestEnv; TestEnv.activate(); using CUDA; @show CUDA.functional()'`
+  before running GPU code. To test another GPU, add its package to `[extras]` and to
+  `test_backends()`.
 
 ### Porting a function
 
@@ -96,8 +110,8 @@ over if/else flags.
   function can be unit-tested on the CPU.
 - Test against the CPU version: add a unit test per function, and make sure the
   reference test in `test/test_physical_processes/test_update_floe.jl` still
-  passes. It compares against a copy of the original CPU code, on `CPU()` and on
-  `CUDABackend()`.
+  passes. It compares against a copy of the original CPU code on every backend in
+  `test_backends()`.
 - Keep the numerics the same as the CPU version, even when they look wrong, and report
   suspected bugs instead of fixing them in the port. For example, `calc_strain!` uses
   `u` where `v` is expected for `v1` and `v2`. Fixing it would change results and
@@ -122,9 +136,9 @@ over if/else flags.
 
 - `FILL_VALUE` is a Float64. With Float32 floes, compare the padding with `FT(FILL_VALUE)`.
 - Float64 literals such as `1.5Δt` turn Float32 calculations into Float64. That's
-  kept for now so that results stay within round-off of `main`, but it is slow on GPUs.
-  Consumer GPUs are much slower at Float64 than Float32, so check correctness in
-  Float64 and measure speed in Float32.
+  kept for now so that results stay within round-off of `main`, but it is slow on GPUs
+  and fails on GPUs without Float64 (Metal). Consumer GPUs are much slower at Float64
+  than Float32, so check correctness in Float64 and measure speed in Float32.
 - A Voronoi floe field (`VoronoiTesselationFieldGenerator`) isn't reproducible with
   a fixed `rng`. To compare two runs, generate the floes once and deep-copy them (see
   `test/test_simulation.jl`). In simulations with collisions, differences at

@@ -5,7 +5,6 @@ authors = ["Skylar Gering"]
 
 [deps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
-CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Extents = "411431e0-e8b7-467b-b5e0-f676ba4f2910"
@@ -45,6 +44,7 @@ GeoInterface = "1.6.0"
 GeoInterfaceMakie = "0.1"
 GeometryOps = "0.1.31 - 0.1"
 Interpolations = "0.14, 0.15, 0.16"
+JLArrays = "0.3"
 JLD2 = "0.4, 0.5, 0.6"
 KernelAbstractions = "0.9.42"
 MAT = "0.11.4"
@@ -58,8 +58,10 @@ StructArrays = "0.6, 0.7"
 julia = "1.10"
 
 [extras]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+JLArrays = "27aeb0d3-9eb9-45fb-866b-73c2ecf80fcb"
 LibGEOS = "a90b1aa1-3769-5649-ba7e-abc5a9d163eb"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["LibGEOS", "Test"]
+test = ["CUDA", "JLArrays", "LibGEOS", "Test"]

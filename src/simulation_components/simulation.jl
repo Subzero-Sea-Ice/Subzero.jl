@@ -17,7 +17,8 @@ Only keyword arguments are used!
 - `verbose::Bool`: String output printed during run (Default = false)
 - `name::String`: Simulation name for printing/saving (Default = "sim")
 - `backend::BT`: KernelAbstractions backend that runs the parts of the simulation that are
-    ported to kernels, e.g. `CUDABackend()` after `using CUDA` (Default = `CPU()`)
+    ported to kernels, e.g. `CUDABackend()` after `using CUDA`, `ROCBackend()` after
+    `using AMDGPU` or `MetalBackend()` after `using Metal` (Default = `CPU()`)
 ### _Timesteping Information_
 - `Δt::Int`: Simulation timestep in seconds
 - `nΔt::Int`: Total timesteps simulation runs for
@@ -304,7 +305,7 @@ their own restart functions.
 
 ## _Keyword arguments_
     - `start_tstep::Int`: which timestep to start the simulation on (Default = 0)
-    - `backend::KernelAbstractions.Backend`: backend to run kernels on, e.g. `CUDABackend()` after `using CUDA` (Default = `CPU()`)
+    - `backend::KernelAbstractions.Backend`: backend to run kernels on, e.g. `CUDABackend()` after `using CUDA` or `ROCBackend()` after `using AMDGPU` (Default = `CPU()`)
 
 ## _Returns_
     - None. The simulation will be run and outputs will be saved in the output folder. 

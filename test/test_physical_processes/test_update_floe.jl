@@ -144,9 +144,7 @@ function _reference_timestep_floe_properties!(
 end
 
 @testset "Update floe" begin
-    backends = Any[Subzero.KernelAbstractions.CPU()]
-    CUDA.functional() && push!(backends, CUDA.CUDABackend())
-    @testset "timestep_floe_properties on $backend" for backend in backends
+    @testset "timestep_floe_properties on $backend" for backend in test_backends()
         FT = Float64
         Δt, tstep = 10, 1
         floe_settings = FloeSettings()
