@@ -439,7 +439,12 @@ function calc_strain!(floe::FloeType{FT}) where {FT}
         θ1, θ2 = atan(y1, x1), atan(y2, x2)
         u1 = floe.u - floe.ξ * rad1 * sin(θ1)
         u2 = floe.u - floe.ξ * rad2 * sin(θ2)
-        # TODO: probably should be floe.v, kept as is to not change results
+        # TODO: probably floe.u should be floe.v below, but kept as is to not
+        # change results. This does not impact the result (except for
+        # rounding errors) because the floe.u terms cancel each other out in
+        # the computation of vdiff. The computation should probably be
+        # simplified by doing the math (vdiff = ξ·xdiff) to reduce the
+        # number of calculations and associated roundoff errors.
         v1 = floe.u + floe.ξ * rad1 * cos(θ1)
         v2 = floe.u + floe.ξ * rad2 * cos(θ2)
         udiff, vdiff = u2 - u1, v2 - v1
