@@ -374,6 +374,39 @@ function calc_stress!(floe::FloeType{FT}, floe_settings) where {FT}
     return
 end
 
+#=
+Calculates the stress on floe i of a `FixedWidthFloes`. Same calculation as
+`calc_stress!(floe, floe_settings)`, written as scalar operations so it can be called from a
+GPU kernel.
+=#
+function calc_stress!(floes::FixedWidthFloes{FT}, i, stress_calculator) where FT
+    xi = floes.centroid[i, 1]
+    yi = floes.centroid[i, 2]
+    σ11, σ12, σ22 = zero(FT), zero(FT), zero(FT)
+    if floes.num_inters[i] > 0
+        for k in 1:floes.num_inters[i]
+            xp = floes.interactions[i, k, Int(xpoint)]
+            yp = floes.interactions[i, k, Int(ypoint)]
+            fx = floes.interactions[i, k, Int(xforce)]
+            fy = floes.interactions[i, k, Int(yforce)]
+            σ11 += (xp - xi) * fx
+            σ12 += (yp - yi) * fx + (xp - xi) * fy
+            σ22 += (yp - yi) * fy
+        end
+        σ12 *= FT(0.5)
+        scale = 1/(floes.area[i] * floes.height[i])
+        σ11 *= scale
+        σ12 *= scale
+        σ22 *= scale
+    end
+    floes.stress_instant[i, 1, 1] = σ11
+    floes.stress_instant[i, 1, 2] = σ12
+    floes.stress_instant[i, 2, 1] = σ12
+    floes.stress_instant[i, 2, 2] = σ22
+    _update_stress_accum!(stress_calculator, floes, i)
+    return
+end
+
 """
     calc_strain!(...)
 
@@ -401,6 +434,12 @@ function calc_strain!(floe::FloeType{FT}) where {FT}
         θ1, θ2 = atan(y1, x1), atan(y2, x2)
         u1 = floe.u - floe.ξ * rad1 * sin(θ1)
         u2 = floe.u - floe.ξ * rad2 * sin(θ2)
+        # TODO: probably floe.u should be floe.v below, but kept as is to not
+        # change results. This does not impact the result (except for
+        # rounding errors) because the floe.u terms cancel each other out in
+        # the computation of vdiff. The computation should probably be
+        # simplified by doing the math (vdiff = ξ·xdiff) to reduce the
+        # number of calculations and associated roundoff errors.
         v1 = floe.u + floe.ξ * rad1 * cos(θ1)
         v2 = floe.u + floe.ξ * rad2 * cos(θ2)
         udiff, vdiff = u2 - u1, v2 - v1
@@ -415,100 +454,189 @@ function calc_strain!(floe::FloeType{FT}) where {FT}
     return
 end
 
+#=
+Calculates the strain on floe i of a `FixedWidthFloes`. Same calculation as
+`calc_strain!(floe)`, written as scalar operations so it can be called from a GPU kernel.
+=#
+function calc_strain!(floes::FixedWidthFloes{FT}, i) where FT
+    cx = floes.centroid[i, 1]
+    cy = floes.centroid[i, 2]
+    u = floes.u[i]
+    ξ = floes.ξ[i]
+    ε11, ε12, ε22 = zero(FT), zero(FT), zero(FT)
+    # coordinates of floe centered at centroid
+    x1 = floes.poly[i, 1, 1] - cx
+    y1 = floes.poly[i, 1, 2] - cy
+    for j in 2:floes.n_points[i]
+        x2 = floes.poly[i, j, 1] - cx
+        y2 = floes.poly[i, j, 2] - cy
+        xdiff, ydiff = x2 - x1, y2 - y1
+        rad1, rad2 = sqrt(x1^2 + y1^2), sqrt(x2^2 + y2^2)
+        θ1, θ2 = atan(y1, x1), atan(y2, x2)
+        u1 = u - ξ * rad1 * sin(θ1)
+        u2 = u - ξ * rad2 * sin(θ2)
+        # TODO: probably should be v, kept as is to match calc_strain!(floe)
+        v1 = u + ξ * rad1 * cos(θ1)
+        v2 = u + ξ * rad2 * cos(θ2)
+        udiff, vdiff = u2 - u1, v2 - v1
+        ε11 += udiff * ydiff
+        ε12 += udiff * xdiff + vdiff * ydiff
+        ε22 += vdiff * xdiff
+        x1, y1 = x2, y2
+    end
+    ε12 *= FT(0.5)
+    area2 = 2floes.area[i]
+    floes.strain[i, 1, 1] = ε11 / area2
+    floes.strain[i, 1, 2] = ε12 / area2
+    floes.strain[i, 2, 1] = ε12 / area2
+    floes.strain[i, 2, 2] = ε22 / area2
+    return
+end
+
+# Bits in FixedWidthFloes.flags, set by kernels to report events to the host
+const FLAG_HEIGHT_LIMITED = 0x01
+const FLAG_FORCE_REDUCED = 0x02
+const FLAG_VELOCITY_ADJUSTED = 0x04
+const FLAG_ξ_SHRUNK = 0x08
+
+# Ensure no extreme height values of floe i due to model instability
+function limit_height!(floes::FixedWidthFloes, i, max_height)
+    if floes.height[i] > max_height
+        floes.height[i] = max_height
+        floes.flags[i] |= FLAG_HEIGHT_LIMITED
+    end
+    return
+end
+
+#=
+Ensure no extreme collision forces due to model instability. Reduces the collision force and
+torque of floe i in place, so it must run before the floe's mass changes.
+=#
+function limit_collision_force!(floes::FixedWidthFloes, i, Δt)
+    cfx = floes.collision_force[i, 1]
+    cfy = floes.collision_force[i, 2]
+    ctrq = floes.collision_trq[i]
+    while max(abs(cfx), abs(cfy)) > floes.mass[i]/(5Δt)
+        floes.flags[i] |= FLAG_FORCE_REDUCED
+        cfx /= 10
+        cfy /= 10
+        ctrq /= 10
+    end
+    floes.collision_force[i, 1] = cfx
+    floes.collision_force[i, 2] = cfy
+    floes.collision_trq[i] = ctrq
+    return
+end
+
+# Update floe i based on thermodynamic growth
+function thermodynamic_growth!(floes::FixedWidthFloes, i)
+    h = floes.height[i]
+    Δh = floes.hflx_factor[i] / h
+    hfrac = (h + Δh) / h
+    floes.mass[i] *= hfrac
+    floes.moment[i] *= hfrac
+    floes.height[i] -= Δh
+    return
+end
+
+# Update ice coordinates of floe i with velocities and rotation
+function update_ice_coordinates!(floes::FixedWidthFloes, i, Δt)
+    Δx = 1.5Δt*floes.u[i] - 0.5Δt*floes.p_dxdt[i]
+    Δy = 1.5Δt*floes.v[i] - 0.5Δt*floes.p_dydt[i]
+    Δα = 1.5Δt*floes.ξ[i] - 0.5Δt*floes.p_dαdt[i]
+    floes.α[i] += Δα
+
+    _move_floe!(floes, i, Δx, Δy, Δα)
+    floes.p_dxdt[i] = floes.u[i]
+    floes.p_dydt[i] = floes.v[i]
+    floes.p_dαdt[i] = floes.ξ[i]
+    return
+end
+
+# Update ice velocities of floe i with forces and torques
+function update_velocities!(floes::FixedWidthFloes{FT}, i, Δt, maximum_ξ) where FT
+    h = floes.height[i]
+    dudt = (floes.fxOA[i] + floes.collision_force[i, 1])/floes.mass[i]
+    dvdt = (floes.fyOA[i] + floes.collision_force[i, 2])/floes.mass[i]
+    frac = if abs(Δt*dudt) > (h/2) && abs(Δt*dvdt) > (h/2)
+        frac1 = (sign(dudt)*h/2Δt)/dudt
+        frac2 = (sign(dvdt)*h/2Δt)/dvdt
+        min(frac1, frac2)
+    elseif abs(Δt*dudt) > (h/2) && abs(Δt*dvdt) < (h/2)
+        (sign(dudt)*h/2Δt)/dudt
+    elseif abs(Δt*dudt) < (h/2) && abs(Δt*dvdt) > (h/2)
+        (sign(dvdt)*h/2Δt)/dvdt
+    else
+        one(FT)
+    end
+    if frac != 1
+        floes.flags[i] |= FLAG_VELOCITY_ADJUSTED
+        dudt = frac*dudt
+        dvdt = frac*dvdt
+    end
+    floes.u[i] += 1.5Δt*dudt-0.5Δt*floes.p_dudt[i]
+    floes.v[i] += 1.5Δt*dvdt-0.5Δt*floes.p_dvdt[i]
+    floes.p_dudt[i] = dudt
+    floes.p_dvdt[i] = dvdt
+
+    dξdt = (floes.trqOA[i] + floes.collision_trq[i])/floes.moment[i]
+    dξdt = frac*dξdt
+    ξ = floes.ξ[i] + 1.5Δt*dξdt-0.5Δt*floes.p_dξdt[i]
+    if abs(ξ) > maximum_ξ
+        floes.flags[i] |= FLAG_ξ_SHRUNK
+        ξ = sign(ξ) * maximum_ξ
+    end
+    floes.ξ[i] = ξ
+    floes.p_dξdt[i] = dξdt
+    return
+end
+
+# Log the events that kernels reported in flags, once per type of event
+function _log_flags(flags, tstep, floe_settings)
+    nfloes(flag) = count(f -> f & flag != 0, flags)
+    n = nfloes(FLAG_HEIGHT_LIMITED)
+    n > 0 && @info "Reducing height to $(floe_settings.max_floe_height) m" tstep nfloes = n
+    n = nfloes(FLAG_FORCE_REDUCED)
+    n > 0 && @info "Decreasing collision forces by a factor of 10" tstep nfloes = n
+    n = nfloes(FLAG_VELOCITY_ADJUSTED)
+    n > 0 && @info "Adjusting u and v velocities to prevent too high" tstep nfloes = n
+    n = nfloes(FLAG_ξ_SHRUNK)
+    n > 0 && @info "Shrinking ξ" tstep nfloes = n
+    return
+end
+
 """
-    timestep_floe_properties!(...)
+    timestep_floe_properties!(floes, Δt, floe_settings; backend = CPU())
 
 Update floe position and velocities using second-order time stepping with
 tendencies calculated at previous timesteps. Height, mass, stress, and strain
 also updated based on previous timestep thermodynamics and interactions with
 other floes. 
 
+The floes must already be on `backend`. Events that should be logged are
+recorded in `floes.flags`. The kernels are launched asynchronously, so call
+`KernelAbstractions.synchronize(backend)` before using the results.
+
 ## _Positional arguments_
-- $FLOES_DEF
-- `tstep::Int`: simulation timestep
+- `floes::FixedWidthFloes`: floes on `backend`
 - $ΔT_DEF
 - $FLOE_SETTINGS_DEF
+
+## _Keyword arguments_
+- `backend::KernelAbstractions.Backend`: backend to run the calculations on (Default = `CPU()`)
 """
 function timestep_floe_properties!(
-    floes::StructArray{<:Floe{FT}},
-    tstep,
+    floes::FixedWidthFloes,
     Δt,
-    floe_settings,
-) where FT
-    Threads.@threads for i in eachindex(floes)
-        cforce = floes.collision_force[i]
-        ctrq = floes.collision_trq[i]
-        # Update stress
-        calc_stress!(get_floe(floes, i), floe_settings)
-
-        # Ensure no extreem values due to model instability
-        if floes.height[i] > floe_settings.max_floe_height
-            @info "Reducing height to $(floe_settings.max_floe_height) m" tstep = tstep
-            floes.height[i] = floe_settings.max_floe_height
-        end
-
-        while maximum(abs.(cforce)) > floes.mass[i]/(5Δt)
-            @info "Decreasing collision forces by a factor of 10" tstep = tstep
-            cforce = cforce ./ 10
-            ctrq = ctrq ./ 10
-        end
-        
-        # Update floe based on thermodynamic growth
-        h = floes.height[i]
-        Δh = floes.hflx_factor[i] / h
-        hfrac = (h + Δh) / h
-        floes.mass[i] *= hfrac
-        floes.moment[i] *= hfrac
-        floes.height[i] -= Δh
-        h = floes.height[i]
-
-        # Update ice coordinates with velocities and rotation
-        Δx = 1.5Δt*floes.u[i] - 0.5Δt*floes.p_dxdt[i]
-        Δy = 1.5Δt*floes.v[i] - 0.5Δt*floes.p_dydt[i]
-        Δα = 1.5Δt*floes.ξ[i] - 0.5Δt*floes.p_dαdt[i]
-        floes.α[i] += Δα
-
-        _move_floe!(FT, get_floe(floes, i), Δx, Δy, Δα)
-        floes.p_dxdt[i] = floes.u[i]
-        floes.p_dydt[i] = floes.v[i]
-        floes.p_dαdt[i] = floes.ξ[i]
-
-        # Update ice velocities with forces and torques
-        dudt = (floes.fxOA[i] + cforce[1])/floes.mass[i]
-        dvdt = (floes.fyOA[i] + cforce[2])/floes.mass[i]
-        frac = if abs(Δt*dudt) > (h/2) && abs(Δt*dvdt) > (h/2)
-            frac1 = (sign(dudt)*h/2Δt)/dudt
-            frac2 = (sign(dvdt)*h/2Δt)/dvdt
-            min(frac1, frac2)
-        elseif abs(Δt*dudt) > (h/2) && abs(Δt*dvdt) < (h/2)
-            (sign(dudt)*h/2Δt)/dudt
-        elseif abs(Δt*dudt) < (h/2) && abs(Δt*dvdt) > (h/2)
-            (sign(dvdt)*h/2Δt)/dvdt
-        else
-            1
-        end
-        if frac != 1
-            @info "Adjusting u and v velocities to prevent too high" tstep = tstep
-            dudt = frac*dudt
-            dvdt = frac*dvdt
-        end
-        floes.u[i] += 1.5Δt*dudt-0.5Δt*floes.p_dudt[i]
-        floes.v[i] += 1.5Δt*dvdt-0.5Δt*floes.p_dvdt[i]
-        floes.p_dudt[i] = dudt
-        floes.p_dvdt[i] = dvdt
-
-        dξdt = (floes.trqOA[i] + ctrq)/floes.moment[i]
-        dξdt = frac*dξdt
-        ξ = floes.ξ[i] + 1.5Δt*dξdt-0.5Δt*floes.p_dξdt[i]
-        if abs(ξ) > floe_settings.maximum_ξ
-            @info "Shrinking ξ" tstep = tstep
-            ξ = sign(ξ) * floe_settings.maximum_ξ
-        end
-        floes.ξ[i] = ξ
-        floes.p_dξdt[i] = dξdt
-
-        # Update strain
-        calc_strain!(get_floe(floes, i))
-    end
+    floe_settings;
+    backend = CPU(),
+)
+    launch_per_floe!(calc_stress!, backend, floes, floe_settings.stress_calculator)
+    launch_per_floe!(limit_height!, backend, floes, floe_settings.max_floe_height)
+    launch_per_floe!(limit_collision_force!, backend, floes, Δt)
+    launch_per_floe!(thermodynamic_growth!, backend, floes)
+    launch_per_floe!(update_ice_coordinates!, backend, floes, Δt)
+    launch_per_floe!(update_velocities!, backend, floes, Δt, floe_settings.maximum_ξ)
+    launch_per_floe!(calc_strain!, backend, floes)
     return
 end

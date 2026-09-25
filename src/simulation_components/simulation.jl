@@ -3,7 +3,7 @@ export Simulation, timestep_sim!, run!, restart!
 const ΔT_DEF = "`Δt::Int`:length of timestep in integer seconds"
 
 """
-    Simulation{FT, MT, CT, PT, ST, RT, OT}
+    Simulation{FT, MT, CT, PT, ST, RT, OT, BT}
 
 Simulation which holds a model and the parameters, settings, and output writers needed for running the simulation.
 
@@ -16,6 +16,9 @@ Only keyword arguments are used!
 - `rng::RT`: Random number generator (default = Xoshiro())
 - `verbose::Bool`: String output printed during run (Default = false)
 - `name::String`: Simulation name for printing/saving (Default = "sim")
+- `backend::BT`: KernelAbstractions backend that runs the parts of the simulation that are
+    ported to kernels, e.g. `CUDABackend()` after `using CUDA`, `ROCBackend()` after
+    `using AMDGPU` or `MetalBackend()` after `using Metal` (Default = `CPU()`)
 ### _Timesteping Information_
 - `Δt::Int`: Simulation timestep in seconds
 - `nΔt::Int`: Total timesteps simulation runs for
@@ -51,12 +54,14 @@ Only keyword arguments are used!
         <:StructVector{<:GridOutputWriter},
         <:StructVector{<:CheckpointOutputWriter},
     },
+    BT<:KernelAbstractions.Backend,
 }
     model::MT                               # Model to simulate
     consts::Constants{FT} = Constants()     # Constants used in Simulation
     rng::RT = Xoshiro()                     # Random number generator 
     verbose::Bool = false                   # String output printed during run
     name::String = "sim"                    # Simulation name for printing/saving
+    backend::BT = CPU()                     # Backend to run kernels on
     # Timesteps ----------------------------------------------------------------
     Δt::Int                     # Simulation timestep (seconds)
     nΔt::Int                    # Total timesteps simulation runs for
@@ -161,12 +166,17 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
         end
         
         # Move and update floes based on collisions and ocean/atmosphere forcing
+        dev_floes = adapt(sim.backend, FixedWidthFloes(sim.model.floes))
         timestep_floe_properties!(
-            sim.model.floes,
-            tstep,
+            dev_floes,
             sim.Δt,
-            sim.floe_settings,
+            sim.floe_settings;
+            backend = sim.backend,
         )
+        KernelAbstractions.synchronize(sim.backend)
+        host_floes = adapt(Array, dev_floes)
+        update_floes!(sim.model.floes, host_floes)
+        _log_flags(host_floes.flags, tstep, sim.floe_settings)
         # Fracture floes
         if sim.fracture_settings.fractures_on && mod(tstep, sim.fracture_settings.Δt) == 0
             max_floe_id =
@@ -218,27 +228,15 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
     return 
 end
 
-# Required actions to setup simulation. Right now, this only entails setting up the simulation's logger.
-function startup_sim(sim, logger = nothing; messages_per_tstep = 1)
-    # Set up logger if needed
-    if isnothing(logger)
-        logger = SubzeroLogger(; sim, messages_per_tstep)
-    end
-    global_logger(logger)
+# Required actions to setup simulation. Right now, this only entails printing a notice.
+function startup_sim(sim)
     # Start sim notice
     sim.verbose && println(sim.name * " is running!")
     return
 end
 
-# Required actions to tear down simulation. Right now, this just involves flushing the simulation's logger and closing the stream.
+# Required actions to tear down simulation. Right now, this only entails printing a notice.
 function teardown_sim(sim)
-    # Finish logging
-    logger = current_logger()
-    if hasfield(typeof(logger), :stream)
-        io = logger.stream
-        flush(io)
-        close(io)
-    end
     # End sim notice
     sim.verbose && println(sim.name * " done running!")
     return
@@ -254,7 +252,9 @@ Simulation calculations will be done with Floats of type FT (Float64 of Float32)
 - $SIM_DEF
 
 ## _Keyword arguments_
-- `logger::AbstractLogger`: logger for simulation (Default = Nothing, which triggers use of [`SubzeroLogger`](@ref)
+- `logger::AbstractLogger`: logger for simulation (Default = Nothing, which triggers use of [`SubzeroLogger`](@ref)).
+    The logger is only used while the simulation runs; the global logger is not changed.
+    A default `SubzeroLogger` is closed at the end of the run, but a given logger is not.
 - `messages_per_tstep::Int`"` number of messages to print per timestep if using default SubzeroLogger, else not needed (Default = 1)
 - `start_tstep::Int`: which timestep to start the simulation on (Default = 0)
 
@@ -262,14 +262,28 @@ Simulation calculations will be done with Floats of type FT (Float64 of Float32)
 - None. The simulation will be run and outputs will be saved in the output folder. 
 """
 function run!(sim; logger = nothing, messages_per_tstep = 1, start_tstep = 0)
-    startup_sim(sim, logger; messages_per_tstep)
-    tstep = start_tstep
-    while tstep <= (start_tstep + sim.nΔt)
-        # Timestep the simulation forward
-        timestep_sim!(sim, tstep, start_tstep)
-        tstep+=1
+    # Only use the logger within this function. Replacing the global logger breaks
+    # packages that log from an older world age, such as GPUCompiler.
+    own_logger = isnothing(logger)
+    if own_logger
+        logger = SubzeroLogger(; sim, messages_per_tstep)
     end
-    teardown_sim(sim)
+    try
+        with_logger(logger) do
+            startup_sim(sim)
+            tstep = start_tstep
+            while tstep <= (start_tstep + sim.nΔt)
+                # Timestep the simulation forward
+                timestep_sim!(sim, tstep, start_tstep)
+                tstep+=1
+            end
+            teardown_sim(sim)
+        end
+    finally
+        if own_logger
+            close(logger.stream)
+        end
+    end
     return
 end
 
@@ -292,11 +306,12 @@ their own restart functions.
 
 ## _Keyword arguments_
     - `start_tstep::Int`: which timestep to start the simulation on (Default = 0)
+    - `backend::KernelAbstractions.Backend`: backend to run kernels on, e.g. `CUDABackend()` after `using CUDA` or `ROCBackend()` after `using AMDGPU` (Default = `CPU()`)
 
 ## _Returns_
     - None. The simulation will be run and outputs will be saved in the output folder. 
 """
-function restart!(initial_state_fn, checkpointer_fn, new_nΔt, new_output_writers; start_tstep = 0)
+function restart!(initial_state_fn, checkpointer_fn, new_nΔt, new_output_writers; start_tstep = 0, backend = CPU())
     is = jldopen(initial_state_fn)
     cp = jldopen(checkpointer_fn)
     last_tstep = maximum(parse.(Int, keys(cp["ocean"])))
@@ -320,6 +335,7 @@ function restart!(initial_state_fn, checkpointer_fn, new_nΔt, new_output_writer
         Δt = is["sim"].Δt,
         nΔt = new_nΔt,
         verbose = is["sim"].verbose,
+        backend = backend,
         writers = new_output_writers,
         floe_settings = is["sim"].floe_settings,
         coupling_settings = is["sim"].coupling_settings,
