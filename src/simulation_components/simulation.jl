@@ -166,13 +166,17 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
         end
         
         # Move and update floes based on collisions and ocean/atmosphere forcing
+        dev_floes = adapt(sim.backend, FixedWidthFloes(sim.model.floes))
         timestep_floe_properties!(
-            sim.model.floes,
-            tstep,
+            dev_floes,
             sim.Δt,
             sim.floe_settings;
             backend = sim.backend,
         )
+        KernelAbstractions.synchronize(sim.backend)
+        host_floes = adapt(Array, dev_floes)
+        update_floes!(sim.model.floes, host_floes)
+        _log_flags(host_floes.flags, tstep, sim.floe_settings)
         # Fracture floes
         if sim.fracture_settings.fractures_on && mod(tstep, sim.fracture_settings.Δt) == 0
             max_floe_id =

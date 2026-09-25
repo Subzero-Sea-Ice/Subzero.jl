@@ -159,7 +159,14 @@ end
             (:info, "Adjusting u and v velocities to prevent too high"),
             (:info, "Shrinking ξ"),
             match_mode = :any,
-            Subzero.timestep_floe_properties!(floes, tstep, Δt, floe_settings; backend),
+            begin
+                dev_floes = Subzero.adapt(backend, Subzero.FixedWidthFloes(floes))
+                Subzero.timestep_floe_properties!(dev_floes, Δt, floe_settings; backend)
+                Subzero.KernelAbstractions.synchronize(backend)
+                host_floes = Subzero.adapt(Array, dev_floes)
+                Subzero.update_floes!(floes, host_floes)
+                Subzero._log_flags(host_floes.flags, tstep, floe_settings)
+            end,
         )
         rtol = 1e-10
         @testset "floe $i" for i in eachindex(floes)

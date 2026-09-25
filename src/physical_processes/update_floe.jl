@@ -606,16 +606,19 @@ function _log_flags(flags, tstep, floe_settings)
 end
 
 """
-    timestep_floe_properties!(...)
+    timestep_floe_properties!(floes, Δt, floe_settings; backend = CPU())
 
 Update floe position and velocities using second-order time stepping with
 tendencies calculated at previous timesteps. Height, mass, stress, and strain
 also updated based on previous timestep thermodynamics and interactions with
 other floes. 
 
+The floes must already be on `backend`. Events that should be logged are
+recorded in `floes.flags`. The kernels are launched asynchronously, so call
+`KernelAbstractions.synchronize(backend)` before using the results.
+
 ## _Positional arguments_
-- $FLOES_DEF
-- `tstep::Int`: simulation timestep
+- `floes::FixedWidthFloes`: floes on `backend`
 - $ΔT_DEF
 - $FLOE_SETTINGS_DEF
 
@@ -623,25 +626,17 @@ other floes.
 - `backend::KernelAbstractions.Backend`: backend to run the calculations on (Default = `CPU()`)
 """
 function timestep_floe_properties!(
-    floes::StructArray{<:Floe{FT}},
-    tstep,
+    floes::FixedWidthFloes,
     Δt,
     floe_settings;
     backend = CPU(),
-) where FT
-    dev_floes = adapt(backend, FixedWidthFloes(floes))
-
-    launch_per_floe!(calc_stress!, backend, dev_floes, floe_settings.stress_calculator)
-    launch_per_floe!(limit_height!, backend, dev_floes, floe_settings.max_floe_height)
-    launch_per_floe!(limit_collision_force!, backend, dev_floes, Δt)
-    launch_per_floe!(thermodynamic_growth!, backend, dev_floes)
-    launch_per_floe!(update_ice_coordinates!, backend, dev_floes, Δt)
-    launch_per_floe!(update_velocities!, backend, dev_floes, Δt, floe_settings.maximum_ξ)
-    launch_per_floe!(calc_strain!, backend, dev_floes)
-
-    KernelAbstractions.synchronize(backend)
-    host_floes = adapt(Array, dev_floes)
-    update_floes!(floes, host_floes)
-    _log_flags(host_floes.flags, tstep, floe_settings)
+)
+    launch_per_floe!(calc_stress!, backend, floes, floe_settings.stress_calculator)
+    launch_per_floe!(limit_height!, backend, floes, floe_settings.max_floe_height)
+    launch_per_floe!(limit_collision_force!, backend, floes, Δt)
+    launch_per_floe!(thermodynamic_growth!, backend, floes)
+    launch_per_floe!(update_ice_coordinates!, backend, floes, Δt)
+    launch_per_floe!(update_velocities!, backend, floes, Δt, floe_settings.maximum_ξ)
+    launch_per_floe!(calc_strain!, backend, floes)
     return
 end
