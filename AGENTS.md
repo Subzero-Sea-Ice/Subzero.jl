@@ -28,14 +28,14 @@ over if/else flags.
 - Full suite, the same as CI (about 4 min):
   `julia --project=. -e 'using Pkg; Pkg.test()'`
   The output is long; redirect it to a file and read the `Test Summary` table at the end.
-- Single file: test deps (CUDA, JLArrays, LibGEOS, Test) are in `[extras]` in
+- Single file: test deps (JLArrays, LibGEOS, Pkg, Test) are in `[extras]` in
   `Project.toml`, so there is no `test/Project.toml`. Use TestEnv.jl, which you install once with
   `julia -e 'using Pkg; Pkg.add("TestEnv")'`:
 
   ```sh
   julia --project=. -e 'using TestEnv; TestEnv.activate()
       using JLD2, Logging, NCDatasets, Random, SplitApplyCombine, Statistics, StructArrays, Subzero, Test
-      import GeometryOps as GO; import GeometryOps.GeoInterface as GI; import CUDA, JLArrays
+      import GeometryOps as GO; import GeometryOps.GeoInterface as GI; import JLArrays
       include("test/utils.jl"); include("test/test_floe_utils.jl")'
   ```
 
@@ -89,11 +89,16 @@ over if/else flags.
   run on Float32 floes without any Float64 maths (see the note on Float64 literals below).
 - The tests run the kernels on every backend in `test_backends()` (`test/utils.jl`):
   `CPU()`, `JLBackend()` from JLArrays (a reference GPU backend that runs on the CPU,
-  so CI tests the GPU code path without a GPU), and `CUDABackend()` if
-  `CUDA.functional()`. CUDA and JLArrays are test-only dependencies. Check
-  `julia --project=. -e 'using TestEnv; TestEnv.activate(); using CUDA; @show CUDA.functional()'`
-  before running GPU code. To test another GPU, add its package to `[extras]` and to
-  `test_backends()`.
+  so CI tests the GPU code path without a GPU), and the GPUs listed in the test argument
+  `--gpus=…` (`Pkg.test(test_args = ["--gpus=CUDA"])`) or, if that isn't given, in the
+  environment variable `SUBZERO_TEST_GPUS` (`CUDA` and/or `AMDGPU`, comma-separated). The GPU
+  packages are in `[extras]` and `[compat]` but not in the test target, so not everyone
+  installs them. `test/utils.jl` `Pkg.add`s the listed ones to the test environment and
+  errors if one can't use a GPU. Check whether a GPU works with
+  `SUBZERO_TEST_GPUS=CUDA julia --project=. -e 'using TestEnv; TestEnv.activate(); using Subzero; import JLArrays; include("test/utils.jl"); @show test_backends()'`.
+  To test another GPU, add its package to `[extras]`, `[compat]` and `GPU_BACKENDS` in
+  `test/utils.jl`. Metal and oneAPI aren't in the list yet: the tests use Float64 floes,
+  which Metal and many Intel GPUs can't handle.
 
 ### Porting a function
 
