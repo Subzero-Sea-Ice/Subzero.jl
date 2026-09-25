@@ -101,12 +101,12 @@ function _translate_poly(::Type{FT}, p, Δx, Δy) where FT
     return get_tuple_poly(GO.transform(t, p), FT)
 end
 # translate polygon coordinates by Δx, Δy and rotate polygon coordiantes by Δα
-function _move_poly(poly::Subzero.Polys{FT}, Δx, Δy, Δα, cx = 0.0, cy = 0.0) where FT
+function _move_poly(::Type{FT}, poly, Δx, Δy, Δα, cx = zero(FT), cy = zero(FT)) where FT
     rot = CoordinateTransformations.LinearMap(Rotations.Angle2d(Δα))
     cent_rot = CoordinateTransformations.recenter(rot, (cx, cy))
     trans = CoordinateTransformations.Translation(Δx, Δy)
     # TODO: can remove the tuples call after GO SVPoint PR
-    return get_tuple_poly(GO.transform(trans ∘ cent_rot, poly), FT)
+    return get_tuple_poly(GO.transform(trans ∘ cent_rot, poly), FT)::Polys{FT}
 end
 
 # create polygon from a PolyVec, tuple coordiantes, or a linear ring

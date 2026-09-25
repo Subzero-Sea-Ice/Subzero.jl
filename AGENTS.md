@@ -99,10 +99,10 @@ over if/else flags.
 
 - Floes go to the device as a `FixedWidthFloes` (`floe.jl`): plain arrays with the
   floe index first. Ragged fields are padded: `poly` has `n_points` vertices per floe
-  and `FILL_VALUE` padding, and `interactions` has `num_inters` rows per floe and zero
-  padding. Add new fields there. In `update_floes!`, write changed fields back
-  through the StructArray columns (`floes.poly[i] = …`). Iterating over `floes` gives
-  copies, so changes made to them are lost.
+  and `interactions` has `num_inters` rows per floe, both padded with zeros. Add new
+  fields there. In `update_floes!`, write changed fields back through the StructArray
+  columns (`floes.poly[i] = …`). Iterating over `floes` gives copies, so changes made
+  to them are lost.
 - Put the per-floe logic in a plain function that takes `(floes::FixedWidthFloes, i, …)`,
   and make it a method of the CPU function when there is one (e.g. `calc_strain!`).
   Don't write a `@kernel` for it: run it with `launch_per_floe!(f, backend, floes, args...)`,
@@ -134,7 +134,6 @@ over if/else flags.
 
 ### Floating point and reproducibility
 
-- `FILL_VALUE` is a Float64. With Float32 floes, compare the padding with `FT(FILL_VALUE)`.
 - Float64 literals such as `1.5Δt` turn Float32 calculations into Float64. That's
   kept for now so that results stay within round-off of `main`, but it is slow on GPUs
   and fails on GPUs without Float64 (Metal). Consumer GPUs are much slower at Float64

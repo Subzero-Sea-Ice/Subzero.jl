@@ -60,7 +60,7 @@
                 Δx, Δy = 100 .* (rand(rng, FT, 2) .- FT(0.5))
                 Δα = FT(π) * (rand(rng, FT) - FT(0.5))
                 cx, cy = floes.centroid[i]
-                expected = Subzero._move_poly(floes.poly[i], Δx, Δy, Δα, cx, cy)
+                expected = Subzero._move_poly(FT, floes.poly[i], Δx, Δy, Δα, cx, cy)
                 Subzero._move_floe!(fwf, i, Δx, Δy, Δα)
                 n = fwf.n_points[i]
                 moved = [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:n]
@@ -70,7 +70,7 @@
                     rtol = 10eps(FT),
                 )
                 @test fwf.centroid[i, :] ≈ [cx + Δx, cy + Δy]
-                @test all(fwf.poly[i, (n + 1):end, :] .== FT(FILL_VALUE))
+                @test all(fwf.poly[i, (n + 1):end, :] .== 0)
             end
         end
     end

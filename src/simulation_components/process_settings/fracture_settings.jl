@@ -94,7 +94,7 @@ function _calculate_hibler(::Type{FT}, mean_height, pstar, c) where FT
     # TODO: eventually make with SVectors! 
     poly = GI.Polygon([ring_coords])
     (cx, cy) = centroid_poly(poly, FT)
-    return _move_poly(poly, -p/2, -p/2,  π/4, cx, cy)
+    return _move_poly(FT, poly, -p/2, -p/2,  π/4, cx, cy)
 end
 
 """

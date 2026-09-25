@@ -1,9 +1,7 @@
 # Floe definition
-export Floe, FILL_VALUE
+export Floe
 
 const FLOE_DEF = "`floe::Floe`: singular floe within the simulation"
-
-const FILL_VALUE = 1e32
 
 # See documentation below
 @kwdef mutable struct Floe{FT<:AbstractFloat}
@@ -62,7 +60,7 @@ end
 Floe fields stored as plain arrays so that they can be moved to the GPU with `adapt`.
 The first index of every array is the floe index. Ragged fields are padded:
 - `poly[i, j, d]` is coordinate `d` of vertex `j` of floe `i`'s exterior ring, for
-  `j in 1:n_points[i]` (the last vertex repeats the first); padding is `FILL_VALUE`.
+  `j in 1:n_points[i]` (the last vertex repeats the first); padding is zero.
 - `interactions[i, k, c]` is column `c` of interaction `k` of floe `i`, for
   `k in 1:num_inters[i]`; padding is zero.
 - `collision_force[i, d]`, `stress_accum[i, r, c]`, `stress_instant[i, r, c]`, and
@@ -121,7 +119,7 @@ function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
     nfloes = length(floes)
     n_points = Int32[GI.npoint(GI.getexterior(p)) for p in floes.poly]
     max_points = isempty(floes) ? 0 : Int(maximum(n_points))
-    poly = fill(FT(FILL_VALUE), nfloes, max_points, 2)
+    poly = zeros(FT, nfloes, max_points, 2)
     centroid = Matrix{FT}(undef, nfloes, 2)
     collision_force = Matrix{FT}(undef, nfloes, 2)
     num_inters = Int32.(floes.num_inters)

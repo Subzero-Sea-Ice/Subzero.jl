@@ -249,7 +249,7 @@
         @test fwf.num_inters == floes.num_inters
         @test size(fwf.interactions) == (length(floes), maximum(floes.num_inters), 7)
         for i in eachindex(floes)
-            @test all(fwf.poly[i, (n_points[i] + 1):end, :] .== FILL_VALUE)
+            @test all(fwf.poly[i, (n_points[i] + 1):end, :] .== 0)
             @test [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:n_points[i]] ==
                 collect(GI.getpoint(floes.poly[i]))
             ninters = floes.num_inters[i]
