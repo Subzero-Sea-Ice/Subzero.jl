@@ -1,69 +1,8 @@
 #=
 Reference implementation of `timestep_floe_properties!`, copied from the CPU version on
-`main` (including `calc_stress!`, `calc_strain!`, and `_move_floe!`) so that GPU/kernel
-versions can be checked against it. Only supports `DecayAreaScaledCalculator`.
+`main` so that GPU/kernel versions can be checked against it. It uses the CPU methods of
+`calc_stress!` and `calc_strain!` and `_move_poly` (called by `_move_floe!` on `main`).
 =#
-function _reference_calc_stress!(floe, floe_settings, ::Type{FT}) where FT
-    xi, yi = floe.centroid
-    inters = floe.interactions
-    stress = zeros(FT, 2, 2)
-    if floe.num_inters > 0
-        for i in 1:floe.num_inters
-            stress[1, 1] += (inters[i, xpoint] - xi) * inters[i, xforce]
-            stress[1, 2] += (inters[i, ypoint] - yi) * inters[i, xforce] +
-                (inters[i, xpoint] - xi) * inters[i, yforce]
-            stress[2, 2] += (inters[i, ypoint] - yi) * inters[i, yforce]
-        end
-        stress[1, 2] *= FT(0.5)
-        stress[2, 1] = stress[1, 2]
-        stress .*= 1/(floe.area * floe.height)
-    end
-    λ = floe_settings.stress_calculator.λ
-    floe.stress_accum .= (1 - λ) * floe.stress_accum + λ * stress
-    floe.stress_instant .= stress
-    return
-end
-
-function _reference_calc_strain!(floe, ::Type{FT}) where FT
-    fill!(floe.strain, zero(FT))
-    trans_poly = Subzero._translate_poly(FT, floe.poly, -floe.centroid[1], -floe.centroid[2])
-    local x1, y1
-    for (i, p2) in enumerate(GI.getpoint(GI.getexterior(trans_poly)))
-        x2, y2 = GO._tuple_point(p2, FT)
-        if i == 1
-            x1, y1 = x2, y2
-            continue
-        end
-        xdiff, ydiff = x2 - x1, y2 - y1
-        rad1, rad2 = sqrt(x1^2 + y1^2), sqrt(x2^2 + y2^2)
-        θ1, θ2 = atan(y1, x1), atan(y2, x2)
-        u1 = floe.u - floe.ξ * rad1 * sin(θ1)
-        u2 = floe.u - floe.ξ * rad2 * sin(θ2)
-        v1 = floe.u + floe.ξ * rad1 * cos(θ1)  # sic: uses u, as on main
-        v2 = floe.u + floe.ξ * rad2 * cos(θ2)
-        udiff, vdiff = u2 - u1, v2 - v1
-        floe.strain[1, 1] += udiff * ydiff
-        floe.strain[1, 2] += udiff * xdiff + vdiff * ydiff
-        floe.strain[2, 2] += vdiff * xdiff
-        x1, y1 = x2, y2
-    end
-    floe.strain[1, 2] *= FT(0.5)
-    floe.strain[2, 1] = floe.strain[1, 2]
-    floe.strain ./= 2floe.area
-    return
-end
-
-function _reference_move_floe!(floe, Δx, Δy, Δα, ::Type{FT}) where FT
-    CT = Subzero.CoordinateTransformations
-    cx, cy = floe.centroid
-    floe.centroid[1] += Δx
-    floe.centroid[2] += Δy
-    rot = CT.LinearMap(Subzero.Rotations.Angle2d(Δα))
-    cent_rot = CT.recenter(rot, (cx, cy))
-    trans = CT.Translation(Δx, Δy)
-    floe.poly = GO.tuples(GO.transform(trans ∘ cent_rot, floe.poly), FT)
-    return
-end
 
 # Steps of the loop in `_reference_timestep_floe_properties!`, on floe i of a StructArray.
 # Each returns whether the event that the CPU version logs happened.
@@ -104,7 +43,11 @@ function _reference_update_ice_coordinates!(floes::StructArray{<:Floe{FT}}, i, �
     Δα = 1.5Δt*floes.ξ[i] - 0.5Δt*floes.p_dαdt[i]
     floes.α[i] += Δα
 
-    _reference_move_floe!(Subzero.get_floe(floes, i), Δx, Δy, Δα, FT)
+    floe = Subzero.get_floe(floes, i)
+    cx, cy = floe.centroid
+    floe.centroid[1] += Δx
+    floe.centroid[2] += Δy
+    floe.poly = Subzero._move_poly(FT, floe.poly, Δx, Δy, Δα, cx, cy)
     floes.p_dxdt[i] = floes.u[i]
     floes.p_dydt[i] = floes.v[i]
     floes.p_dαdt[i] = floes.ξ[i]
@@ -156,7 +99,7 @@ function _reference_timestep_floe_properties!(
     floe_settings,
 ) where FT
     for i in eachindex(floes)
-        _reference_calc_stress!(Subzero.get_floe(floes, i), floe_settings, FT)
+        Subzero.calc_stress!(Subzero.get_floe(floes, i), floe_settings)
         if _reference_limit_height!(floes, i, floe_settings.max_floe_height)
             @info "Reducing height to $(floe_settings.max_floe_height) m" tstep = tstep
         end
@@ -169,7 +112,7 @@ function _reference_timestep_floe_properties!(
         )
         adjusted && @info "Adjusting u and v velocities to prevent too high" tstep = tstep
         shrunk && @info "Shrinking ξ" tstep = tstep
-        _reference_calc_strain!(Subzero.get_floe(floes, i), FT)
+        Subzero.calc_strain!(Subzero.get_floe(floes, i))
     end
     return
 end
