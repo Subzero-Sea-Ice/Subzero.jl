@@ -56,6 +56,157 @@ const FLOE_DEF = "`floe::Floe`: singular floe within the simulation"
     p_dαdt::FT = 0.0        # previous timestep angular-velocity
 end
 
+#=
+Floe fields stored as plain arrays so that they can be moved to the GPU with `adapt`.
+The first index of every array is the floe index. Ragged fields are padded:
+- `poly[i, j, d]` is coordinate `d` of vertex `j` of floe `i`'s exterior ring, for
+  `j in 1:n_points[i]` (the last vertex repeats the first); padding is zero.
+- `interactions[i, k, c]` is column `c` of interaction `k` of floe `i`, for
+  `k in 1:num_inters[i]`; padding is zero.
+- `collision_force[i, d]`, `stress_accum[i, r, c]`, `stress_instant[i, r, c]`, and
+  `strain[i, r, c]` hold the floe's small vector/matrix fields.
+`flags` is a per-floe bit field that kernels can set to report events to the host.
+=#
+struct FixedWidthFloes{
+    FT<:AbstractFloat,
+    AT3<:AbstractArray{FT, 3},
+    AT2<:AbstractArray{FT, 2},
+    AT1<:AbstractArray{FT, 1},
+    IT1<:AbstractArray{Int32, 1},
+    UT1<:AbstractArray{UInt8, 1},
+}
+    # Shape
+    n_points::IT1
+    poly::AT3
+    centroid::AT2
+    area::AT1
+    height::AT1
+    mass::AT1
+    moment::AT1
+    # Velocity/orientation
+    α::AT1
+    u::AT1
+    v::AT1
+    ξ::AT1
+    # Forces/collisions
+    fxOA::AT1
+    fyOA::AT1
+    trqOA::AT1
+    hflx_factor::AT1
+    collision_force::AT2
+    collision_trq::AT1
+    num_inters::IT1
+    interactions::AT3
+    stress_accum::AT3
+    stress_instant::AT3
+    strain::AT3
+    damage::AT1
+    # Previous values for timestepping
+    p_dxdt::AT1
+    p_dydt::AT1
+    p_dudt::AT1
+    p_dvdt::AT1
+    p_dξdt::AT1
+    p_dαdt::AT1
+    # Events reported by kernels
+    flags::UT1
+end
+
+Adapt.@adapt_structure FixedWidthFloes
+
+# Copy of floes as a FixedWidthFloes on the CPU. Does not share memory with floes.
+function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
+    nfloes = length(floes)
+    n_points = Int32[GI.npoint(GI.getexterior(p)) for p in floes.poly]
+    max_points = isempty(floes) ? 0 : Int(maximum(n_points))
+    poly = zeros(FT, nfloes, max_points, 2)
+    centroid = Matrix{FT}(undef, nfloes, 2)
+    collision_force = Matrix{FT}(undef, nfloes, 2)
+    num_inters = Int32.(floes.num_inters)
+    max_inters = isempty(floes) ? 0 : Int(maximum(num_inters))
+    interactions = zeros(FT, nfloes, max_inters, 7)
+    stress_accum = Array{FT}(undef, nfloes, 2, 2)
+    stress_instant = Array{FT}(undef, nfloes, 2, 2)
+    strain = Array{FT}(undef, nfloes, 2, 2)
+    for i in 1:nfloes
+        for (j, point) in enumerate(GI.getpoint(GI.getexterior(floes.poly[i])))
+            poly[i, j, 1], poly[i, j, 2] = get_tuple_point(point, FT)
+        end
+        for d in 1:2
+            centroid[i, d] = floes.centroid[i][d]
+            collision_force[i, d] = floes.collision_force[i][d]
+        end
+        interactions[i, 1:num_inters[i], :] .= @view floes.interactions[i][1:num_inters[i], :]
+        stress_accum[i, :, :] .= floes.stress_accum[i]
+        stress_instant[i, :, :] .= floes.stress_instant[i]
+        strain[i, :, :] .= floes.strain[i]
+    end
+    return FixedWidthFloes(
+        n_points,
+        poly,
+        centroid,
+        copy(floes.area),
+        copy(floes.height),
+        copy(floes.mass),
+        copy(floes.moment),
+        copy(floes.α),
+        copy(floes.u),
+        copy(floes.v),
+        copy(floes.ξ),
+        copy(floes.fxOA),
+        copy(floes.fyOA),
+        copy(floes.trqOA),
+        copy(floes.hflx_factor),
+        collision_force,
+        copy(floes.collision_trq),
+        num_inters,
+        interactions,
+        stress_accum,
+        stress_instant,
+        strain,
+        copy(floes.damage),
+        copy(floes.p_dxdt),
+        copy(floes.p_dydt),
+        copy(floes.p_dudt),
+        copy(floes.p_dvdt),
+        copy(floes.p_dξdt),
+        copy(floes.p_dαdt),
+        zeros(UInt8, nfloes),
+    )
+end
+
+#=
+Copy the fields that `timestep_floe_properties!` changes from `fixed_width_floes` back into
+`floes`. `fixed_width_floes` must be on the CPU (use `adapt(Array, fixed_width_floes)`).
+Fields are written through the StructArray's columns: iterating over `floes` would create
+copies of each floe, so changes would be lost.
+=#
+function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedWidthFloes{FT}) where FT
+    fwf = fixed_width_floes
+    for i in eachindex(floes)
+        points = [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:fwf.n_points[i]]
+        floes.poly[i] = GI.Polygon([GI.LinearRing(points)])::Polys{FT}
+        floes.centroid[i] .= @view fwf.centroid[i, :]
+        floes.stress_accum[i] .= @view fwf.stress_accum[i, :, :]
+        floes.stress_instant[i] .= @view fwf.stress_instant[i, :, :]
+        floes.strain[i] .= @view fwf.strain[i, :, :]
+    end
+    floes.height .= fwf.height
+    floes.mass .= fwf.mass
+    floes.moment .= fwf.moment
+    floes.α .= fwf.α
+    floes.u .= fwf.u
+    floes.v .= fwf.v
+    floes.ξ .= fwf.ξ
+    floes.p_dxdt .= fwf.p_dxdt
+    floes.p_dydt .= fwf.p_dydt
+    floes.p_dudt .= fwf.p_dudt
+    floes.p_dvdt .= fwf.p_dvdt
+    floes.p_dξdt .= fwf.p_dξdt
+    floes.p_dαdt .= fwf.p_dαdt
+    return
+end
+
 """
     Floe{FT}
 

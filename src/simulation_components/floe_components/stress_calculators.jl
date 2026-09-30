@@ -31,12 +31,16 @@ methods.
 ## API
 The following methods must be implemented for all subtypes:
 - `_update_stress_accum!(stress_calculator::AbstractStressCalculator{FT}, curr_stress::Matrix{FT} , floe::FloeType{FT})`
+- `_update_stress_accum!(stress_calculator::AbstractStressCalculator{FT}, floes::FixedWidthFloes{FT}, i)`
 - `_scale_principal_stress!(stress_calculator::AbstractStressCalculator{FT}, σvals::Matrix{FT}, floe::FloeType{FT}, floe_settings::FloeSettings)`
 
 `_update_stress_accum!` is called in the `calc_stress!` function and takes the stress
 calculator, the `floe`'s instantatious stress at the current timestep, and the `floe` itself
 and updates the `floe`'s `stress_accum` field, which is used when determining floe fracture
 based off of stress. Within the function, other floe fields can be updated as needed.
+The method for `FixedWidthFloes` does the same for floe `i`, reading the instantaneous stress
+from `floes.stress_instant`. It is called from a GPU kernel, so it must use scalar operations
+and must not allocate.
 
 `_scale_principal_stress!` is called within the `find_σpoint` function which is called
 within the `determine_fractures` function. This function takes the stress calculator, the
@@ -121,6 +125,15 @@ function _update_stress_accum!(stress_calculator::DecayAreaScaledCalculator, cur
     return
 end
 
+function _update_stress_accum!(stress_calculator::DecayAreaScaledCalculator, floes::FixedWidthFloes, i)
+    λ = stress_calculator.λ
+    for c in 1:2, r in 1:2
+        floes.stress_accum[i, r, c] = (1 - λ) * floes.stress_accum[i, r, c] +
+            λ * floes.stress_instant[i, r, c]
+    end
+    return
+end
+
 #= This function scales a floe's stress in pricipal stress space (eigenvalues of the
 acucmulated stress) by `M = (floe_area/min_floe_area).^α ` as an alternative method of
 adjusting the fracture criteria boundaries in principal stress space.=#
@@ -184,5 +197,12 @@ function _update_stress_accum!(::DamageStressCalculator, curr_stress, floe)
     DamageStressCalculator struct!! 
     floe.damage = ... =#
     floe.stress_accum .= floe.damage * curr_stress
+    return
+end
+
+function _update_stress_accum!(::DamageStressCalculator, floes::FixedWidthFloes, i)
+    for c in 1:2, r in 1:2
+        floes.stress_accum[i, r, c] = floes.damage[i] * floes.stress_instant[i, r, c]
+    end
     return
 end

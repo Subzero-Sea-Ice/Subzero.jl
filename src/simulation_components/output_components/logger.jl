@@ -115,6 +115,10 @@ function handle_message(
     if !isnothing(tstep)
         formatted_message *= " --> timestep $tstep"
     end
+    # Add any other key-value pairs to message
+    if !isempty(kwargs)
+        formatted_message *= " (" * join(("$k = $v" for (k, v) in kwargs), ", ") * ")"
+    end
     # Add wall clock time to message
     msg_timestamp = Dates.format(Dates.now(), "[yyyy/mm/dd HH:MM:SS.sss]")
     formatted_message *= " $msg_timestamp"

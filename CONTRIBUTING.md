@@ -62,6 +62,53 @@ When you are ready to make changes, check out the developer docs section of the 
 
 Remember to always include (when applicable): unit tests which exercises the new code, and updated documentation.
 
+## Running the tests
+
+The tests are in the `test` folder. To run the full test suite, start Julia in the `Subzero` folder and run:
+```julia
+pkg> activate .
+pkg> test
+```
+or, from a terminal:
+```sh
+julia --project=. -e 'using Pkg; Pkg.test()'
+```
+The first run can take a while because Julia has to precompile the packages. The output is long, so it can help to redirect it to a file and look at the `Test Summary` table at the end.
+
+To run a single test file, use [`TestEnv.jl`](https://github.com/JuliaTesting/TestEnv.jl) to activate the test environment. Install it once in your global environment with `julia -e 'using Pkg; Pkg.add("TestEnv")'`. Then start Julia in the `test` folder (some tests read files from `test/inputs` using relative paths) and load the same packages as at the top of `test/runtests.jl`:
+```julia
+julia> using Pkg; Pkg.activate("..")
+julia> using TestEnv; TestEnv.activate()
+julia> using JLD2, Logging, NCDatasets, Random, SplitApplyCombine, Statistics, StructArrays, Subzero, Test
+julia> import GeometryOps as GO; import GeometryOps.GeoInterface as GI; import JLArrays
+julia> include("utils.jl")
+julia> include("test_floe_utils.jl")
+```
+If you add a new test file, remember to `include` it from `test/runtests.jl`.
+
+### Running the tests on a GPU
+
+Parts of Subzero run as [`KernelAbstractions.jl`](https://github.com/JuliaGPU/KernelAbstractions.jl) kernels. The tests run these kernels on every backend returned by `test_backends()` in `test/utils.jl`. By default these are the CPU and the reference GPU backend from [`JLArrays.jl`](https://github.com/JuliaGPU/GPUArrays.jl/tree/master/lib/JLArrays). JLArrays runs on the CPU, so the GPU code is tested even without a GPU.
+
+To also run the tests on a real GPU, pass the Julia package for your GPU as a test argument: `CUDA` for an NVIDIA GPU or `AMDGPU` for an AMD GPU. You can also give a comma-separated list, for example `--gpus=CUDA,AMDGPU`. The GPU packages aren't regular test dependencies, so you only install the one you need: the tests add it to the test environment when they start. For example, to test on an AMD GPU:
+```julia
+julia> using Pkg
+julia> Pkg.test(test_args = ["--gpus=AMDGPU"])
+```
+or, from a terminal:
+```sh
+julia --project=. -e 'using Pkg; Pkg.test(test_args = ["--gpus=AMDGPU"])'
+```
+Instead of the test argument, you can also set the environment variable `SUBZERO_TEST_GPUS`, for example `SUBZERO_TEST_GPUS=AMDGPU`. This is useful if you run a single test file: set `ENV["SUBZERO_TEST_GPUS"] = "AMDGPU"` before you `include("utils.jl")`.
+
+The tests stop with an error if the package can't use your GPU. For an AMD GPU you need [ROCm](https://rocm.docs.amd.com) and a GPU that it supports; for an NVIDIA GPU you need a recent driver. To check that Julia can use the GPU, run:
+```sh
+SUBZERO_TEST_GPUS=AMDGPU julia --project=. -e 'using TestEnv; TestEnv.activate(); using Subzero; import JLArrays; include("test/utils.jl"); @show test_backends()'
+```
+If this fails, see the [AMDGPU.jl](https://amdgpu.juliagpu.org/stable/) or [CUDA.jl](https://cuda.juliagpu.org/stable/) documentation.
+
+Apple GPUs ([`Metal.jl`](https://github.com/JuliaGPU/Metal.jl)) and Intel GPUs ([`oneAPI.jl`](https://github.com/JuliaGPU/oneAPI.jl)) aren't supported yet. Metal and many Intel GPUs (for example the integrated Iris Xe graphics) can't do Float64 maths, and the tests use Float64 floes. The kernels also still contain Float64 literals, so they would use Float64 even with Float32 floes.
+
 ## Code Modularity
 
 The most important thing to know about Subzero.jl is that the code has been written to be very modular, meaning that you are able to swap in and out different components of the `model`/`simulation` objects to gain new functionality. A user of the code should not need to modify the source code to add new science functionality. They should simply be able to add a new "method" to an existing "function" and swap that in seamlessly.

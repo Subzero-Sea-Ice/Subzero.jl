@@ -115,3 +115,20 @@ end
     test_basic_outputwriters()
 end
 
+
+@testset "SubzeroLogger" begin
+    stream = IOBuffer()
+    logger = SubzeroLogger(stream, Logging.Info, Dict{Union{String, Symbol}, Int}("tstep" => 0), 1)
+    with_logger(logger) do
+        for tstep in 1:2, _ in 1:3
+            @info "Shrinking ξ" tstep nfloes = 3
+        end
+        @info "No timestep"
+    end
+    lines = split(String(take!(stream)), '\n'; keepempty = false)
+    # One message per timestep, with extra key-value pairs appended
+    @test length(lines) == 3
+    @test startswith(lines[1], "INFO  Shrinking ξ --> timestep 1 (nfloes = 3) [")
+    @test startswith(lines[2], "INFO  Shrinking ξ --> timestep 2 (nfloes = 3) [")
+    @test startswith(lines[3], "INFO  No timestep [")
+end
