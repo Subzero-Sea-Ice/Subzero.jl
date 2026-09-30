@@ -74,4 +74,23 @@
             end
         end
     end
+    @testset "_move_floe! on $backend with $FT" for backend in test_backends(),
+            FT in (Float64, Float32)
+        floes = _make_timestep_test_floes(FT, FloeSettings(FT))
+        Δx, Δy, Δα = FT(-31.4), FT(27.2), FT(0.7)
+        fwf = _launch_on(Subzero._move_floe!, backend, Subzero.FixedWidthFloes(floes), Δx, Δy, Δα)
+        for i in eachindex(floes)
+            cx, cy = floes.centroid[i]
+            expected = Subzero._move_poly(FT, floes.poly[i], Δx, Δy, Δα, cx, cy)
+            n = fwf.n_points[i]
+            moved = [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:n]
+            @test isapprox(
+                reinterpret(FT, moved),
+                reinterpret(FT, collect(GI.getpoint(expected)));
+                rtol = 10eps(FT),
+            )
+            @test fwf.centroid[i, :] ≈ [cx + Δx, cy + Δy]
+            @test all(fwf.poly[i, (n + 1):end, :] .== 0)
+        end
+    end
 end

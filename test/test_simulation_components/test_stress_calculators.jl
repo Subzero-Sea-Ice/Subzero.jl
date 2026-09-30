@@ -25,6 +25,15 @@ new_stress_accum = 0.8 * stress_accum .+ 0.2 * curr_stress
 Subzero._update_stress_accum!(c1, curr_stress, floe)
 @test all(floe.stress_accum .== new_stress_accum)
 
+# Test _update_stress_accum! on FixedWidthFloes, which uses the instantaneous stress
+# (stress_accum has been updated in place above, so start again from its initial value)
+floes = StructArray([Floe(
+    poly, hmean; stress_accum = [0.3 0.5; 0.7 0.9], stress_instant = curr_stress, floe_settings,
+)])
+fwf = Subzero.FixedWidthFloes(floes)
+Subzero._update_stress_accum!(c1, fwf, 1)
+@test fwf.stress_accum[1, :, :] ≈ new_stress_accum
+
 # Test _scale_principal_stress!
 σvals = eigvals(floe.stress_accum)
 new_σvals = 4σvals

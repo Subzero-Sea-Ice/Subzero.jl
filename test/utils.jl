@@ -64,6 +64,17 @@ test_backends() = TEST_BACKENDS
 Subzero.KernelAbstractions.synchronize(::JLArrays.JLBackend) = nothing
 
 #=
+Run the per-floe function `f` on a copy of `fwf::FixedWidthFloes` on `backend` with
+`launch_per_floe!` and return the result as a `FixedWidthFloes` on the CPU.
+=#
+function _launch_on(f, backend, fwf, args...)
+    dev_floes = Subzero.adapt(backend, fwf)
+    Subzero.launch_per_floe!(f, backend, dev_floes, args...)
+    Subzero.KernelAbstractions.synchronize(backend)
+    return Subzero.adapt(Array, dev_floes)
+end
+
+#=
     find_poly_coords(poly)
 
 Syntactic sugar for to find a polygon's coordinates
