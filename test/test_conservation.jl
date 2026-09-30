@@ -3,6 +3,7 @@ function conservation_simulation(
     domain,
     floes,
     floe_settings,
+    backend,
     smoothing = false,
     plot = false,
 )
@@ -10,7 +11,7 @@ function conservation_simulation(
     ocean = Ocean(; grid, u = 0.0, v = 0.0, temp = 0.0)
     atmos = Atmos(; grid, u = 0.0, v = 0.0, temp = 0.0)
     model = Model(; grid, ocean, atmos, domain, floes)
-    dir = "output/conservation"
+    dir = joinpath("output", "conservation", string(nameof(typeof(backend))))
     initwriter = InitialStateOutputWriter(
         dir = dir,
         overwrite = true,
@@ -43,6 +44,7 @@ function conservation_simulation(
         coupling_settings = coupling_settings,
         simp_settings = simplification_settings,
         writers = writers,
+        backend = backend,
     )
     run!(simulation)
     em_lists = Subzero.check_energy_momentum_conservation_julia(
@@ -58,7 +60,7 @@ function conservation_simulation(
 end
 
 
-@testset "Conservation of Energy and Momentum" begin
+@testset "Conservation of Energy and Momentum on $backend" for backend in test_backends()
     Δt = 10
     FT = Float64
     grid = RegRectilinearGrid(; x0 = -2e4, xf = 1e5, y0 = 0.0, yf = 1e5, Δx = 1e4, Δy = 1e4)
@@ -110,6 +112,7 @@ end
         open_domain,
         head_on_floes,
         floe_settings,
+        backend,
     )) .< 1)
 
     # Two blocks crashing offset - rotation
@@ -133,6 +136,7 @@ end
         open_domain,
         offset_floes,
         floe_settings,
+        backend,
     )) .< 1)
 
     # Two rectangular boxes with a triangle inbetween causing rotation
@@ -157,6 +161,7 @@ end
         open_domain,
         rotating_floes,
         floe_settings,
+        backend,
     )) .< 1)
 
     # Three complex (many-sided, non-convex) floes hitting
@@ -186,6 +191,7 @@ end
             open_domain,
             complex_floes,
             floe_settings,
+            backend,
         )
     ) .< 2.1)
 
@@ -211,5 +217,6 @@ end
         open_domain_w_topography,
         floe_arr,
         floe_settings,
+        backend,
     )[1]) < 1
 end
