@@ -34,11 +34,9 @@ fwf = Subzero.FixedWidthFloes(floes)
 Subzero._update_stress_accum!(c1, fwf, 1)
 @test fwf.stress_accum[1, :, :] ≈ new_stress_accum
 
-# Test _scale_principal_stress!
-σvals = eigvals(floe.stress_accum)
-new_σvals = 4σvals
-Subzero._scale_principal_stress!(c2, σvals, floe, floe_settings)
-@test all(σvals .== new_σvals)
+# Test _scale_principal_stress: floe area / min_floe_area = 2, so with α = 2 the scale is 4
+@test Subzero._scale_principal_stress(c2, 0.5, -1.5, fwf, 1, floe_settings.min_floe_area) == (2.0, -6.0)
+@test Subzero._scale_principal_stress(c1, 0.5, -1.5, fwf, 1, floe_settings.min_floe_area) == (0.5, -1.5)
 
 
 # # Test DamageStressCalculator

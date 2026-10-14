@@ -498,6 +498,12 @@ const FLAG_HEIGHT_LIMITED = 0x01
 const FLAG_FORCE_REDUCED = 0x02
 const FLAG_VELOCITY_ADJUSTED = 0x04
 const FLAG_ξ_SHRUNK = 0x08
+const FLAG_FRACTURE = 0x10  # set by determine_fractures!
+
+# Whether `flag` is set in a floe's flags
+_has_flag(flags, flag) = flags & flag != 0
+# Indices of the floes with `flag` set
+_flagged(flags, flag) = findall(f -> _has_flag(f, flag), flags)
 
 # Ensure no extreme height values of floe i due to model instability
 function limit_height!(floes::FixedWidthFloes, i, max_height)
@@ -609,7 +615,7 @@ end
 
 # Log the events that kernels reported in flags, once per type of event
 function _log_flags(flags, tstep, floe_settings)
-    nfloes(flag) = count(f -> f & flag != 0, flags)
+    nfloes(flag) = count(f -> _has_flag(f, flag), flags)
     n = nfloes(FLAG_HEIGHT_LIMITED)
     n > 0 && @info "Reducing height to $(floe_settings.max_floe_height) m" tstep nfloes = n
     n = nfloes(FLAG_FORCE_REDUCED)

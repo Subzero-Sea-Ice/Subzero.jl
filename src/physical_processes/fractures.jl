@@ -4,6 +4,7 @@
     determine_fractures(...)
 
 Determines which floes will fracture depending on the principal stress criteria.
+Runs [`determine_fractures!`](@ref) on the CPU.
 
 ## _Positional arguments_
 - $FLOES_DEF
@@ -11,27 +12,100 @@ Determines which floes will fracture depending on the principal stress criteria.
 - $FLOE_SETTINGS_DEF
 
 ##  _Returns_
-- `Vector{Int}`: list of indices of floes to fracture 
+- `Vector{Int}`: list of indices of floes to fracture
 """
 function determine_fractures(
-    floes,
+    floes::StructArray{<:Floe},
     criteria::AbstractFractureCriteria,
-    floe_settings, 
+    floe_settings,
 )
-    # Determine if floe stresses are in or out of criteria allowable regions
-    _update_criteria!(criteria, floes)
-    # If stresses are outside of criteria regions, we will fracture the floe
-    frac_idx = [!coveredby_poly(find_σpoint(get_floe(floes, i), floe_settings), criteria.poly) for i in eachindex(floes)]
-    frac_idx[floes.area .< floe_settings.min_floe_area] .= false
-    return range(1, length(floes))[frac_idx]
+    fwf = FixedWidthFloes(floes)
+    determine_fractures!(fwf, criteria, floe_settings; backend = CPU())
+    return _flagged(fwf.flags, FLAG_FRACTURE)
 end
 
-# Find floe's accumulated stress in principal stress space so that is can be compared to the
-# fracture criteria. 
-function find_σpoint(floe::FloeType, floe_settings)
-    σvals = eigvals(floe.stress_accum)
-    _scale_principal_stress!(floe_settings.stress_calculator, σvals, floe, floe_settings)
-    return σvals
+"""
+    determine_fractures!(floes, criteria, floe_settings; backend = CPU())
+
+Determines which floes will fracture depending on the principal stress criteria, and sets
+`FLAG_FRACTURE` in `floes.flags` for those floes. A floe fractures if its accumulated stress
+in principal stress space (see [`find_σpoint`](@ref)) is outside of the criteria polygon and
+its area is at least `floe_settings.min_floe_area`.
+
+The floes must already be on `backend`. The kernel is launched asynchronously, so call
+`KernelAbstractions.synchronize(backend)` before reading the flags.
+
+## _Positional arguments_
+- `floes::FixedWidthFloes`: floes on `backend`
+- `criteria::AbstractFractureCriteria`: floe fracture criteria, updated in-place with
+    `_update_criteria!(criteria, floes)`
+- $FLOE_SETTINGS_DEF
+
+## _Keyword arguments_
+- `backend::KernelAbstractions.Backend`: backend to run the calculations on (Default = `CPU()`)
+"""
+function determine_fractures!(
+    floes::FixedWidthFloes{FT},
+    criteria::AbstractFractureCriteria,
+    floe_settings;
+    backend = CPU(),
+) where FT
+    #= Update the criteria with the floes' current values (e.g. their mean height). Reductions
+    such as `mean` run after the kernels already launched on the backend, so no synchronize
+    is needed. =#
+    _update_criteria!(criteria, floes)
+    criteria_coords = adapt(backend, _criteria_coords(criteria.poly, FT))
+    launch_per_floe!(determine_fracture!, backend, floes, criteria_coords,
+        FT(floe_settings.min_floe_area), floe_settings.stress_calculator)
+    return
+end
+
+# Coordinates of the exterior of the criteria polygon in principal stress space, as a
+# (number of points, 2) matrix that can be moved to a device.
+function _criteria_coords(poly, ::Type{FT}) where FT
+    ring = GI.getexterior(poly)
+    coords = Matrix{FT}(undef, GI.npoint(ring), 2)
+    for (j, point) in enumerate(GI.getpoint(ring))
+        coords[j, 1], coords[j, 2] = get_tuple_point(point, FT)
+    end
+    return coords
+end
+
+#=
+Sets `FLAG_FRACTURE` for floe i of a `FixedWidthFloes` if it should fracture: its stress
+point is outside of the criteria polygon `criteria_coords` and its area is at least
+`min_floe_area`. Clears the flag otherwise.
+=#
+function determine_fracture!(floes::FixedWidthFloes, i, criteria_coords, min_floe_area, stress_calculator)
+    σ1, σ2 = find_σpoint(floes, i, stress_calculator, min_floe_area)
+    fractures = floes.area[i] >= min_floe_area &&
+        !_point_covered_by(σ1, σ2, criteria_coords, size(criteria_coords, 1))
+    floes.flags[i] = fractures ? floes.flags[i] | FLAG_FRACTURE : floes.flags[i] & ~FLAG_FRACTURE
+    return
+end
+
+"""
+    find_σpoint(floes::FixedWidthFloes, i, stress_calculator, min_floe_area)
+
+Find floe `i`'s accumulated stress in principal stress space, so that it can be compared to
+the fracture criteria: the eigenvalues of `stress_accum` in ascending order, scaled with
+`_scale_principal_stress`. Written as scalar operations, so it can be called from a GPU
+kernel.
+
+##  _Returns_
+- `Tuple{FT, FT}`: the two scaled principal stresses
+"""
+function find_σpoint(floes::FixedWidthFloes{FT}, i, stress_calculator, min_floe_area) where FT
+    a = floes.stress_accum[i, 1, 1]
+    b = floes.stress_accum[i, 1, 2]
+    c = floes.stress_accum[i, 2, 1]
+    d = floes.stress_accum[i, 2, 2]
+    #= Eigenvalues of [a b; c d], which calc_stress! keeps symmetric (b == c). hypot doesn't
+    underflow for tiny stresses, unlike sqrt(((a - d) / 2)^2 + b^2), which would make both
+    eigenvalues equal. =#
+    mid = (a + d) / 2
+    r = hypot((a - d) / 2, (b + c) / 2)
+    return _scale_principal_stress(stress_calculator, mid - r, mid + r, floes, i, min_floe_area)
 end
 
 """
@@ -194,6 +268,10 @@ The new highest floe ID after adding the new floes to the array is returned.
 - $FLOE_SETTINGS_DEF
 - $ΔT_DEF
 
+## _Keyword arguments_
+- `frac_idx::Vector{Int}`: indices of the floes to fracture, e.g. from the flags set by
+    [`determine_fractures!`](@ref) (Default: calculated with [`determine_fractures`](@ref))
+
 ##  _Returns_
 - `max_floe_id::Int`: new highest floe ID after adding new floes to floe array.
 """
@@ -203,14 +281,9 @@ function fracture_floes!(
     rng,
     fracture_settings,
     floe_settings,
-    Δt,
+    Δt;
+    frac_idx = determine_fractures(floes, fracture_settings.criteria, floe_settings),
 ) where {FT <: AbstractFloat}
-    # Determine which floes will fracture
-    frac_idx = determine_fractures(
-        floes,
-        fracture_settings.criteria,
-        floe_settings,
-    )
     # Initialize list for new floes created from fracturing existing floes
     nfloes2frac = length(frac_idx)
     fracture_list = [StructArray{Floe{FT}}(undef, 0) for _ in 1:nfloes2frac]
