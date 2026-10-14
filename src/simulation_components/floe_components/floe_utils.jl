@@ -57,15 +57,32 @@ function _translate_floe!(::Type{FT}, floe, Δx, Δy) where FT
     return
 end
 
-# translate floe by floe by Δx and Δy and rotate flow by Δα
-function _move_floe!(::Type{FT}, floe, Δx, Δy, Δα) where FT
-    cx, cy = floe.centroid
+#=
+Rotate the polygon of floe i by Δα around (cx, cy) and then translate it by Δx and Δy, in
+place. Same result as `_move_poly`, but written as scalar operations on the arrays of a
+`FixedWidthFloes`, so it can be called from a GPU kernel.
+=#
+function _move_poly!(floes::FixedWidthFloes{FT}, i, Δx, Δy, Δα, cx = zero(FT), cy = zero(FT)) where FT
+    sinα, cosα = sincos(FT(Δα))
+    for j in 1:floes.n_points[i]
+        x = floes.poly[i, j, 1] - cx
+        y = floes.poly[i, j, 2] - cy
+        floes.poly[i, j, 1] = cosα * x - sinα * y + cx + Δx
+        floes.poly[i, j, 2] = sinα * x + cosα * y + cy + Δy
+    end
+    return
+end
+
+# translate floe i by Δx and Δy and rotate it by Δα around its centroid
+function _move_floe!(floes::FixedWidthFloes, i, Δx, Δy, Δα)
+    cx = floes.centroid[i, 1]
+    cy = floes.centroid[i, 2]
     # move centroid
-    floe.centroid[1] += Δx
-    floe.centroid[2] += Δy
+    floes.centroid[i, 1] += Δx
+    floes.centroid[i, 2] += Δy
     # move polygon
-    floe.poly = _move_poly(FT, floe.poly, Δx, Δy, Δα, cx, cy)::Polys{FT}
-    return 
+    _move_poly!(floes, i, Δx, Δy, Δα, cx, cy)
+    return
 end
 
 

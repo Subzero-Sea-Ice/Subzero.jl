@@ -183,3 +183,9 @@ timestep_floe_properties!
 calc_stress!
 calc_strain!
 ```
+
+### Kernel Methods
+```@docs
+launch_per_floe!
+per_floe_kernel!
+```

@@ -15,6 +15,7 @@ import StaticArrays as SA
 using CoordinateTransformations, Dates, Extents, 
     Interpolations, JLD2, LinearAlgebra, Logging, Measures, NCDatasets,
     Printf, Random, Rotations, SplitApplyCombine, Statistics, StructArrays
+using Adapt, KernelAbstractions
 
 
 const SIM_DEF = "`sim::Simulation`: simulation to be run"
@@ -43,6 +44,7 @@ include("simulation_components/domain_components/domains.jl")
 include("simulation_components/floe_components/floe_status.jl")
 include("simulation_components/floe_components/floe_interaction.jl")
 include("simulation_components/floe_components/floe.jl")
+include("simulation_components/floe_components/floe_kernels.jl")
 include("simulation_components/floe_components/floe_utils.jl")
 include("simulation_components/floe_components/floe_field.jl")
 include("simulation_components/floe_components/stress_calculators.jl")
