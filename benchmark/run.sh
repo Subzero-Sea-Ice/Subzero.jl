@@ -21,16 +21,25 @@ export BENCH_MACHINE
 if [ -z "${BENCH_CPUS+x}" ]; then
     BENCH_CPUS=""
     [ -f /sys/devices/cpu_core/cpus ] && BENCH_CPUS=$(cat /sys/devices/cpu_core/cpus)
-    # Other CPUs with cores of different speeds (e.g. AMD Zen 5 + Zen 5c, ARM big.LITTLE)
-    # aren't detected: warn if the maximum frequencies of the CPUs differ by more than 20%
-    if [ -z "$BENCH_CPUS" ] && ls /sys/devices/system/cpu/cpu*/cpufreq/cpuinfo_max_freq > /dev/null 2>&1; then
-        sort -n /sys/devices/system/cpu/cpu*/cpufreq/cpuinfo_max_freq | awk 'NR == 1 {min = $1} {max = $1}
-            END {if (min < 0.8 * max) print "Warning: the CPUs have different maximum frequencies (" min " to " max " kHz). Set BENCH_CPUS to run on the fast ones only."}'
-    fi
-    # Threads that aren't pinned move between sockets, and so does their memory
-    if [ -d /sys/devices/system/cpu/cpu0/topology ]; then
-        SOCKETS=$(cat /sys/devices/system/cpu/cpu*/topology/physical_package_id | sort -u | wc -l)
-        [ "$SOCKETS" -gt 1 ] && echo "Warning: $SOCKETS CPU sockets. Set BENCH_CPUS to the CPUs of one socket (see lscpu) for less noise."
+    # The CPUs this process may use (e.g. those of a Slurm job), one per line
+    if [ -f /proc/self/status ]; then
+        ALLOWED=$(awk '/^Cpus_allowed_list/ {print $2}' /proc/self/status |
+            tr , '\n' | awk -F- '{for (c = $1; c <= ($2 == "" ? $1 : $2); c++) print c}')
+        SYS=/sys/devices/system/cpu
+        # Other CPUs with cores of different speeds (e.g. AMD Zen 5 + Zen 5c, ARM
+        # big.LITTLE) aren't detected: warn if their maximum frequencies differ by more than 20%
+        if [ -z "$BENCH_CPUS" ] && [ -f $SYS/cpu0/cpufreq/cpuinfo_max_freq ]; then
+            for c in $ALLOWED; do cat $SYS/cpu$c/cpufreq/cpuinfo_max_freq; done | sort -n |
+                awk 'NR == 1 {min = $1} {max = $1}
+                END {if (min < 0.8 * max) print "Warning: the CPUs have different maximum frequencies (" min " to " max " kHz). Set BENCH_CPUS to run on the fast ones only."}'
+        fi
+        # Threads that aren't pinned move between sockets, and so does their memory
+        if [ -f $SYS/cpu0/topology/physical_package_id ]; then
+            SOCKETS=$(for c in $ALLOWED; do cat $SYS/cpu$c/topology/physical_package_id; done | sort -u | wc -l)
+            if [ "$SOCKETS" -gt 1 ]; then
+                echo "Warning: the CPUs are on $SOCKETS sockets. Set BENCH_CPUS to the CPUs of one socket (see lscpu) for less noise."
+            fi
+        fi
     fi
 fi
 export BENCH_CPUS

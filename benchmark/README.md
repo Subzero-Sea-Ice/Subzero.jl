@@ -100,8 +100,9 @@ maximum difference relative to the largest value of each field, and whether all 
 
 Results of different machines can't be compared, so every machine has its own folder,
 `results/<machine>/`, named by `BENCH_MACHINE` (default: the host name). Its results files
-record the date, Subzero commit, CPU, the CPUs the benchmark ran on, whether hyperthreading
-was on, the number of sockets and the GPU, and its `README.md` has its overview table.
+record the date, Subzero commit, CPU, the CPUs the benchmark ran on (set by `BENCH_CPUS`, or
+those of a Slurm job), whether hyperthreading was on, the number of sockets of those CPUs and
+the GPU, and its `README.md` has its overview table.
 
 The table above is the reference machine, `laptop-i7-12700H` (`REFERENCE` in
 `summarize.jl`):
@@ -147,11 +148,11 @@ On other machines:
 
 - **One type of core** (most desktops and HPC nodes): `run.sh` uses all CPUs that the process
   may use, with one thread per CPU, including hyperthreads if they're on. In a Slurm job,
-  that's the CPUs of the job.
+  that's the CPUs of the job. The warnings below only look at those CPUs.
 - **Other CPUs with fast and slow cores** (e.g. AMD Zen 5 + Zen 5c, ARM big.LITTLE) aren't
   detected. `run.sh` warns if the maximum frequencies of the CPUs differ by more than 20%;
   then set `BENCH_CPUS` to the fast ones.
-- **More than one socket**: threads that aren't pinned move between the sockets, and their
+- **CPUs on more than one socket**: threads that aren't pinned move between the sockets, and their
   memory with them. `run.sh` warns; set `BENCH_CPUS` to the CPUs of one socket (see `lscpu`)
   for less noise.
 - **macOS**: there's no `taskset`, so `run.sh` doesn't pin and `BENCH_CPUS` doesn't work.
@@ -166,6 +167,9 @@ $REPO/benchmark/setup.sh "$WORK"    # worktree of the baseline + env-baseline an
 cd "$WORK" && BENCH_MACHINE=<name> $REPO/benchmark/run.sh   # e.g. laptop-i7-12700H
 git -C $REPO worktree remove "$WORK/subzero-baseline"   # clean up afterwards
 ```
+
+On Snellius, `sbatch benchmark/snellius.sh` runs all of this in a Slurm job, on a quarter of a
+`gpu_a100` node (18 cores and one A100); see the comments in the script.
 
 `run.sh` does the following, on the CPUs in `BENCH_CPUS` with `BENCH_THREADS` threads (see
 [CPU cores](#cpu-cores)):

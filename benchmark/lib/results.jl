@@ -23,17 +23,32 @@ function subzero_commit()
 end
 
 cpu_name() = strip(replace(Sys.cpu_info()[1].model, r"\s+" => " "))
-# The CPUs Julia runs on (set by run.sh with taskset)
-cpu_set() = (s = get(ENV, "BENCH_CPUS", ""); isempty(s) ? "all" : s)
+# The CPUs Julia runs on: set by run.sh with taskset, or else the CPUs the process may use
+# (e.g. those of a Slurm job)
+function cpu_set()
+    s = get(ENV, "BENCH_CPUS", "")
+    isempty(s) || return s
+    line = isfile("/proc/self/status") ? filter(startswith("Cpus_allowed_list"), readlines("/proc/self/status")) : []
+    isempty(line) ? "all" : split(only(line))[2]
+end
 # Whether hyperthreading (SMT) is on, and the number of CPU sockets. Linux only.
 function smt()
     f = "/sys/devices/system/cpu/smt/active"
     isfile(f) ? readchomp(f) == "1" : "unknown"
 end
+# The CPUs this process may use (e.g. those of a Slurm job, or set with taskset)
+function allowed_cpus()
+    isfile("/proc/self/status") || return Int[]
+    line = filter(startswith("Cpus_allowed_list"), readlines("/proc/self/status"))
+    isempty(line) && return Int[]
+    reduce(vcat, [length(r) == 1 ? r : r[1]:r[2]
+        for r in (parse.(Int, split(x, "-")) for x in split(split(only(line))[2], ","))]; init = Int[])
+end
+# The number of sockets of those CPUs
 function sockets()
     ids = Set{String}()
-    for cpu in readdir("/sys/devices/system/cpu"; join = true)
-        f = joinpath(cpu, "topology", "physical_package_id")
+    for cpu in allowed_cpus()
+        f = "/sys/devices/system/cpu/cpu$cpu/topology/physical_package_id"
         isfile(f) && push!(ids, readchomp(f))
     end
     isempty(ids) ? "unknown" : length(ids)
