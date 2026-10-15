@@ -5,7 +5,7 @@
 #
 #     sbatch benchmark/snellius.sh
 #
-# On an H100 node (64 cores and 4 GPUs per node):
+# On a quarter of an H100 node (16 cores and one H100):
 #
 #     sbatch --partition=gpu_h100 --cpus-per-task=16 benchmark/snellius.sh
 #
@@ -18,9 +18,7 @@
 # To compare with the results of other machines, copy the input they used (floes_10k.jld2)
 # into the work directory first. Otherwise the first job makes a new one.
 #
-# The results go to benchmark/results/snellius-<partition>-<cores>c/ in the repository. With
-# a quarter node, other jobs share the node, which adds some noise. Add --exclusive to sbatch
-# for a whole node (4× the SBUs).
+# The results go to benchmark/results/snellius-<partition>-<cores>c/ in the repository.
 #
 #SBATCH --job-name=subzero-benchmark
 #SBATCH --partition=gpu_a100
