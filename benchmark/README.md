@@ -61,17 +61,27 @@ domain:
 - Instead of 50 floes on a 1e5 × 1e5 m domain, `nfloes = 10_000` on a 1.416e6 × 1.416e6 m
   domain (same floe density, so the floes have the same size). The generator made
   **10,029 floes**, with 7.0 vertices per floe on average.
-- The simulation runs 100 timesteps (current code, CPU backend) so that velocities, forces,
-  and collision interactions are realistic. After that, floes have 2.4 interactions on
-  average (at most 7).
+- The simulation runs 100 timesteps so that velocities, forces, and collision interactions
+  are realistic. After that, floes have 2.4 interactions on average (at most 7).
 - The floe fields are saved as plain arrays in `floes_10k.jld2`, so both Subzero versions
-  load exactly the same floes. A Voronoi floe field isn't reproducible with a fixed `rng`, so
-  a rerun gives a slightly different field: `_generate_voronoi_coords` doesn't pass the `rng`
-  to `GO.voronoi`, which then uses the global rng, and the spin-up's threaded collisions
-  depend on thread scheduling. Every result records the first 12 digits of the SHA-256 of
-  the input file (`input`), and each machine's table says if it isn't the input of the
-  reference results (`d1805bc093a4`). That file is 24 MB and not committed; ask for it to
-  compare against the reference results.
+  load exactly the same floes.
+
+**Making the same input again.** `run.sh` runs `make_input.jl` with 1 thread and the
+baseline, and `make_input.jl` seeds the global rng. Then the same machine makes the same file
+every time:
+
+- With more threads, the spin-up depends on the order in which the threads get a lock in
+  `timestep_collisions!`, and the 100 timesteps amplify that.
+- With the current code, the input would change with every commit that changes round-off.
+- Before Subzero passes its `rng` to `GO.voronoi`, the Voronoi tesselation uses the global
+  rng.
+
+Other package versions or CPUs can still change the last bits, and the spin-up amplifies
+them. So every result records the first 12 digits of the SHA-256 of the input file
+(`input`), and each machine's table says if it isn't the input of the reference results
+(`d1805bc093a4`). That input was made before these changes (with 20 threads and the current
+code), so it can't be made again: it's 24 MB and not committed, so ask for it, and copy it
+to the work directory of every machine.
 
 Typical simulations have 100,000 to 1,000,000 floes. The benchmarks use **100,000 floes** by
 default, made by copying the 10,029-floe field 10 times, each copy shifted by `Lx` in x. The
@@ -178,8 +188,9 @@ On Snellius, `sbatch benchmark/snellius.sh` runs all of this in a Slurm job, on 
 `run.sh` does the following, on the CPUs in `BENCH_CPUS` with `BENCH_THREADS` threads (see
 [CPU cores](#cpu-cores)):
 
-1. `make_input.jl 10000 100 floes_10k.jld2` generates the input (about 1 min). This is
-   skipped if `floes_10k.jld2` exists in the work directory.
+1. `make_input.jl 10000 100 floes_10k.jld2` generates the input with 1 thread and the
+   baseline (a few minutes). This is skipped if `floes_10k.jld2` exists in the work
+   directory.
 2. `bench.jl baseline` with 1 and `BENCH_THREADS` threads. Steps whose baseline results exist
    for that number of threads are skipped.
 3. `bench.jl current` with 1 thread (CPU only, `BENCH_BACKENDS=CPU`) and `BENCH_THREADS`

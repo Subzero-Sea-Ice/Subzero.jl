@@ -55,7 +55,9 @@ else  # macOS
 fi
 THREADS=${BENCH_THREADS:-$NCPUS}
 echo "Machine: $BENCH_MACHINE, CPUs: ${BENCH_CPUS:-all}, threads: 1 and $THREADS"
-[ -f "${BENCH_FLOES:-floes_10k.jld2}" ] || $PIN julia -t "$THREADS" --project=env-current "$DIR/make_input.jl" 10000 100 floes_10k.jld2
+# The input is made with 1 thread and the baseline, so it doesn't depend on the number of
+# threads or on the commit being benchmarked (see make_input.jl)
+[ -f "${BENCH_FLOES:-floes_10k.jld2}" ] || $PIN julia -t 1 --project=env-baseline "$DIR/make_input.jl" 10000 100 floes_10k.jld2
 mkdir -p logs
 for t in 1 "$THREADS"; do
     $PIN julia -t "$t" --project=env-baseline "$DIR/bench.jl" baseline 2>&1 | tee "logs/baseline_t$t.txt"

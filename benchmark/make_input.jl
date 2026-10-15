@@ -1,9 +1,14 @@
 # Generate the benchmark input: the docs example `shear_flow.jl` on a larger domain with
 # more floes, spun up for NSPINUP timesteps so velocities, forces, and interactions are
 # non-trivial. Floe fields are saved as plain arrays so that any Subzero version can load
-# them (a Voronoi floe field isn't reproducible, so generate it once and reuse the file).
+# them.
 #
-# Usage: julia --project=env-current make_input.jl [nfloes] [nspinup] [outfile]
+# Usage: julia -t 1 --project=env-baseline make_input.jl [nfloes] [nspinup] [outfile]
+#
+# run.sh runs it like this, so that the input doesn't depend on the number of threads
+# (threaded collisions depend on the order the threads get a lock) or on the commit being
+# benchmarked. It can still differ with other package versions or CPUs, so copy the input of
+# the reference results to other machines rather than making a new one.
 using Subzero, JLD2, Random, Statistics
 import GeoInterface as GI
 
@@ -36,6 +41,8 @@ atmos = Atmos(; u = 0.0, v = 0.0, temp = -1.0, grid)
 floe_settings = FloeSettings(subfloe_point_generator = SubGridPointsGenerator(; grid, npoint_per_cell))
 floe_generator = VoronoiTesselationFieldGenerator(; nfloes = NFLOES, concentrations = [0.75], hmean, Δh)
 @info "Generating floe field" NFLOES Lx
+# Before Subzero passes the rng to GO.voronoi, the Voronoi tesselation uses the global rng
+Random.seed!(1)
 @time floe_arr = initialize_floe_field(FT; generator = floe_generator, domain, rng = Xoshiro(1), floe_settings)
 @info "Generated floes" length(floe_arr)
 
