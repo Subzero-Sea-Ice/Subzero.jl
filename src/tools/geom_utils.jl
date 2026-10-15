@@ -251,7 +251,7 @@ function _generate_voronoi_coords(::Type{FT}, desired_points::Int, Δx, Δy, xmi
         clip_vertices = (1, 2, 3, 4, 1)
         clip_polygon = (clip_points, clip_vertices)
         try
-            GO.voronoi(tuple.(xpoints, ypoints), FT; clip_polygon)
+            GO.voronoi(tuple.(xpoints, ypoints), FT; clip_polygon, rng)
         catch
             @info "Voronoi failed - floe to fracture likely really small." tstep = tstep
             Polys{FT}[]

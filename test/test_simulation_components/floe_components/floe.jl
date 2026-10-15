@@ -159,6 +159,13 @@
         )
     end
 
+    # The same rng gives the same polygons, whatever the state of the global rng
+    square_poly = Subzero.make_multipolygon([[[[0, 0], [0, 1e5], [1e5, 1e5], [1e5, 0], [0, 0]]]])
+    voronoi_with_global_seed(seed) = (Random.seed!(seed); GI.coordinates.(Subzero._generate_voronoi_coords(
+        FT, 1000, 1e5, 1e5, 0, 0, square_poly, Xoshiro(1), 1000,
+    )))
+    @test voronoi_with_global_seed(1) == voronoi_with_global_seed(2)
+
     # Test warning and no points generated
     warning_str = "Only 0 floes were able to be generated in 10 tries during \
         voronoi tesselation."
