@@ -23,10 +23,11 @@ and device as in `timestep_sim!`.
 
 From the run of 2026-10-15 (100,000 floes, P-cores, see the overview for the numbers):
 
-- **The kernels are 8× faster than the baseline** with 12 threads on the CPU backend (6.2 vs
-  49 ms), and 9× with 1 thread (41 vs 383 ms), because they don't allocate.
+- **The kernels are 5× faster than the baseline** with 12 threads on the CPU backend (9.3 vs
+  49 ms), and 7× with 1 thread (39 vs 263 ms), because they don't allocate. With 12 threads,
+  the kernels varied between 6 and 9 ms from run to run.
 - **CUDA in Float64 is no faster than 12 CPU threads** (6.6 ms): this GPU is slow at Float64.
   In Float32 it's 4× faster (1.6 ms).
 - **Copying the floes costs more than the kernels**: the round trip of
-  [`95_transfer`](95_transfer.md) takes 63 ms on CUDA. The GPU only pays off once the floes
+  [`95_transfer`](95_transfer.md) takes 78 ms on CUDA. The GPU only pays off once the floes
   stay on the device between steps.

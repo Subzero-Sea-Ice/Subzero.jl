@@ -17,8 +17,8 @@ From the run of 2026-10-15 (100,000 floes, 12 threads on the P-cores):
 
 | backend | round trip | `FixedWidthFloes` | to device | to host | `update_floes!` |
 |---|--:|--:|--:|--:|--:|
-| CPU  | 34.5 | 20.1 | 0    | 0    | 17.6 |
-| CUDA | 63.1 | 22.0 | 12.0 | 13.8 | 25.1 |
+| CPU  | 46.6 | 30.6 | 0    | 0    | 16.7 |
+| CUDA | 78.0 | 31.0 | 11.9 | 23.0 | 17.6 |
 
-Median times in ms; the parts are measured separately. On CUDA, the round trip takes 10× as
+Median times in ms; the parts are measured separately. On CUDA, the round trip takes 12× as
 long as the `timestep_floe_properties!` kernels (6.6 ms).

@@ -22,9 +22,9 @@ faster than linearly with the number of floes.
 
 ## Observations
 
-From the run of 2026-10-15 (100,000 floes, P-cores): collisions take about half of a
-timestep, coupling and ridging/rafting most of the rest. The ported
-`timestep_floe_properties!` was less than 1% of the timestep, so the current code isn't
-faster yet. The differences between the baseline, current CPU and CUDA times (18–22 s with
+From the run of 2026-10-15 (100,000 floes, P-cores, input `2f2e3e6e9230`): collisions take
+about a third of a timestep, coupling another third and ridging/rafting a fifth. The ported
+`timestep_floe_properties!` is less than 1% of the timestep, so the current code isn't
+faster yet. The differences between the baseline, current CPU and CUDA times (21–25 s with
 12 threads) come mostly from the variation of the collisions (see
 [`20_collisions`](20_collisions.md)).

@@ -12,7 +12,7 @@ const N = parse(Int, first(split(get(ENV, "BENCH_SIZES", "100000"), ",")))
 # The machine whose results are in README.md
 const REFERENCE = "laptop-i7-12700H"
 # Checksum of the input file of the reference results (see input_checksum in lib/input.jl)
-const REFERENCE_INPUT = "d1805bc093a4"
+const REFERENCE_INPUT = "2f2e3e6e9230"
 # The step whose time is 100% in the "share of timestep" column
 const TIMESTEP = "00_timestep_sim"
 

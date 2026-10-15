@@ -16,7 +16,7 @@ The baseline is extrapolated for more than 100,000 floes, because of the O(n²) 
 
 ## Observations
 
-From the run of 2026-10-15 (100,000 floes, P-cores): the time varies a lot between samples
-with 12 threads, e.g. a median of 12.0 s and a minimum of 7.5 s in one run, and a median of
-9.6 s in another. Every floe takes the lock of a shared `Dict` for every pair that is close.
-12 threads are only 3–4× faster than 1 thread (36 s).
+From the runs of 2026-10-15 (100,000 floes, P-cores): the time varies a lot between samples
+with 12 threads, e.g. a median of 8.7 s and a minimum of 7.0 s, and a median of 12.0 s with a
+minimum of 7.5 s in an earlier run. Every floe takes the lock of a shared `Dict` for every
+pair that is close. 12 threads are only about 4× faster than 1 thread (37 s).
