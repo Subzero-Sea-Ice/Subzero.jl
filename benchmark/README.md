@@ -192,7 +192,7 @@ On Snellius, `sbatch benchmark/snellius.sh` runs all of this in a Slurm job, on 
    baseline (a few minutes). This is skipped if `floes_10k.jld2` exists in the work
    directory.
 2. `bench.jl baseline` with 1 and `BENCH_THREADS` threads. Steps whose baseline results exist
-   for that number of threads are skipped.
+   for that number of threads and this input (same checksum) are skipped.
 3. `bench.jl current` with 1 thread (CPU only, `BENCH_BACKENDS=CPU`) and `BENCH_THREADS`
    threads (CPU and GPUs).
 4. `summarize.jl` updates the overview tables.

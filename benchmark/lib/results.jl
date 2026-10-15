@@ -135,14 +135,18 @@ function save_results!(step, env, records, checks)
 end
 
 # True if the results file has the baseline's primary timing for every size in SIZES with
-# this number of threads
+# this number of threads, measured on the same input
 function has_baseline(step)
     timings = get(read_results(step), "timing", [])
     all(SIZES) do n
         any(r -> r["env"] == "baseline" && r["threads"] == Threads.nthreads() && r["n"] == n &&
-            r["primary"], timings)
+            r["primary"] && get(r, "input", "") == input_checksum(), timings)
     end
 end
+
+# The checksum of the input that the baseline's result for the correctness check was made
+# with, or nothing if there's no such result
+check_input(step) = isfile(check_file(step)) ? get(load(check_file(step)), "input", "unknown") : nothing
 
 # Flatten a field (a vector of numbers or of arrays) to a vector of numbers
 flat(x) = eltype(x) <: Number ? vec(collect(x)) : reduce(vcat, vec.(x); init = Float64[])

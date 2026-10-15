@@ -43,11 +43,16 @@ function check(step)
     if ENV_NAME == "baseline"
         step.baseline_result === nothing && return Dict{String, Any}[]
         mkpath(CHECK_DIR)
-        jldsave(check_file(step); n, result = step.baseline_result(n))
+        jldsave(check_file(step); n, input = input_checksum(), result = step.baseline_result(n))
         return Dict{String, Any}[]
     end
     f = is_ported(step) ? step.current_result : (n, _) -> step.baseline_result(n)
-    (f === nothing || !isfile(check_file(step))) && return Dict{String, Any}[]
+    (f === nothing || check_input(step) === nothing) && return Dict{String, Any}[]
+    if check_input(step) != input_checksum()
+        println("check    skipped: the baseline's result was made with input $(check_input(step)), ",
+            "not $(input_checksum()). Run the baseline first.")
+        return Dict{String, Any}[]
+    end
     reference = load(check_file(step), "result")
     checks = Dict{String, Any}[]
     for name in (is_ported(step) ? BACKENDS : ["CPU"])
@@ -63,9 +68,9 @@ end
 function run_step(step)
     println("\n== $(step.name): $(step.title)")
     if ENV_NAME == "baseline" && !FORCE && has_baseline(step)
-        println("baseline results with $(Threads.nthreads()) threads exist, skipping (BENCH_FORCE=1 reruns them)")
+        println("baseline results with $(Threads.nthreads()) threads on this input exist, skipping (BENCH_FORCE=1 reruns them)")
         # The current code still needs the baseline's result for the correctness check
-        isfile(check_file(step)) || check(step)
+        check_input(step) == input_checksum() || check(step)
         return
     end
     checks = check(step)
