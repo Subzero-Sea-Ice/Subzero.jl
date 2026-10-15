@@ -1,4 +1,4 @@
-ported = false
+ported = true
 title = "fracture check (`determine_fractures`, part of `fracture_floes!`)"
 
 [[check]]
@@ -8,6 +8,30 @@ date = "2026-10-15"
 max_rel_diff = 0.0
 n = 100000
 ok = true
+[[check]]
+backend = "CPU"
+commit = "cb4f860"
+date = "2026-10-15"
+max_rel_diff = 0.0
+n = 100000
+ok = true
+threads = 1
+[[check]]
+backend = "CPU"
+commit = "cb4f860"
+date = "2026-10-15"
+max_rel_diff = 0.0
+n = 100000
+ok = true
+threads = 12
+[[check]]
+backend = "CUDA"
+commit = "cb4f860"
+date = "2026-10-15"
+max_rel_diff = 0.0
+n = 100000
+ok = true
+threads = 12
 
 [[timing]]
 FT = "Float64"
@@ -50,16 +74,16 @@ threads = 12
 [[timing]]
 FT = "Float64"
 backend = "CPU"
-commit = "1160b6a"
+commit = "cb4f860"
 cpu = "12th Gen Intel(R) Core(TM) i7-12700H"
 cpus = "0-11"
 date = "2026-10-15"
 device = "12th Gen Intel(R) Core(TM) i7-12700H"
 env = "current"
 extrapolated = false
-label = "determine_fractures"
-median_ms = 131.7
-min_ms = 129.1
+label = "determine_fractures!"
+median_ms = 15.52
+min_ms = 14.97
 n = 100000
 primary = true
 samples = 20
@@ -69,16 +93,54 @@ threads = 1
 [[timing]]
 FT = "Float64"
 backend = "CPU"
-commit = "1160b6a"
+commit = "cb4f860"
 cpu = "12th Gen Intel(R) Core(TM) i7-12700H"
 cpus = "0-11"
 date = "2026-10-15"
 device = "12th Gen Intel(R) Core(TM) i7-12700H"
 env = "current"
 extrapolated = false
-label = "determine_fractures"
-median_ms = 153.9
-min_ms = 152.4
+label = "determine_fractures!"
+median_ms = 3.264
+min_ms = 3.057
+n = 100000
+primary = true
+samples = 20
+smt = true
+sockets = 1
+threads = 12
+[[timing]]
+FT = "Float32"
+backend = "CUDA"
+commit = "cb4f860"
+cpu = "12th Gen Intel(R) Core(TM) i7-12700H"
+cpus = "0-11"
+date = "2026-10-15"
+device = "NVIDIA GeForce RTX 3050 Ti Laptop GPU"
+env = "current"
+extrapolated = false
+label = "determine_fractures!"
+median_ms = 1.3
+min_ms = 1.175
+n = 100000
+primary = true
+samples = 20
+smt = true
+sockets = 1
+threads = 12
+[[timing]]
+FT = "Float64"
+backend = "CUDA"
+commit = "cb4f860"
+cpu = "12th Gen Intel(R) Core(TM) i7-12700H"
+cpus = "0-11"
+date = "2026-10-15"
+device = "NVIDIA GeForce RTX 3050 Ti Laptop GPU"
+env = "current"
+extrapolated = false
+label = "determine_fractures!"
+median_ms = 6.926
+min_ms = 6.754
 n = 100000
 primary = true
 samples = 20
