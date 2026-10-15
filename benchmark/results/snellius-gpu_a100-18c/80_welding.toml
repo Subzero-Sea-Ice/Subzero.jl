@@ -1,0 +1,96 @@
+ported = false
+title = "`timestep_welding!`"
+
+[[check]]
+backend = "CPU"
+commit = "79e1bf1"
+date = "2026-10-15"
+max_rel_diff = 0.0
+n = 1000
+ok = true
+threads = 1
+[[check]]
+backend = "CPU"
+commit = "79e1bf1"
+date = "2026-10-15"
+max_rel_diff = 0.0
+n = 1000
+ok = true
+threads = 18
+
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "ae96ff2"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "baseline"
+extrapolated = false
+label = "timestep_welding!"
+median_ms = 1462.0
+min_ms = 1458.0
+n = 100000
+primary = true
+samples = 5
+smt = false
+sockets = 1
+threads = 1
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "ae96ff2"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "baseline"
+extrapolated = false
+label = "timestep_welding!"
+median_ms = 1415.0
+min_ms = 1405.0
+n = 100000
+primary = true
+samples = 8
+smt = false
+sockets = 1
+threads = 18
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "79e1bf1"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "current"
+extrapolated = false
+label = "timestep_welding!"
+median_ms = 1478.0
+min_ms = 1463.0
+n = 100000
+primary = true
+samples = 5
+smt = false
+sockets = 1
+threads = 1
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "79e1bf1"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "current"
+extrapolated = false
+label = "timestep_welding!"
+median_ms = 1436.0
+min_ms = 1430.0
+n = 100000
+primary = true
+samples = 8
+smt = false
+sockets = 1
+threads = 18

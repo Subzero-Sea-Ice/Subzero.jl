@@ -1,0 +1,96 @@
+ported = false
+title = "fracture check (`determine_fractures`, part of `fracture_floes!`)"
+
+[[check]]
+backend = "CPU"
+commit = "79e1bf1"
+date = "2026-10-15"
+max_rel_diff = 0.0
+n = 100000
+ok = true
+threads = 1
+[[check]]
+backend = "CPU"
+commit = "79e1bf1"
+date = "2026-10-15"
+max_rel_diff = 0.0
+n = 100000
+ok = true
+threads = 18
+
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "ae96ff2"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "baseline"
+extrapolated = false
+label = "determine_fractures"
+median_ms = 196.5
+min_ms = 195.8
+n = 100000
+primary = true
+samples = 20
+smt = false
+sockets = 1
+threads = 1
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "ae96ff2"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "baseline"
+extrapolated = false
+label = "determine_fractures"
+median_ms = 217.0
+min_ms = 216.5
+n = 100000
+primary = true
+samples = 20
+smt = false
+sockets = 1
+threads = 18
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "79e1bf1"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "current"
+extrapolated = false
+label = "determine_fractures"
+median_ms = 211.7
+min_ms = 209.4
+n = 100000
+primary = true
+samples = 20
+smt = false
+sockets = 1
+threads = 1
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "79e1bf1"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "current"
+extrapolated = false
+label = "determine_fractures"
+median_ms = 220.4
+min_ms = 218.4
+n = 100000
+primary = true
+samples = 20
+smt = false
+sockets = 1
+threads = 18

@@ -1,0 +1,96 @@
+ported = false
+title = "`simplify_floes!`"
+
+[[check]]
+backend = "CPU"
+commit = "79e1bf1"
+date = "2026-10-15"
+max_rel_diff = 0.0
+n = 1000
+ok = true
+threads = 1
+[[check]]
+backend = "CPU"
+commit = "79e1bf1"
+date = "2026-10-15"
+max_rel_diff = 0.0
+n = 1000
+ok = true
+threads = 18
+
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "ae96ff2"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "baseline"
+extrapolated = false
+label = "simplify_floes!"
+median_ms = 5.0
+min_ms = 4.947
+n = 100000
+primary = true
+samples = 6
+smt = false
+sockets = 1
+threads = 1
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "ae96ff2"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "baseline"
+extrapolated = false
+label = "simplify_floes!"
+median_ms = 6.684
+min_ms = 4.885
+n = 100000
+primary = true
+samples = 9
+smt = false
+sockets = 1
+threads = 18
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "79e1bf1"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "current"
+extrapolated = false
+label = "simplify_floes!"
+median_ms = 5.11
+min_ms = 4.915
+n = 100000
+primary = true
+samples = 6
+smt = false
+sockets = 1
+threads = 1
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "79e1bf1"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "current"
+extrapolated = false
+label = "simplify_floes!"
+median_ms = 5.012
+min_ms = 4.948
+n = 100000
+primary = true
+samples = 10
+smt = false
+sockets = 1
+threads = 18

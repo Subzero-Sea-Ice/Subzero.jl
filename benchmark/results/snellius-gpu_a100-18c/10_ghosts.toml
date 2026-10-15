@@ -1,0 +1,96 @@
+ported = false
+title = "`add_ghosts!` and removing the ghosts"
+
+[[check]]
+backend = "CPU"
+commit = "79e1bf1"
+date = "2026-10-15"
+max_rel_diff = 0.0
+n = 1000
+ok = true
+threads = 1
+[[check]]
+backend = "CPU"
+commit = "79e1bf1"
+date = "2026-10-15"
+max_rel_diff = 0.0
+n = 1000
+ok = true
+threads = 18
+
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "ae96ff2"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "baseline"
+extrapolated = false
+label = "add and remove ghosts"
+median_ms = 25.07
+min_ms = 24.96
+n = 100000
+primary = true
+samples = 20
+smt = false
+sockets = 1
+threads = 1
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "ae96ff2"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "baseline"
+extrapolated = false
+label = "add and remove ghosts"
+median_ms = 26.82
+min_ms = 26.62
+n = 100000
+primary = true
+samples = 20
+smt = false
+sockets = 1
+threads = 18
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "79e1bf1"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "current"
+extrapolated = false
+label = "add and remove ghosts"
+median_ms = 24.55
+min_ms = 24.31
+n = 100000
+primary = true
+samples = 20
+smt = false
+sockets = 1
+threads = 1
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "79e1bf1"
+cpu = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+cpus = "18-35"
+date = "2026-10-15"
+device = "Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz"
+env = "current"
+extrapolated = false
+label = "add and remove ghosts"
+median_ms = 24.98
+min_ms = 24.76
+n = 100000
+primary = true
+samples = 20
+smt = false
+sockets = 1
+threads = 18
