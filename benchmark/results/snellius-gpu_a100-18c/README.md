@@ -19,4 +19,4 @@ Made by `summarize.jl` from the results files in this folder: don't edit by hand
 
 Median time of one call in ms for 100,000 floes. ≈: extrapolated from fewer floes as t ∝ nᵇ, with the exponent b.
 
-Machine `snellius-gpu_a100-18c`: Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz, 1 socket, hyperthreading off, run on CPUs 18-35; GPU: NVIDIA A100-SXM4-40GB.
+Machine `snellius-gpu_a100-18c`: Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz, 1 socket, hyperthreading off, run on CPUs 18-35; GPU: NVIDIA A100-SXM4-40GB; input `unknown` (not the reference input `d1805bc093a4`, so not directly comparable).

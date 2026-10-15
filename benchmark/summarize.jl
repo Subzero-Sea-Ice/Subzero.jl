@@ -11,6 +11,8 @@ const START, STOP = "<!-- overview:start -->", "<!-- overview:end -->"
 const N = parse(Int, first(split(get(ENV, "BENCH_SIZES", "100000"), ",")))
 # The machine whose results are in README.md
 const REFERENCE = "laptop-i7-12700H"
+# Checksum of the input file of the reference results (see input_checksum in lib/input.jl)
+const REFERENCE_INPUT = "d1805bc093a4"
 # The step whose time is 100% in the "share of timestep" column
 const TIMESTEP = "00_timestep_sim"
 
@@ -100,9 +102,12 @@ function machine_info(machine, timings)
     gpus = sort(unique(r["device"] for r in timings if r["backend"] != "CPU"))
     smt = values("smt")
     smt = smt == "true" ? "on" : smt == "false" ? "off" : smt
+    input = values("input")
+    input = input == REFERENCE_INPUT ? "the reference input `$input`" :
+        "input `$input` (not the reference input `$REFERENCE_INPUT`, so not directly comparable)"
     "Machine `$machine`: $(values("cpu")), $(values("sockets")) socket$(values("sockets") == "1" ? "" : "s"), hyperthreading " *
         "$smt, run on CPUs $(join(sort(unique(r["cpus"] for r in cpu)), ", ")); " *
-        "GPU: $(isempty(gpus) ? "none" : join(gpus, ", "))."
+        "GPU: $(isempty(gpus) ? "none" : join(gpus, ", ")); $input."
 end
 
 machines = sort(filter(m -> isdir(joinpath(DIR, "results", m)), readdir(joinpath(DIR, "results"))))

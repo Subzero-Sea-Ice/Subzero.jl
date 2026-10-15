@@ -33,7 +33,7 @@ The results of the reference machine, `laptop-i7-12700H` (see
 
 Median time of one call in ms for 100,000 floes. ≈: extrapolated from fewer floes as t ∝ nᵇ, with the exponent b.
 
-Machine `laptop-i7-12700H`: 12th Gen Intel(R) Core(TM) i7-12700H, 1 socket, hyperthreading on, run on CPUs 0-11; GPU: NVIDIA GeForce RTX 3050 Ti Laptop GPU.
+Machine `laptop-i7-12700H`: 12th Gen Intel(R) Core(TM) i7-12700H, 1 socket, hyperthreading on, run on CPUs 0-11; GPU: NVIDIA GeForce RTX 3050 Ti Laptop GPU; the reference input `d1805bc093a4`.
 <!-- overview:end -->
 
 - **baseline / current**: median time of one call in ms. The current Float64 and Float32
@@ -66,8 +66,12 @@ domain:
   average (at most 7).
 - The floe fields are saved as plain arrays in `floes_10k.jld2`, so both Subzero versions
   load exactly the same floes. A Voronoi floe field isn't reproducible with a fixed `rng`, so
-  a rerun gives a slightly different field. The file used for the committed results is
-  24 MB and not committed; ask for it to compare against them.
+  a rerun gives a slightly different field: `_generate_voronoi_coords` doesn't pass the `rng`
+  to `GO.voronoi`, which then uses the global rng, and the spin-up's threaded collisions
+  depend on thread scheduling. Every result records the first 12 digits of the SHA-256 of
+  the input file (`input`), and each machine's table says if it isn't the input of the
+  reference results (`d1805bc093a4`). That file is 24 MB and not committed; ask for it to
+  compare against the reference results.
 
 Typical simulations have 100,000 to 1,000,000 floes. The benchmarks use **100,000 floes** by
 default, made by copying the 10,029-floe field 10 times, each copy shifted by `Lx` in x. The

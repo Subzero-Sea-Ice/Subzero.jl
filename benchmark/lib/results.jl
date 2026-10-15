@@ -105,7 +105,7 @@ function save_results!(step, env, records, checks)
     common = Dict{String, Any}(
         "env" => env, "threads" => threads, "commit" => subzero_commit(),
         "date" => string(Dates.today()), "cpu" => cpu_name(), "cpus" => cpu_set(),
-        "smt" => smt(), "sockets" => sockets(),
+        "smt" => smt(), "sockets" => sockets(), "input" => input_checksum(),
     )
     new = [merge(r, common, Dict("device" => device_name(r["backend"]))) for r in records]
     for r in new

@@ -6,7 +6,7 @@
 #     julia -t <nthreads> --project=env-current path/to/bench.jl current
 # Run the baseline first: it saves the results for the correctness check.
 # Environment variables: see README.md.
-using Subzero, JLD2, StructArrays, BenchmarkTools, Logging, Printf, Random, Statistics, TOML, Dates
+using Subzero, JLD2, StructArrays, BenchmarkTools, Logging, Printf, Random, SHA, Statistics, TOML, Dates
 import GeoInterface as GI
 
 const ENV_NAME = only(ARGS)

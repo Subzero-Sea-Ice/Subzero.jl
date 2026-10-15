@@ -35,6 +35,9 @@ function input()
 end
 
 nsaved() = length(input()["coords"])
+# The first 12 hex digits of the SHA-256 of the input file. Results of different machines are
+# only comparable with the same input: a new input has a different Voronoi floe field.
+input_checksum() = bytes2hex(open(sha256, INFILE))[1:12]
 # Number of copies of the saved floe field, next to each other in x, that n floes need
 ntiles(n) = cld(n, nsaved())
 
