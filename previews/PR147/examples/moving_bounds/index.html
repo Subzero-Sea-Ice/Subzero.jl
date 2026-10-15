@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Moving Boundaries · Subzero.jl</title><meta name="title" content="Moving Boundaries · Subzero.jl"/><meta property="og:title" content="Moving Boundaries · Subzero.jl"/><meta property="twitter:title" content="Moving Boundaries · Subzero.jl"/><meta name="description" content="Documentation for Subzero.jl."/><meta property="og:description" content="Documentation for Subzero.jl."/><meta property="twitter:description" content="Documentation for Subzero.jl."/><meta property="og:url" content="https://Subzero-Sea-Ice.github.io/SubzeroDocumentation/stable/examples/moving_bounds/"/><meta property="twitter:url" content="https://Subzero-Sea-Ice.github.io/SubzeroDocumentation/stable/examples/moving_bounds/"/><link rel="canonical" href="https://Subzero-Sea-Ice.github.io/SubzeroDocumentation/stable/examples/moving_bounds/"/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.63.2/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">Subzero.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Introduction</a></li><li><a class="tocitem" href="../../tutorial/">Tutorial</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../shear_flow/">Shear Flow with Periodic Boundaries</a></li><li><a class="tocitem" href="../simple_strait/">Simple Strait Simulation</a></li><li><a class="tocitem" href="../forcing_contained_floes/">Floes Bounded by Ocean Currents</a></li><li class="is-active"><a class="tocitem" href>Moving Boundaries</a><ul class="internal"><li><a class="tocitem" href="#User-Inputs"><span>User Inputs</span></a></li><li><a class="tocitem" href="#Grid,-Ocean,-and-Atmosphere-instantiation"><span>Grid, Ocean, and Atmosphere instantiation</span></a></li><li><a class="tocitem" href="#Domain-creation"><span>Domain creation</span></a></li><li><a class="tocitem" href="#Floe-creation"><span>Floe creation</span></a></li><li><a class="tocitem" href="#Model-creation"><span>Model creation</span></a></li><li><a class="tocitem" href="#Output-Writer-Setup"><span>Output Writer Setup</span></a></li><li><a class="tocitem" href="#Simulation-settings"><span>Simulation settings</span></a></li><li><a class="tocitem" href="#Create-Simulation"><span>Create Simulation</span></a></li><li><a class="tocitem" href="#Running-the-Simulation"><span>Running the Simulation</span></a></li><li><a class="tocitem" href="#Plotting-the-Simulation"><span>Plotting the Simulation</span></a></li></ul></li><li><a class="tocitem" href="../restart_sim/">Restart Simulation</a></li></ul></li><li><a class="tocitem" href="../../api/">API Reference</a></li><li><a class="tocitem" href="../../contribute/">Contributing to Subzero</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Moving Boundaries</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Moving Boundaries</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/Subzero-Sea-Ice/Subzero.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/Subzero-Sea-Ice/Subzero.jl/blob/main/docs/literate/examples/moving_bounds.jl" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Moving-Boundaries"><a class="docs-heading-anchor" href="#Moving-Boundaries">Moving Boundaries</a><a id="Moving-Boundaries-1"></a><a class="docs-heading-anchor-permalink" href="#Moving-Boundaries" title="Permalink"></a></h1><video width="auto" controls autoplay loop>
+<source src="../moving_bounds/moving_bounds.mp4" type="video/mp4">
+</video><p>This simulation has two moving boundaries, on the top and the bottom of the simulation. They push the floes inward towards the center of the domain. As the floes are pushed inward, they ridge and raft, gaining height and losing area. Users can also create shear moving boundaries, rather than the compression boundaries seen in this example.</p><pre><code class="language-julia hljs">using Subzero, CairoMakie, GeoInterfaceMakie
+using JLD2, Random, Statistics</code></pre><h2 id="User-Inputs"><a class="docs-heading-anchor" href="#User-Inputs">User Inputs</a><a id="User-Inputs-1"></a><a class="docs-heading-anchor-permalink" href="#User-Inputs" title="Permalink"></a></h2><pre><code class="language-julia hljs">const FT = Float64
+const Lx = 1e5
+const Ly = 1e5
+const Δgrid = 2e3
+const nfloes = 100
+const concentrations = [1.0]
+const hmean = 0.25
+const Δh = 0.125
+const Δt = 20
+const nΔt = 1500;</code></pre><h2 id="Grid,-Ocean,-and-Atmosphere-instantiation"><a class="docs-heading-anchor" href="#Grid,-Ocean,-and-Atmosphere-instantiation">Grid, Ocean, and Atmosphere instantiation</a><a id="Grid,-Ocean,-and-Atmosphere-instantiation-1"></a><a class="docs-heading-anchor-permalink" href="#Grid,-Ocean,-and-Atmosphere-instantiation" title="Permalink"></a></h2><pre><code class="language-julia hljs">grid = RegRectilinearGrid(; x0 = 0.0, xf = Lx, y0 = 0.0, yf = Ly, Δx = Δgrid, Δy = Δgrid)
+ocean = Ocean(; grid, u = 0.0, v = 0.0, temp = 0.0)
+atmos = Atmos(; grid, u = 0.0, v = 0.0, temp = -1.0)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Atmos{Float64}
+  ⊢Vector fields of dimension (51, 51)
+  ⊢Tracer fields of dimension (51, 51)
+  ⊢Average u-velocity of: 0.0 m/s
+  ⊢Average v-velocity of: 0.0 m/s
+  ∟Average temperature of: -1.0 C</code></pre><h2 id="Domain-creation"><a class="docs-heading-anchor" href="#Domain-creation">Domain creation</a><a id="Domain-creation-1"></a><a class="docs-heading-anchor-permalink" href="#Domain-creation" title="Permalink"></a></h2><pre><code class="language-julia hljs">nboundary = MovingBoundary(North; grid, u = 0.0, v = -0.1)
+sboundary = MovingBoundary(South; grid, u = 0.0, v = 0.1)
+eboundary = PeriodicBoundary(East; grid)
+wboundary = PeriodicBoundary(West; grid)
+
+domain = Domain(; north = nboundary, south = sboundary, east = eboundary, west = wboundary)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Domain
+  ⊢Northern boundary of type MovingBoundary{North, Float64}
+  ⊢Southern boundary of type MovingBoundary{South, Float64}
+  ⊢Eastern boundary of type PeriodicBoundary{East, Float64}
+  ⊢Western boundary of type PeriodicBoundary{West, Float64}
+  ∟0-element TopograpahyElement{Float64} list</code></pre><h2 id="Floe-creation"><a class="docs-heading-anchor" href="#Floe-creation">Floe creation</a><a id="Floe-creation-1"></a><a class="docs-heading-anchor-permalink" href="#Floe-creation" title="Permalink"></a></h2><pre><code class="language-julia hljs">floe_settings = FloeSettings()
+floe_generator = VoronoiTesselationFieldGenerator(; nfloes, concentrations, hmean, Δh)
+floe_arr = initialize_floe_field(; generator = floe_generator, domain, floe_settings, rng = Xoshiro(1))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">100-element StructArray(::Vector{GeoInterface.Wrappers.Polygon{false, false, Vector{GeoInterface.Wrappers.LinearRing{false, false, Vector{Tuple{Float64, Float64}}, Nothing, Nothing}}, Nothing, Nothing}}, ::Vector{Vector{Float64}}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Vector{Float64}}, ::Vector{Vector{Float64}}, ::Vector{Vector{Float64}}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Subzero.Status}, ::Vector{Int64}, ::Vector{Int64}, ::Vector{Vector{Int64}}, ::Vector{Vector{Int64}}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Matrix{Float64}}, ::Vector{Float64}, ::Vector{Matrix{Float64}}, ::Vector{Int64}, ::Vector{Matrix{Float64}}, ::Vector{Matrix{Float64}}, ::Vector{Matrix{Float64}}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Float64}) with eltype Floe{Float64}:
+ Floe{Float64}
+  ⊢Centroid of (88350.92153, 19757.88946) m
+  ⊢Height of 0.31455 m
+  ⊢Area of 4.701063314108e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (22590.19089, 63676.97859) m
+  ⊢Height of 0.21738 m
+  ⊢Area of 7.060063619276e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (76167.8993, 18262.83613) m
+  ⊢Height of 0.26522 m
+  ⊢Area of 1.0053811212836e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (95581.96967, 58352.19531) m
+  ⊢Height of 0.36845 m
+  ⊢Area of 1.107214654153e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (89555.82733, 38616.18324) m
+  ⊢Height of 0.22828 m
+  ⊢Area of 1.2298298616685e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (32993.82589, 19475.13495) m
+  ⊢Height of 0.22246 m
+  ⊢Area of 7.19870484334e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (40674.54216, 8667.98036) m
+  ⊢Height of 0.17411 m
+  ⊢Area of 7.688677208236e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (73430.19372, 82643.51699) m
+  ⊢Height of 0.26667 m
+  ⊢Area of 4.57193141204e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (81700.77784, 23937.72996) m
+  ⊢Height of 0.37041 m
+  ⊢Area of 3.921164467272e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (9231.96595, 21407.50361) m
+  ⊢Height of 0.31499 m
+  ⊢Area of 2.8591648621492e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ ⋮
+ Floe{Float64}
+  ⊢Centroid of (51529.02539, 31863.6886) m
+  ⊢Height of 0.20342 m
+  ⊢Area of 1.3553099076929e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (30141.7917, 92544.59916) m
+  ⊢Height of 0.17197 m
+  ⊢Area of 7.823142319943e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (42175.99695, 94320.4473) m
+  ⊢Height of 0.14746 m
+  ⊢Area of 1.7874445070865e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (63146.59711, 93612.01155) m
+  ⊢Height of 0.283 m
+  ⊢Area of 2.4167219860894e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (2783.48131, 58392.43519) m
+  ⊢Height of 0.3559 m
+  ⊢Area of 9.075220506041e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (42174.68621, 20270.17584) m
+  ⊢Height of 0.35979 m
+  ⊢Area of 2.0509597030608e8 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (88064.11339, 28735.01864) m
+  ⊢Height of 0.36279 m
+  ⊢Area of 4.676506083912e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (59787.08439, 80144.39138) m
+  ⊢Height of 0.22699 m
+  ⊢Area of 3.740521137656e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+
+ Floe{Float64}
+  ⊢Centroid of (79519.20586, 27654.06736) m
+  ⊢Height of 0.26167 m
+  ⊢Area of 4.486355673893e7 m^2
+  ∟Velocity of (u, v, ξ) of (0.0, 0.0, 0.0) in (m/s, m/s, rad/s)
+</code></pre><p>You can also set the inital floe velocities manually like this:</p><pre><code class="language-julia hljs">floe_arr.u .= 0
+floe_arr.v .= -0.01;</code></pre><h2 id="Model-creation"><a class="docs-heading-anchor" href="#Model-creation">Model creation</a><a id="Model-creation-1"></a><a class="docs-heading-anchor-permalink" href="#Model-creation" title="Permalink"></a></h2><pre><code class="language-julia hljs">model = Model(; grid, ocean, atmos, domain, floes = floe_arr)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Model{Float64, ...}
+ ⊢RegRectilinearGrid{Float64}
+  ⊢x extent (0.0 to 100000.0) with 50 grid cells of size 2000.0 m
+  ∟y extent (0.0 to 100000.0) with 50 grid cells of size 2000.0 m
+ ⊢Domain
+  ⊢Northern boundary of type MovingBoundary{North, Float64}
+  ⊢Southern boundary of type MovingBoundary{South, Float64}
+  ⊢Eastern boundary of type PeriodicBoundary{East, Float64}
+  ⊢Western boundary of type PeriodicBoundary{West, Float64}
+  ∟0-element TopograpahyElement{Float64} list
+ ⊢Ocean{Float64}
+  ⊢Vector fields of dimension (51, 51)
+  ⊢Tracer fields of dimension (51, 51)
+  ⊢Average u-velocity of: 0.0 m/s
+  ⊢Average v-velocity of: 0.0 m/s
+  ∟Average temperature of: 0.0 C
+ ⊢Atmos{Float64}
+  ⊢Vector fields of dimension (51, 51)
+  ⊢Tracer fields of dimension (51, 51)
+  ⊢Average u-velocity of: 0.0 m/s
+  ⊢Average v-velocity of: 0.0 m/s
+  ∟Average temperature of: -1.0 C
+ ∟Floe List:
+  ⊢Number of floes: 100
+  ⊢Total floe area: 1.0e10
+  ∟Average floe height: 0.24609</code></pre><h2 id="Output-Writer-Setup"><a class="docs-heading-anchor" href="#Output-Writer-Setup">Output Writer Setup</a><a id="Output-Writer-Setup-1"></a><a class="docs-heading-anchor-permalink" href="#Output-Writer-Setup" title="Permalink"></a></h2><pre><code class="language-julia hljs">dir = &quot;moving_bounds&quot;
+init_fn, floe_fn = &quot;moving_bounds_init_state.jld2&quot;, &quot;moving_bounds.jld2&quot;
+initwriter = InitialStateOutputWriter(dir = dir, filename = init_fn, overwrite = true)
+floewriter = FloeOutputWriter(50, dir= dir, filename = floe_fn, overwrite = true)
+writers = OutputWriters(initwriter, floewriter)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">OutputWriters
+  ⊢1 InitialStateOuputWriter(s)
+  ⊢0 CheckpointOutputWriter(s)
+  ⊢1 FloeOutputWriter(s)
+  ∟0 GridOutputWriter(s)</code></pre><h2 id="Simulation-settings"><a class="docs-heading-anchor" href="#Simulation-settings">Simulation settings</a><a id="Simulation-settings-1"></a><a class="docs-heading-anchor-permalink" href="#Simulation-settings" title="Permalink"></a></h2><pre><code class="language-julia hljs">modulus = 1.5e3*(mean(sqrt.(floe_arr.area)) + minimum(sqrt.(floe_arr.area)))
+consts = Constants(; E = modulus, Cd_io = 0.0, f = 0.0, turnθ = 0.0)
+
+ridgeraft_settings = RidgeRaftSettings(;
+    ridge_raft_on = true,
+    Δt = 150,
+    domain_gain_probability = 0.5
+)
+weld_settings = WeldSettings(;
+    weld_on = true,
+    Δts = [150, 300, 600],  # weld at these specific timesteps
+    Nxs = [2, 1, 1],  # split the domain into nx by ny sections and weld within each section
+    Nys = [2, 2, 1],
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">WeldSettings{Float64}
+  ⊢ weld_on = true
+  ⊢ Δts = [600, 300, 150]
+  ⊢ Nxs = [1, 1, 2]
+  ⊢ Nys = [1, 2, 2]
+  ⊢ min_weld_area = 1.0e6
+  ⊢ max_weld_area = 2.0e9
+  ⊢ welding_coeff = 150.0
+</code></pre><h2 id="Create-Simulation"><a class="docs-heading-anchor" href="#Create-Simulation">Create Simulation</a><a id="Create-Simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Create-Simulation" title="Permalink"></a></h2><pre><code class="language-julia hljs">simulation = Simulation(;
+    model = model,
+    consts = consts,
+    Δt = Δt,
+    nΔt = 5000,
+    verbose = true,
+    writers = writers,
+    rng = Xoshiro(1),
+    ridgeraft_settings = ridgeraft_settings,
+    floe_settings = floe_settings,
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Simulation
+  ⊢Timestep: 20 seconds
+  ⊢Runtime: 5000 timesteps
+  ⊢RNG: Xoshiro(0xfff0241072ddab67, 0xc53bc12f4c3f0b4e, 0x56d451780b2dd4ba, 0x50a4aa153d208dd8, 0x3649a58b3b63d5db)
+  ⊢verbose: true
+  ⊢model
+  ⊢consts
+  ⊢floe_settings
+  ⊢collision_settings
+  ∟ ...</code></pre><h2 id="Running-the-Simulation"><a class="docs-heading-anchor" href="#Running-the-Simulation">Running the Simulation</a><a id="Running-the-Simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Running-the-Simulation" title="Permalink"></a></h2><pre><code class="language-julia hljs">run!(simulation)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">sim is running!
+0 timesteps
+50 timesteps
+100 timesteps
+150 timesteps
+200 timesteps
+250 timesteps
+300 timesteps
+350 timesteps
+400 timesteps
+450 timesteps
+500 timesteps
+550 timesteps
+600 timesteps
+650 timesteps
+700 timesteps
+750 timesteps
+800 timesteps
+850 timesteps
+900 timesteps
+950 timesteps
+1000 timesteps
+1050 timesteps
+1100 timesteps
+1150 timesteps
+1200 timesteps
+1250 timesteps
+1300 timesteps
+1350 timesteps
+1400 timesteps
+1450 timesteps
+1500 timesteps
+1550 timesteps
+1600 timesteps
+1650 timesteps
+1700 timesteps
+1750 timesteps
+1800 timesteps
+1850 timesteps
+1900 timesteps
+1950 timesteps
+2000 timesteps
+2050 timesteps
+2100 timesteps
+2150 timesteps
+2200 timesteps
+2250 timesteps
+2300 timesteps
+2350 timesteps
+2400 timesteps
+2450 timesteps
+2500 timesteps
+2550 timesteps
+2600 timesteps
+2650 timesteps
+2700 timesteps
+2750 timesteps
+2800 timesteps
+2850 timesteps
+2900 timesteps
+2950 timesteps
+3000 timesteps
+3050 timesteps
+3100 timesteps
+3150 timesteps
+3200 timesteps
+3250 timesteps
+3300 timesteps
+3350 timesteps
+3400 timesteps
+3450 timesteps
+3500 timesteps
+3550 timesteps
+3600 timesteps
+3650 timesteps
+3700 timesteps
+3750 timesteps
+3800 timesteps
+3850 timesteps
+3900 timesteps
+3950 timesteps
+4000 timesteps
+4050 timesteps
+4100 timesteps
+4150 timesteps
+4200 timesteps
+4250 timesteps
+4300 timesteps
+4350 timesteps
+4400 timesteps
+4450 timesteps
+4500 timesteps
+4550 timesteps
+4600 timesteps
+4650 timesteps
+4700 timesteps
+4750 timesteps
+4800 timesteps
+4850 timesteps
+4900 timesteps
+4950 timesteps
+5000 timesteps
+sim done running!</code></pre><h2 id="Plotting-the-Simulation"><a class="docs-heading-anchor" href="#Plotting-the-Simulation">Plotting the Simulation</a><a id="Plotting-the-Simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Plotting-the-Simulation" title="Permalink"></a></h2><pre><code class="language-julia hljs">plot_sim(joinpath(dir, floe_fn), joinpath(dir, init_fn), Δt, joinpath(dir, &quot;moving_bounds.mp4&quot;))</code></pre><video width="auto" controls autoplay loop>
+<source src="../moving_bounds/moving_bounds.mp4" type="video/mp4">
+</video><div class="admonition is-info" id="Note-e738c29b45d763a8"><header class="admonition-header">Note<a class="admonition-anchor" href="#Note-e738c29b45d763a8" title="Permalink"></a></header><div class="admonition-body"><p>Note that this is just using the built-in basic plotting. However, it is easy to write   your own plotting code. See the source code for a basic outline.</p></div></div><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../forcing_contained_floes/">« Floes Bounded by Ocean Currents</a><a class="docs-footer-nextpage" href="../restart_sim/">Restart Simulation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Thursday 15 October 2026 16:27">Thursday 15 October 2026</span>. Using Julia version 1.13.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
