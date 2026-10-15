@@ -138,7 +138,7 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
                 sim.rng,
             )
         end
-        # Remove the ghost floes - only used for collisions
+        # Remove the ghost floes - only used for output, collisions and ridging/rafting
         for i in reverse(n_init_floes+1:length(sim.model.floes))
             StructArrays.foreachfield(
                     field -> deleteat!(field, i),
@@ -173,12 +173,22 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
             sim.floe_settings;
             backend = sim.backend,
         )
+        # Determine which floes fracture
+        fracture = sim.fracture_settings.fractures_on && mod(tstep, sim.fracture_settings.Δt) == 0
+        if fracture
+            determine_fractures!(
+                dev_floes,
+                sim.fracture_settings.criteria,
+                sim.floe_settings;
+                backend = sim.backend,
+            )
+        end
         KernelAbstractions.synchronize(sim.backend)
         host_floes = adapt(Array, dev_floes)
         update_floes!(sim.model.floes, host_floes)
         _log_flags(host_floes.flags, tstep, sim.floe_settings)
         # Fracture floes
-        if sim.fracture_settings.fractures_on && mod(tstep, sim.fracture_settings.Δt) == 0
+        if fracture
             max_floe_id =
                 fracture_floes!(
                     sim.model.floes,
@@ -186,7 +196,8 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
                     sim.rng,
                     sim.fracture_settings,
                     sim.floe_settings,
-                    sim.Δt,
+                    sim.Δt;
+                    frac_idx = _flagged(host_floes.flags, FLAG_FRACTURE),
                 )
         end
 

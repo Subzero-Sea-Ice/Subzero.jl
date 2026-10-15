@@ -15,7 +15,7 @@ implementation.
 Each of these concrete types represent different methods of calculating a floe's stress. A
 `FloeSettings` struct requires a concrete subtype of `AbstractStressCalculator`. The
 functions for calculating stress are then dispatched off of this calculator type. Those
-functions currently are: `_update_stress_accum!` and `_scale_principal_stress!`. These
+functions currently are: `_update_stress_accum!` and `_scale_principal_stress`. These
 functions need to be extended for any new concrete subtype of `AbstractStressCalculator`.
 =#
 
@@ -32,7 +32,7 @@ methods.
 The following methods must be implemented for all subtypes:
 - `_update_stress_accum!(stress_calculator::AbstractStressCalculator{FT}, curr_stress::Matrix{FT} , floe::FloeType{FT})`
 - `_update_stress_accum!(stress_calculator::AbstractStressCalculator{FT}, floes::FixedWidthFloes{FT}, i)`
-- `_scale_principal_stress!(stress_calculator::AbstractStressCalculator{FT}, σvals::Matrix{FT}, floe::FloeType{FT}, floe_settings::FloeSettings)`
+- `_scale_principal_stress(stress_calculator::AbstractStressCalculator{FT}, σ1::FT, σ2::FT, floes::FixedWidthFloes{FT}, i, min_floe_area::FT)`
 
 `_update_stress_accum!` is called in the `calc_stress!` function and takes the stress
 calculator, the `floe`'s instantatious stress at the current timestep, and the `floe` itself
@@ -42,13 +42,14 @@ The method for `FixedWidthFloes` does the same for floe `i`, reading the instant
 from `floes.stress_instant`. It is called from a GPU kernel, so it must use scalar operations
 and must not allocate.
 
-`_scale_principal_stress!` is called within the `find_σpoint` function which is called
-within the `determine_fractures` function. This function takes the stress calculator, the
-`floe`'s accumulated stress in prinicpal stress space (`σvals = eigvals(stress_accum)`), the
-`floe` itself, and the `floe_settings` and scales `σvals` by some values/ratio using
-physical properties within `floe` and `floe_settings`. This is done to approximate changing
-the polygon defining the floe's fracture criteria without having to redefine the fracture 
-criteria for each floe. This is almost like a proxy for damage. 
+`_scale_principal_stress` is called within the `find_σpoint` function which is called
+within the `determine_fractures!` function. This function takes the stress calculator,
+floe `i`'s accumulated stress in prinicpal stress space (`σ1, σ2`, the eigenvalues of
+`stress_accum`), the floes, and the simulation's minimum floe area, and returns `σ1, σ2`
+scaled by some values/ratio using physical properties of floe `i`. This is done to
+approximate changing the polygon defining the floe's fracture criteria without having to
+redefine the fracture criteria for each floe. This is almost like a proxy for damage. It is
+called from a GPU kernel, so it must use scalar operations and must not allocate.
 """
 abstract type AbstractStressCalculator{FT <: AbstractFloat}  end
 
@@ -56,7 +57,7 @@ abstract type AbstractStressCalculator{FT <: AbstractFloat}  end
 space is inside or outside of the fracture criteria polygon. Any calculators that do NOT
 want to scale stress in this way can simply skip implementing this function and fall back
 on this default. =#
-_scale_principal_stress!(::AbstractStressCalculator, σvals, floe, floe_settings) = return
+_scale_principal_stress(::AbstractStressCalculator, σ1, σ2, floes, i, min_floe_area) = (σ1, σ2)
 
 const DECAY_ARG_WARNING = "λ must be between 0 and 1. Resetting to default value of 0.2."
 """
@@ -80,7 +81,7 @@ take place.
 - `λ::AbstractFloat`: decay parameter used when calculating accumulated stress. Should be between 0 - 1.
 - `α::AbstractFloat`: Adjusts ellipse in stress space by raising the ratio to the floe's area over the simulation minimum floe size to `α`.
 ## Note:
-- `λ` is used in `_update_stress_accum!`, whereas α is used in `_scale_principal_stress!`.
+- `λ` is used in `_update_stress_accum!`, whereas α is used in `_scale_principal_stress`.
 """
 @kwdef struct DecayAreaScaledCalculator{FT<:AbstractFloat} <: AbstractStressCalculator{FT}
     λ::FT = 0.2
@@ -137,11 +138,10 @@ end
 #= This function scales a floe's stress in pricipal stress space (eigenvalues of the
 acucmulated stress) by `M = (floe_area/min_floe_area).^α ` as an alternative method of
 adjusting the fracture criteria boundaries in principal stress space.=#
-function _scale_principal_stress!(stress_calculator::DecayAreaScaledCalculator, σvals, floe, floe_settings)
-    stress_calculator.α == 0 && return
-    M = (floe.area/floe_settings.min_floe_area).^stress_calculator.α
-    σvals .*= M
-    return 
+function _scale_principal_stress(stress_calculator::DecayAreaScaledCalculator, σ1, σ2, floes, i, min_floe_area)
+    stress_calculator.α == 0 && return σ1, σ2
+    M = (floes.area[i]/min_floe_area)^stress_calculator.α
+    return σ1 * M, σ2 * M
 end
 
 """

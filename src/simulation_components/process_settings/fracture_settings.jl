@@ -13,21 +13,20 @@ some additional code may need to be pulled into helper fuctions within the fract
 and then dispatched off of using subtypes of AbstractFractureCriteria. This is encuarged if It
 is helpful!
 
-Right now, the subtypes serve as dispatch types for the following two methods.
+Right now, the subtypes serve as dispatch types for the following method.
 
 ## API
-The following methods must be implemented for all subtypes:
-- `_update_criteria!(criteria::AbstractFractureCriteria, floes::StructArray{<:Floe})`
-- `_determine_fractures(criteria::AbstractFractureCriteria, floes::StructArray{<:Floe}, floe_settings::FloeSettings)`
+The following method must be implemented for all subtypes:
+- `_update_criteria!(criteria::AbstractFractureCriteria, floes::FixedWidthFloes)`
 
-`_update_criteria!` is called in the `fracture_floes!` function and takes the fracture
-criteria and the current ice floe pack and updates the fracture criteria given the state
-of the ice floe pack if needed.
+`_update_criteria!` is called in the [`determine_fractures!`](@ref) function and takes the
+fracture criteria and the current ice floe pack and updates the fracture criteria given the
+state of the ice floe pack if needed. If the criteria doesn't need to be updated, the method
+can do nothing, but it must exist. The floes are a `FixedWidthFloes`, which can be on a GPU,
+so only use whole-array operations on their fields, such as `mean(floes.height)`.
 
-`_determine_fractures` is called in the `fracture_floes!` and takes in the fracture
-criteria, the current ice floe pack, and the floe settings and determines which of the ice
-floes fracture. It returns a `Boolean` vector equal in length to the `floes` list. If the
-`ith` element of the returned vector is `true` then the `i`th floe in `floes` will fracture.
+The criteria must also have a `poly` field: the polygon in principal stress space that
+`determine_fractures!` checks each floe's stress against.
 
 Abstract type for fracture criteria. Each struct of this type must have a
 vertices field representing the criteria in principal stress space. For a given
@@ -35,33 +34,24 @@ polygon, the minimum and maximum eigenvalues of its stress field will be its
 location in principal stress space. If that stress point falls outside of
 the criteria-verticies defined polygon it is a stress great enough to fracture
 the floe. Otherwise the floe will not be fractured.
-Each fracture criteria type must also have an _update_criteria! function defined
-that is used to update the criteria each timestep. If the criteria does not need
-to be updated, this function can be empty.
 
 See the existing concrete subtypes: [`NoFracture`](@ref), [`MohrsCone`](@ref), and [`HiblerYieldCurve`](@ref).
 """
 abstract type AbstractFractureCriteria end
-
-
-#= Default function to NOT update the fracture criteria before determining floe fractures as
-the simulation progresses. Any criteria that should not update as the simulation runs can
-simply skip implementing this function and fall back on this default. =#
-_update_criteria!(::AbstractFractureCriteria, _) = nothing
 
 """
     NoFracture<:AbstractFractureCriteria
 
 Type of AbstractFractureCriteria representing when fracturing functionality is turned off.
 If this is the type provided to the simulation's `FractureSettings`, then fractures will not
-occur. As fracturing will not occur, this subtype depends on the default API functions.
+occur. As fracturing will not occur, this subtype implements the API functions as no-ops.
 """
 struct NoFracture<:AbstractFractureCriteria end
 
-#= No floes are fractured when the fracture criteria is `NoFracture` and this function 
+#= No floes are fractured when the fracture criteria is `NoFracture` and this function
 won't even be called due to given the `fractures_on` keyword is `false`. It is defined for
 API completeness. =#
-_determine_fractures(::NoFracture, _, _) = nothing
+_update_criteria!(::NoFracture, _) = nothing
 
 # Concrete subtype of AbstractFractureCriteria - see documentation below
 mutable struct HiblerYieldCurve{FT<:AbstractFloat}<:AbstractFractureCriteria

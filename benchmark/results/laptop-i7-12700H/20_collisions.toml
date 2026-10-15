@@ -1,0 +1,96 @@
+ported = false
+title = "`timestep_collisions!`"
+
+[[check]]
+backend = "CPU"
+commit = "1160b6a"
+date = "2026-10-15"
+max_rel_diff = 4.3e-7
+n = 1000
+ok = true
+threads = 1
+[[check]]
+backend = "CPU"
+commit = "1160b6a"
+date = "2026-10-15"
+max_rel_diff = 0.0
+n = 1000
+ok = true
+threads = 12
+
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "ae96ff2"
+cpu = "12th Gen Intel(R) Core(TM) i7-12700H"
+cpus = "0-11"
+date = "2026-10-15"
+device = "12th Gen Intel(R) Core(TM) i7-12700H"
+env = "baseline"
+extrapolated = false
+label = "timestep_collisions!"
+median_ms = 35900.0
+min_ms = 30540.0
+n = 100000
+primary = true
+samples = 2
+smt = true
+sockets = 1
+threads = 1
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "ae96ff2"
+cpu = "12th Gen Intel(R) Core(TM) i7-12700H"
+cpus = "0-11"
+date = "2026-10-15"
+device = "12th Gen Intel(R) Core(TM) i7-12700H"
+env = "baseline"
+extrapolated = false
+label = "timestep_collisions!"
+median_ms = 9551.0
+min_ms = 9161.0
+n = 100000
+primary = true
+samples = 5
+smt = true
+sockets = 1
+threads = 12
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "1160b6a"
+cpu = "12th Gen Intel(R) Core(TM) i7-12700H"
+cpus = "0-11"
+date = "2026-10-15"
+device = "12th Gen Intel(R) Core(TM) i7-12700H"
+env = "current"
+extrapolated = false
+label = "timestep_collisions!"
+median_ms = 34480.0
+min_ms = 30350.0
+n = 100000
+primary = true
+samples = 2
+smt = true
+sockets = 1
+threads = 1
+[[timing]]
+FT = "Float64"
+backend = "CPU"
+commit = "1160b6a"
+cpu = "12th Gen Intel(R) Core(TM) i7-12700H"
+cpus = "0-11"
+date = "2026-10-15"
+device = "12th Gen Intel(R) Core(TM) i7-12700H"
+env = "current"
+extrapolated = false
+label = "timestep_collisions!"
+median_ms = 12030.0
+min_ms = 7519.0
+n = 100000
+primary = true
+samples = 4
+smt = true
+sockets = 1
+threads = 12

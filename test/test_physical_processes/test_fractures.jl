@@ -1,3 +1,5 @@
+using LinearAlgebra: eigvals
+
 @testset "Fractures" begin
     @testset "Fracture Criteria" begin
         FT = Float64
@@ -244,5 +246,70 @@
         @test length(floes) == 8
         @test all(floes.id .== [3, 4, 5, 6, 7, 8, 9, 10])
         @test all(floes.parent_ids .== [[], [], [2], [2], [2], [1], [1], [1]])
+    end
+    @testset "Point covered by polygon" begin
+        # Axis-aligned square: vertices and edge midpoints are exactly on the boundary
+        square = Subzero.make_polygon([[[0.0, 0.0], [0.0, 2.0], [2.0, 2.0], [2.0, 0.0], [0.0, 0.0]]])
+        hibler = HiblerYieldCurve(Float64; floes = StructArray([Floe([[[0.0, 0.0], [0, 1], [1, 1], [1, 0]]], 0.25)]))
+        rng = Xoshiro(1)
+        @testset "$name" for (name, poly) in (("square", square), ("Hibler", hibler.poly), ("Mohr", MohrsCone().poly))
+            coords = Subzero._criteria_coords(poly, Float64)
+            n = size(coords, 1)
+            (xmin, xmax), (ymin, ymax) = extrema(coords[:, 1]), extrema(coords[:, 2])
+            points = [(xmin + 1.2(xmax - xmin) * rand(rng) - 0.1(xmax - xmin),
+                ymin + 1.2(ymax - ymin) * rand(rng) - 0.1(ymax - ymin)) for _ in 1:500]
+            append!(points, [(coords[j, 1], coords[j, 2]) for j in 1:n])
+            if name == "square"
+                append!(points, [(1.0, 0.0), (0.0, 1.0), (2.0, 1.0), (1.0, 2.0)])
+            end
+            for (x, y) in points
+                @test Subzero._point_covered_by(x, y, coords, n) == Subzero.coveredby_poly((x, y), poly)
+            end
+            # an open ring gives the same result
+            @test all(Subzero._point_covered_by(x, y, coords, n - 1) == Subzero.coveredby_poly((x, y), poly) for (x, y) in points)
+        end
+    end
+    @testset "Determine fractures on $backend with $FT" for backend in test_backends(),
+            FT in (Float64, Float32)
+        rng = Xoshiro(2)
+        floes = _make_timestep_test_floes(FT, FloeSettings(FT); n = 40)
+        for i in eachindex(floes)
+            a, b, d = 1e5 .* (rand(rng, 3) .- 0.5)
+            floes.stress_accum[i] .= [a b; b d]
+        end
+        min_floe_area = sort(floes.area)[5]  # the 4 smallest floes don't fracture
+        @testset "$(nameof(typeof(criteria))), α = $α" for criteria in (HiblerYieldCurve(FT; floes), MohrsCone(FT)), α in (0, 1)
+            floe_settings = FloeSettings(FT; min_floe_area, stress_calculator = DecayAreaScaledCalculator(FT; α))
+            # Reference: the CPU calculation before it was ported to FixedWidthFloes
+            Subzero._update_criteria!(criteria, floes)
+            ref_frac = map(eachindex(floes)) do i
+                σvals = eigvals(floes.stress_accum[i]) .* (floes.area[i] / min_floe_area)^α
+                floes.area[i] >= min_floe_area && !Subzero.coveredby_poly(σvals, criteria.poly)
+            end
+            @test 0 < count(ref_frac) < length(floes) - 4  # some floes fracture, some don't
+            dev_floes = Subzero.adapt(backend, Subzero.FixedWidthFloes(floes))
+            dev_floes.flags .= Subzero.FLAG_HEIGHT_LIMITED  # other flags must be kept
+            Subzero.determine_fractures!(dev_floes, criteria, floe_settings; backend)
+            Subzero.KernelAbstractions.synchronize(backend)
+            flags = Array(dev_floes.flags)
+            @test (flags .& Subzero.FLAG_FRACTURE .!= 0) == ref_frac
+            @test all(flags .& Subzero.FLAG_HEIGHT_LIMITED .!= 0)
+            @test Subzero.determine_fractures(floes, criteria, floe_settings) == findall(ref_frac)
+            # σ point matches the eigenvalues
+            fwf = Subzero.FixedWidthFloes(floes)
+            for i in eachindex(floes)
+                σvals = eigvals(floes.stress_accum[i]) .* (floes.area[i] / min_floe_area)^α
+                @test all(isapprox.(Subzero.find_σpoint(fwf, i, floe_settings.stress_calculator, min_floe_area), σvals; rtol = 100eps(FT), atol = 10eps(FT) * 1e5))
+            end
+            # Tiny stresses (stress_accum decays for floes without interactions): squaring
+            # them would underflow
+            scale = sqrt(floatmin(FT)) / 1e5
+            for i in eachindex(floes)
+                stress = floes.stress_accum[i] .* scale
+                fwf.stress_accum[i, :, :] .= stress
+                σvals = eigvals(stress) .* (floes.area[i] / min_floe_area)^α
+                @test all(isapprox.(Subzero.find_σpoint(fwf, i, floe_settings.stress_calculator, min_floe_area), σvals; rtol = 100eps(FT), atol = 10eps(FT) * 1e5 * scale))
+            end
+        end
     end
 end

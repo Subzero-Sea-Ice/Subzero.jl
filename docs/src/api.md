@@ -153,6 +153,8 @@ fracture_floes!
 split_floe
 deform_floe!
 determine_fractures
+determine_fractures!
+find_σpoint
 ```
 
 ### Ridging and Rafting Methods

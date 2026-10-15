@@ -3,7 +3,7 @@
 # non-trivial. Floe fields are saved as plain arrays so that any Subzero version can load
 # them (a Voronoi floe field isn't reproducible, so generate it once and reuse the file).
 #
-# Usage: julia --project=env-branch make_floes.jl [nfloes] [nspinup] [outfile]
+# Usage: julia --project=env-current make_input.jl [nfloes] [nspinup] [outfile]
 using Subzero, JLD2, Random, Statistics
 import GeoInterface as GI
 
@@ -20,6 +20,7 @@ const Ly = Lx
 const hmean = 0.25
 const Δh = 0.0
 const Δt = 20
+const npoint_per_cell = 2
 
 grid = RegRectilinearGrid(; x0 = 0.0, xf = Lx, y0 = 0.0, yf = Ly, Δx = Δgrid, Δy = Δgrid)
 domain = Domain(;
@@ -32,7 +33,7 @@ uvels = repeat(transpose(u_vec), outer = (grid.Ny + 1, 1))
 ocean = Ocean(; u = uvels, v = 0, temp = 0, grid)
 atmos = Atmos(; u = 0.0, v = 0.0, temp = -1.0, grid)
 
-floe_settings = FloeSettings(subfloe_point_generator = SubGridPointsGenerator(; grid, npoint_per_cell = 2))
+floe_settings = FloeSettings(subfloe_point_generator = SubGridPointsGenerator(; grid, npoint_per_cell))
 floe_generator = VoronoiTesselationFieldGenerator(; nfloes = NFLOES, concentrations = [0.75], hmean, Δh)
 @info "Generating floe field" NFLOES Lx
 @time floe_arr = initialize_floe_field(FT; generator = floe_generator, domain, rng = Xoshiro(1), floe_settings)
@@ -48,7 +49,7 @@ simulation = Simulation(; model, consts, Δt, nΔt = NSPINUP, floe_settings, rng
 floes = simulation.model.floes
 field(f) = collect(getproperty(floes, f))
 jldsave(OUTFILE;
-    Δt, Lx, Ly, nspinup = NSPINUP,
+    Δt, Lx, Ly, Δgrid, npoint_per_cell, nspinup = NSPINUP,
     # exterior ring of each floe as a vector of [x, y]
     coords = [[collect(GI.getcoord(p)) for p in GI.getpoint(GI.getexterior(poly))] for poly in floes.poly],
     (f => field(f) for f in (
@@ -57,6 +58,7 @@ jldsave(OUTFILE;
         :collision_force, :collision_trq, :interactions, :num_inters,
         :stress_accum, :stress_instant, :strain, :damage,
         :p_dxdt, :p_dydt, :p_dudt, :p_dvdt, :p_dξdt, :p_dαdt,
+        :x_subfloe_points, :y_subfloe_points,
     ))...,
 )
 @info "Saved" OUTFILE length(floes) mean(floes.num_inters) maximum(floes.num_inters) mean(GI.npoint.(floes.poly))

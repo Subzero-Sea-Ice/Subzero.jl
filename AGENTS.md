@@ -75,7 +75,8 @@ over if/else flags.
 ## GPU
 
 - `timestep_sim!` is being ported to KernelAbstractions kernels one function at a
-  time. So far `timestep_floe_properties!` is done. The backend comes from
+  time. So far `timestep_floe_properties!` and the fracture check of `fracture_floes!`
+  (`determine_fractures!`) are done. The backend comes from
   `Simulation(; backend)` (default `CPU()`), and the same kernels run on the CPU.
 - The goal is to run on any GPU that KernelAbstractions supports (NVIDIA, AMD, Apple,
   Intel), not just CUDA. Subzero doesn't depend on any GPU package: users load one
@@ -121,6 +122,9 @@ over if/else flags.
   suspected bugs instead of fixing them in the port. For example, `calc_strain!` uses
   `u` where `v` is expected for `v1` and `v2`. Fixing it would change results and
   break the reference test.
+- Benchmark it: every step of `timestep_sim!` has a file in `benchmark/steps/`. Add a
+  `current` function there, run only that step (`BENCH_STEPS=<step>`), and change only
+  that step's files and its row of the overview table (see `benchmark/README.md`).
 
 ### Inside kernels
 

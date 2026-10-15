@@ -73,6 +73,33 @@ function _move_poly!(floes::FixedWidthFloes{FT}, i, Δx, Δy, Δα, cx = zero(FT
     return
 end
 
+#=
+Whether the point (x, y) is inside or on the edge of the polygon with the first `n` rows of
+`coords` as its vertices (x in column 1, y in column 2). The ring may be closed (first vertex
+repeated at the end) or open. Written as scalar operations, so it can be called from a GPU
+kernel. Same result as `coveredby_poly`, except for points within round-off of the polygon's
+edges: `coveredby_poly` uses exact predicates, but this uses floating-point arithmetic, so
+those points can be classified either way.
+=#
+function _point_covered_by(x, y, coords, n)
+    inside = false
+    for j in 1:n
+        k = j == n ? 1 : j + 1
+        xj, yj = coords[j, 1], coords[j, 2]
+        xk, yk = coords[k, 1], coords[k, 2]
+        # On the edge: collinear with it and within its bounding box
+        if (xk - xj) * (y - yj) == (yk - yj) * (x - xj) &&
+                min(xj, xk) <= x <= max(xj, xk) && min(yj, yk) <= y <= max(yj, yk)
+            return true
+        end
+        # Ray casting: count the edges crossed by a ray from the point in the +x direction
+        if (yj > y) != (yk > y) && x < (xk - xj) * (y - yj) / (yk - yj) + xj
+            inside = !inside
+        end
+    end
+    return inside
+end
+
 # translate floe i by Δx and Δy and rotate it by Δα around its centroid
 function _move_floe!(floes::FixedWidthFloes, i, Δx, Δy, Δα)
     cx = floes.centroid[i, 1]
