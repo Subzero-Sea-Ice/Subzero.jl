@@ -42,6 +42,9 @@ echo "Subzero: $REPO at $(git -C "$REPO" rev-parse --short HEAD), work directory
 lscpu | grep -E "^(Model name|Socket|Core|Thread|NUMA node)"
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
 
-[ -d "$WORK/env-current" ] || BENCH_GPU=CUDA "$REPO/benchmark/setup.sh" "$WORK"
+if [ ! -f "$WORK/setup-done" ]; then
+    [ -d "$WORK/env-current" ] && { echo "$WORK exists but its setup didn't finish: remove it, run git worktree prune and resubmit"; exit 1; }
+    BENCH_GPU=CUDA "$REPO/benchmark/setup.sh" "$WORK"
+fi
 cd "$WORK"
 "$REPO/benchmark/run.sh"
