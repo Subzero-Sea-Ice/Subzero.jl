@@ -1,6 +1,8 @@
 # Results files (results/NN_<name>.toml), extrapolation, and the correctness check.
 
-const RESULTS_DIR = joinpath(@__DIR__, "..", "results")
+# Results of different machines can't be compared, so every machine has its own folder
+const MACHINE = get(ENV, "BENCH_MACHINE", gethostname())
+const RESULTS_DIR = joinpath(@__DIR__, "..", "results", MACHINE)
 # Results of the baseline for the correctness check, in the work directory (not committed)
 const CHECK_DIR = "check"
 
@@ -23,6 +25,19 @@ end
 cpu_name() = strip(replace(Sys.cpu_info()[1].model, r"\s+" => " "))
 # The CPUs Julia runs on (set by run.sh with taskset)
 cpu_set() = (s = get(ENV, "BENCH_CPUS", ""); isempty(s) ? "all" : s)
+# Whether hyperthreading (SMT) is on, and the number of CPU sockets. Linux only.
+function smt()
+    f = "/sys/devices/system/cpu/smt/active"
+    isfile(f) ? readchomp(f) == "1" : "unknown"
+end
+function sockets()
+    ids = Set{String}()
+    for cpu in readdir("/sys/devices/system/cpu"; join = true)
+        f = joinpath(cpu, "topology", "physical_package_id")
+        isfile(f) && push!(ids, readchomp(f))
+    end
+    isempty(ids) ? "unknown" : length(ids)
+end
 
 # Round to 4 significant digits, so the results files stay readable
 round4(x) = round(x; sigdigits = 4)
@@ -75,6 +90,7 @@ function save_results!(step, env, records, checks)
     common = Dict{String, Any}(
         "env" => env, "threads" => threads, "commit" => subzero_commit(),
         "date" => string(Dates.today()), "cpu" => cpu_name(), "cpus" => cpu_set(),
+        "smt" => smt(), "sockets" => sockets(),
     )
     new = [merge(r, common, Dict("device" => device_name(r["backend"]))) for r in records]
     for r in new

@@ -8,10 +8,13 @@
 - **current**: the checked-out Subzero, on the CPU backend and on NVIDIA (CUDA.jl) or AMD
   (AMDGPU.jl) GPUs. Steps that aren't ported yet run the same CPU code as the baseline.
 
-Each step is a file in [`steps/`](steps/), with its results in [`results/`](results/) and
+Each step is a file in [`steps/`](steps/), with its results in `results/<machine>/` and
 notes and observations in `steps/NN_<name>.md`.
 
 ## Overview
+
+The results of the reference machine, `laptop-i7-12700H` (see
+[Machines](#machines)). Every machine has its own table in `results/<machine>/README.md`.
 
 <!-- overview:start -->
 | step | ported | baseline 1 thread | baseline 12 threads | current CPU 1 thread | current CPU 12 threads | current CUDA Float64 | current CUDA Float32 | speedup | share of timestep | check | measured |
@@ -29,6 +32,8 @@ notes and observations in `steps/NN_<name>.md`.
 | [host ↔ device: `FixedWidthFloes`, `adapt`, `update_floes!`](steps/95_transfer.md) | yes | – | – | 31.3 | 34.5 | 63.1 | – | – | – | – | 2026-10-15 `1160b6a` |
 
 Median time of one call in ms for 100,000 floes. ≈: extrapolated from fewer floes as t ∝ nᵇ, with the exponent b.
+
+Machine `laptop-i7-12700H`: 12th Gen Intel(R) Core(TM) i7-12700H, 1 socket, hyperthreading on, run on CPUs 0-11; GPU: NVIDIA GeForce RTX 3050 Ti Laptop GPU.
 <!-- overview:end -->
 
 - **baseline / current**: median time of one call in ms. The current Float64 and Float32
@@ -91,9 +96,15 @@ work directory, and the current code compares its result on every backend with i
 maximum difference relative to the largest value of each field, and whether all fields are
 `isapprox`. Steps that use the rng in a threaded loop can't be checked.
 
-## Machine and versions
+## Machines
 
-The committed results come from one machine, so that they can be compared:
+Results of different machines can't be compared, so every machine has its own folder,
+`results/<machine>/`, named by `BENCH_MACHINE` (default: the host name). Its results files
+record the date, Subzero commit, CPU, the CPUs the benchmark ran on, whether hyperthreading
+was on, the number of sockets and the GPU, and its `README.md` has its overview table.
+
+The table above is the reference machine, `laptop-i7-12700H` (`REFERENCE` in
+`summarize.jl`):
 
 - Laptop, on AC power, `balanced` platform profile, `powersave` CPU governor
 - CPU: Intel Core i7-12700H (6 P-cores with hyperthreading + 8 E-cores, 20 threads), 32 GB
@@ -105,9 +116,6 @@ The committed results come from one machine, so that they can be compared:
   perform very differently.
 - Julia 1.12.7, CUDA.jl 6.4.2 (CUDA runtime 13.4), KernelAbstractions 0.9.45,
   BenchmarkTools 1.8.0
-
-Every result in `results/` records its date, Subzero commit, CPU, the CPUs it ran on, and
-GPU. Results from other machines go in the step's `.md` file, not in `results/`.
 
 ### CPU cores
 
@@ -133,8 +141,21 @@ cores mixes them. Median times in ms for 50,000 floes (2026-10-15, `taskset` for
 
 So `run.sh` runs Julia on the P-cores only (`taskset -c 0-11`, 12 threads), also for the
 1-thread runs: comparable from run to run, and closer to an HPC node, which has one type of
-core. On a CPU with one type of core, it uses all CPUs. Set `BENCH_CPUS` to choose, e.g.
-`BENCH_CPUS=0-19` for all cores of this CPU.
+core. Set `BENCH_CPUS` to choose, e.g. `BENCH_CPUS=0-19` for all cores of this CPU.
+
+On other machines:
+
+- **One type of core** (most desktops and HPC nodes): `run.sh` uses all CPUs that the process
+  may use, with one thread per CPU, including hyperthreads if they're on. In a Slurm job,
+  that's the CPUs of the job.
+- **Other CPUs with fast and slow cores** (e.g. AMD Zen 5 + Zen 5c, ARM big.LITTLE) aren't
+  detected. `run.sh` warns if the maximum frequencies of the CPUs differ by more than 20%;
+  then set `BENCH_CPUS` to the fast ones.
+- **More than one socket**: threads that aren't pinned move between the sockets, and their
+  memory with them. `run.sh` warns; set `BENCH_CPUS` to the CPUs of one socket (see `lscpu`)
+  for less noise.
+- **macOS**: there's no `taskset`, so `run.sh` doesn't pin and `BENCH_CPUS` doesn't work.
+  Hyperthreading and the number of sockets are recorded as unknown.
 
 ## How to run
 
@@ -142,7 +163,7 @@ core. On a CPU with one type of core, it uses all CPUs. Set `BENCH_CPUS` to choo
 REPO=/path/to/Subzero.jl            # checked out at the commit to benchmark
 WORK=$(mktemp -d)                   # work directory for environments, input, and logs
 $REPO/benchmark/setup.sh "$WORK"    # worktree of the baseline + env-baseline and env-current
-cd "$WORK" && $REPO/benchmark/run.sh
+cd "$WORK" && BENCH_MACHINE=<name> $REPO/benchmark/run.sh   # e.g. laptop-i7-12700H
 git -C $REPO worktree remove "$WORK/subzero-baseline"   # clean up afterwards
 ```
 
@@ -155,10 +176,10 @@ git -C $REPO worktree remove "$WORK/subzero-baseline"   # clean up afterwards
    for that number of threads are skipped.
 3. `bench.jl current` with 1 thread (CPU only, `BENCH_BACKENDS=CPU`) and `BENCH_THREADS`
    threads (CPU and GPUs).
-4. `summarize.jl` updates the overview table above.
+4. `summarize.jl` updates the overview tables.
 
-The results go to `results/NN_<name>.toml` in this folder, the output to `logs/` in the work
-directory. To run only some steps, e.g. after porting one:
+The results go to `results/<machine>/NN_<name>.toml` in this folder, the output to `logs/` in
+the work directory. To run only some steps, e.g. after porting one:
 `BENCH_STEPS=collisions run.sh` (names with or without their number, comma-separated).
 
 `setup.sh` adds CUDA.jl to the current environment if `nvidia-smi` is found, and AMDGPU.jl
@@ -168,6 +189,7 @@ argument of `setup.sh` sets the baseline commit (default ae96ff2).
 
 Environment variables for `run.sh` and `bench.jl`:
 
+- `BENCH_MACHINE`: name of the machine, for its results folder (default: the host name)
 - `BENCH_SIZES`: comma-separated numbers of floes (default `100000`)
 - `BENCH_STEPS`: comma-separated steps to run (default: all)
 - `BENCH_SAMPLES`: samples per benchmark (default 20)
@@ -223,22 +245,29 @@ To port a step, give it a `current` function (and `current_result`), run
 
 Several steps are ported at the same time, so:
 
-1. A PR that ports a step changes only `steps/NN_<step>.{jl,md}`, `results/NN_<step>.toml` and
-   that step's row in the overview table (made by `summarize.jl`). Helpers start in the step
-   file. If other steps need them too, they move to `lib/` in a separate small PR.
-2. The overview table has a row for every step from the start, so PRs only change rows.
+1. A PR that ports a step changes only `steps/NN_<step>.{jl,md}`,
+   `results/<machine>/NN_<step>.toml` and that step's row in the overview tables (made by
+   `summarize.jl`). Helpers start in the step file. If other steps need them too, they move
+   to `lib/` in a separate small PR.
+2. The overview tables have a row for every step from the start, so PRs only change rows.
    Two PRs that change neighbouring rows still conflict, because git treats changes to
    neighbouring lines as one change. The results files never conflict, so take either side
-   of the README and make the table again:
+   of the tables and make them again:
 
    ```sh
-   git checkout --theirs benchmark/README.md && julia benchmark/summarize.jl && git add benchmark/README.md
+   git checkout --theirs benchmark/README.md benchmark/results/*/README.md
+   julia benchmark/summarize.jl && git add benchmark/README.md benchmark/results/*/README.md
    ```
 
-   `julia benchmark/summarize.jl --check` fails if the table and the results files disagree.
+   `julia benchmark/summarize.jl --check` fails if a table and the results files disagree.
 3. The baseline is pinned to ae96ff2, not `main`, because `main` gets the GPU code. Its
-   results are in the results files, so a PR only runs the current code of its own step.
-4. Dependencies of the benchmarks go in `Project.toml` in this folder.
+   results are in the results files, so a PR only runs the current code of its own step on a
+   machine that has baseline results.
+4. Without the reference machine, a PR adds the results of its step on another machine: run
+   `BENCH_MACHINE=<name> BENCH_STEPS=<step> run.sh`, which also runs the baseline of that
+   step on that machine (5–30 minutes per step), and commit `results/<name>/`. The reference
+   machine's row is updated later, e.g. in a refresh of all steps.
+5. Dependencies of the benchmarks go in `Project.toml` in this folder.
 
 ## Memory use
 

@@ -92,7 +92,7 @@ function run_step(step)
     save_results!(step, ENV_NAME, records, checks)
 end
 
-println("$ENV_NAME, Subzero $(subzero_commit()), Julia threads = $(Threads.nthreads()), CPUs = $(cpu_set())")
+println("$ENV_NAME, Subzero $(subzero_commit()), Julia threads = $(Threads.nthreads()), CPUs = $(cpu_set()), machine = $MACHINE")
 foreach(name -> name == "CPU" || print_device(name), BACKENDS)
 foreach(run_step, filter(selected, STEPS))
 report_host_memory()
