@@ -55,13 +55,27 @@ else  # macOS
 fi
 THREADS=${BENCH_THREADS:-$NCPUS}
 echo "Machine: $BENCH_MACHINE, CPUs: ${BENCH_CPUS:-all}, threads: 1 and $THREADS"
+START=$SECONDS
+minutes() { echo "$(( ($1 + 30) / 60 )) min"; }
+# Run a command with its output, start time and duration in the log file $1, e.g. to choose
+# the time limit of a Slurm job
+logged() {
+    local log=$1 start=$SECONDS
+    shift
+    {
+        echo "Started $(date '+%F %T')"
+        "$@" 2>&1
+        echo "Finished $(date '+%F %T') after $(minutes $((SECONDS - start)))"
+    } | tee "$log"
+}
+mkdir -p logs
 # The input is made with 1 thread and the baseline, so it doesn't depend on the number of
 # threads or on the commit being benchmarked (see make_input.jl)
-[ -f "${BENCH_FLOES:-floes_10k.jld2}" ] || $PIN julia -t 1 --project=env-baseline "$DIR/make_input.jl" 10000 100 floes_10k.jld2
-mkdir -p logs
+[ -f "${BENCH_FLOES:-floes_10k.jld2}" ] || logged logs/make_input.txt $PIN julia -t 1 --project=env-baseline "$DIR/make_input.jl" 10000 100 floes_10k.jld2
 for t in 1 "$THREADS"; do
-    $PIN julia -t "$t" --project=env-baseline "$DIR/bench.jl" baseline 2>&1 | tee "logs/baseline_t$t.txt"
+    logged "logs/baseline_t$t.txt" $PIN julia -t "$t" --project=env-baseline "$DIR/bench.jl" baseline
 done
-BENCH_BACKENDS=CPU $PIN julia -t 1 --project=env-current "$DIR/bench.jl" current 2>&1 | tee logs/current_t1.txt
-$PIN julia -t "$THREADS" --project=env-current "$DIR/bench.jl" current 2>&1 | tee "logs/current_t$THREADS.txt"
+logged logs/current_t1.txt env BENCH_BACKENDS=CPU $PIN julia -t 1 --project=env-current "$DIR/bench.jl" current
+logged "logs/current_t$THREADS.txt" $PIN julia -t "$THREADS" --project=env-current "$DIR/bench.jl" current
 julia "$DIR/summarize.jl"
+echo "All benchmarks took $(minutes $((SECONDS - START)))"
