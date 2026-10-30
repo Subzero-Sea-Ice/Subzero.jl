@@ -168,6 +168,7 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
                 sim.consts,
                 sim.coupling_settings,
                 sim.floe_settings,
+                sim.backend,
             )
         end
         
