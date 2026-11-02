@@ -780,6 +780,54 @@ function mc_interpolation(
 end
 
 
+
+#-------------- Ocean and Atmosphere on Ice --------------#
+"""
+    calc_atmosphere_forcing(...)
+
+Calculates the stresses on a floe from the atmosphere above at given monte
+carlo point.
+
+## _Positional arguments_
+- `xr::AbstractFloat`: x-coordiantes of points to interplate on
+- `yr::AbstractFloat`: y-coordiantes of points to interplate on
+- `upoint::AbstractFloat`: u velocity of floe at point
+- `vpoint::AbstractFloat`: v velocity of floe at point
+- `uatm_interp::InterplationsObject`: linear interpolation function from
+    Interpolations.jl that takes in two arguments (x, y) and interpolates
+    the atompshere u velocity onto point
+- `vatm_interp::InterplationsObject`: linear interpolation function from
+    Interpolations.jl that takes in two arguments (x, y) and interpolates
+    the atompshere v velocity onto point
+- $CONSTS_DEF
+
+## _Returns_
+- `τx_atm::AbstractFloat`: stress from atmosphere on floe in x-direction at given point
+- `τy_atm::AbstractFloat`: stress from atmosphere on floe iny-direction at given point
+"""
+function calc_atmosphere_forcing(
+    xr, 
+    yr,
+    upoint,
+    vpoint,
+    uatm_interp,
+    vatm_interp,
+    c,
+)
+    # Atmosphere velocities at monte carlo point
+    uatm = uatm_interp(xr, yr) 
+    vatm = vatm_interp(xr, yr) 
+
+    # Stress on ice from atmopshere
+    Δu_AI = uatm - upoint
+    Δv_AI = vatm - vpoint
+    norm = sqrt(Δu_AI^2 + Δv_AI^2)
+    τx_atm = c.ρa * c.Cd_ia * norm * Δu_AI
+    τy_atm = c.ρa * c.Cd_ia * norm * Δv_AI
+    return τx_atm, τy_atm
+end
+
+
 """
     calc_one_way_coupling!(...)
 
