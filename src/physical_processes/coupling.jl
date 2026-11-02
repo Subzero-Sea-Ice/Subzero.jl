@@ -126,8 +126,17 @@ records them in pre-allocated input arrays, cart_vals and grid_idx. Returns
 the index of the last element in cart_vals and grid_idx that corresponds to
 elements from given floe.
 =#
-
-function subfloe_values(floes::FixedWidthFloes{FT}, i, grid, domain, cart_vals, grid_idx, validity_flag, npoints) where FT
+function calc_subfloe_values!(
+    floes::FixedWidthFloes,
+    i,
+    grid,
+    domain,
+    cart_vals,
+    grid_idx,
+    validity_flag,
+    npoints,
+    backend = CPU(),
+)
     α = floes.α[i]
     for k in eachindex(floes.x_subfloe_points[i])  # index of monte carlo points
         px = cos(α)*floes.x_subfloe_points[i,k] -
@@ -144,22 +153,6 @@ function subfloe_values(floes::FixedWidthFloes{FT}, i, grid, domain, cart_vals, 
         grid_idx[j, 1], grid_idx[j, 2] = valid[i, k] ? find_center_cell_index(x, y, grid) : (0:0)
     end
     npoints[i] = sum(validity_flag[i,:])
-end
-
-#GPU version of previous function
-function calc_subfloe_values!(
-    dev_floes::FixedWidthFloes,
-    grid,
-    domain,
-    cart_vals,
-    grid_idx,
-    validity_flag,
-    npoints,
-    backend = CPU(),
-)
-    launch_per_floe!(subfloe_values, backend, dev_floes, grid, domain, cart_vals,
-                    grid_idx, validity_flag, npoints
-    )
     return
 end
 
@@ -783,6 +776,49 @@ function floe_to_grid_info!(
     return
 end
 
+
+
+function one_way_coupling(
+    floes::FixedWidthFloes,
+    i, 
+    grid, 
+    atmos,
+    ocean,
+    domain,
+    coupling_settings,
+    consts,
+    cart_vals,
+    grid_idx,
+    validity_flag,
+    npoints
+)
+
+    calc_subfloe_values!(
+        floes,
+        i,
+        grid,
+        domain,
+        cart_vals,
+        grid_idx,
+        validity_flag,
+        npoints,
+        backend,
+    )
+    if npoints[i] == 0
+        floes.status[i].tag == remove
+    else
+        # Interpolaters for ocean and atmosphere
+        uatm_int, vatm_int, uocn_int, vocn_int, hflx_int = mc_interpolation(
+            npoints,
+            grid_idx,
+            grid,
+            domain,
+            atmos,
+            ocean,
+            coupling_settings,
+        )
+end
+
 """
     calc_one_way_coupling!(...)
 
@@ -814,22 +850,28 @@ function calc_one_way_coupling!(
 ) where {FT}
     nfloes = length(floes.height)
     max_points = maximum(length, floes.x_subfloe_points)
-    cart_vals = Matrix{FT}(undef, nfloes, max_points, 2)
-    grid_idx = Matrix{Int}(undef, nfloes, max_points, 2)
+    cart_vals = Array{FT,3}(undef, nfloes, max_points, 2)
+    grid_idx = Array{Int,3}(undef, nfloes, max_points, 2)
     validity_flag = Matrix(Bool)(false, nfloes, max_points)
     npoints = zeros(Int, nfloes)
+
+    launch_per_floe!(one_way_coupling,
+                     backend,
+                     dev_floes,
+                     grid,
+                     atmos,
+                     ocean,
+                     domain,
+                     coupling_settings,
+                     consts,
+                     cart_vals,
+                     grid_idx,
+                     validity_flag,
+                     npoints)
+
     for i in eachindex(floes)
         # Monte carlo point cartesian coordinates and grid cell indices
-        calc_subfloe_values!(
-            dev_floes,
-            grid,
-            domain,
-            cart_vals,
-            grid_idx,
-            validity_flag,
-            npoints,
-            backend,
-        )
+        
         KernelAbstractions.synchronize(sim.backend)
         host_floes = adapt(Array, dev_floes)
         update_floes!(floes, host_floes)
