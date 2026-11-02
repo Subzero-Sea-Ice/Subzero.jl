@@ -678,6 +678,107 @@ function _ref_calc_subfloe_values!(
     return j  # last spot in output arrays that has values for this floe
 end
 
+#=
+    mc_interpolation(
+        npoints,
+        mc_grid_idx,
+        grid,
+        domain,
+        atmos,
+        ocean,
+        coupling_settings,
+    )
+
+Create and returns interpolation objects for atmosphere u and v velocities, and
+ocean u and v velocities, in addition to ocean's heatflux factor.
+Inputs:
+    npoints             <Int> number of monte carlo points to consider - the
+                            number of rows to use in mc_cart and mc_grid_idx
+    grid_idx            <Matrix{Int}> index of monte carlo points within the
+                            grid - nx2 matrix of indices where the first column
+                            is the grid column index and the second column is
+                            the grid row index for cells centered on grid lines
+    grid                <AbstractRectilinearGrid> model grid
+    domain              <Domain> model domain
+    atmos               <Atmos> model atmosphere
+    ocean               <Ocean> model ocean
+    coupling_settings   <CouplingSettings> simulation's coupling settings
+Outputs:
+    uatm_interp <Interplations object> linear interpolation function from
+                    Interpolations.jl that takes in two arguments (x, y) and
+                    interpolates the atompshere u velocity onto point
+    vatm_interp <Interplations object> linear interpolation function from
+                    Interpolations.jl that takes in two arguments (x, y) and
+                    interpolates the atompshere v velocity onto point
+    uocn_interp <Interplations object> linear interpolation function from
+                    Interpolations.jl that takes in two arguments (x, y) and
+                    interpolates the ocean u velocity onto point
+    vocn_interp <Interplations object> linear interpolation function from
+                    Interpolations.jl that takes in two arguments (x, y) and
+                    interpolates the ocean v velocity onto point
+    hflx_interp <Interplations object> linear interpolation function from
+                    Interpolations.jl that takes in two arguments (x, y) and
+                    interpolates the ocean heatflux factor velocity onto point
+=#
+function mc_interpolation(
+    npoints,
+    grid_idx,
+    grid,
+    domain,
+    atmos,
+    ocean,
+    coupling_settings,
+)
+    xidx = @view grid_idx[1:npoints, 1]
+    yidx = @view grid_idx[1:npoints, 2]
+
+    # Find knots and indices of knots for monte carlo interpolation
+    xknots, xknot_idx = find_interp_knots(
+        xidx,
+        grid.Nx,
+        grid.x0:grid.Δx:grid.xf,
+        grid.xf - grid.x0,
+        coupling_settings.Δd,
+        domain.east,
+    )
+    yknots, yknot_idx = find_interp_knots(
+        yidx,
+        grid.Ny,
+        grid.y0:grid.Δy:grid.yf,
+        grid.yf - grid.y0,
+        coupling_settings.Δd,
+        domain.north,
+    )
+
+    knots = (xknots, yknots)
+
+    # Atmos Interpolation objects for Monte Carlo Points
+    uatm_interp = linear_interpolation(
+        knots,
+        @view(atmos.u[xknot_idx, yknot_idx]),
+    )
+    vatm_interp = linear_interpolation(
+        knots,
+        @view(atmos.v[xknot_idx, yknot_idx]),
+    )
+    
+    # Ocean Interpolation objects for Monte Carlo Points
+    uocn_interp = linear_interpolation(
+        knots,
+        @view(ocean.u[xknot_idx, yknot_idx]),
+    )
+    vocn_interp = linear_interpolation(
+        knots,
+        @view(ocean.v[xknot_idx, yknot_idx]),
+    )
+    hflx_interp = linear_interpolation(
+        knots,
+        @view(ocean.hflx_factor[xknot_idx, yknot_idx]),
+    )
+
+    return uatm_interp, vatm_interp, uocn_interp, vocn_interp, hflx_interp
+end
+
 
 """
     calc_one_way_coupling!(...)
