@@ -829,6 +829,62 @@ end
 
 
 """
+    calc_ocean_forcing!(...)
+
+Calculates the stresses on a floe from the ocean above at given monte carlo
+point.
+
+## _Positional arguments_
+- `xr::AbstractFloat`: x-coordiantes of points to interplate on
+- `yr::AbstractFloat`: y-coordiantes of points to interplate on
+- `upoint::AbstractFloat`: u velocity of floe at point
+- `vpoint::AbstractFloat`: v velocity of floe at point
+- `uocn_interp::InterplationsObject`: linear interpolation function from
+    Interpolations.jl that takes in two arguments (x, y) and interpolates
+    the ocean u velocity onto point
+- `vocn_interp::InterplationsObject`: linear interpolation function from
+    Interpolations.jl that takes in two arguments (x, y) and interpolates
+    the ocean v velocity onto point
+- `hflx_interp::InterplationsObject`: linear interpolation function from
+    Interpolations.jl that takes in two arguments (x, y) and interpolates
+    the ocean heatflux factor velocity onto point
+- `ma_ratio::AbstractFloat`: floe's mass to area ratio
+- $CONSTS_DEF
+
+## _Returns_
+- `τx_ocn::AbstractFloat`: stress from ocean velocity on floe in x-direction at given point
+- `τy_ocn::AbstractFloat`: stress from ocean velocity on floe in y-direction at given point
+- `τx_pressure∇::AbstractFloat`: stress from ocean pressure gradient on floe in x-direction at given point
+- `τy_pressure∇::AbstractFloat`: stress from ocean pressure gradient on floe in y-direction at given point
+- `hflx_factor::AbstractFloat`: heatflux factor at given point from the heatflux factors of ocean below floe
+"""
+function calc_ocean_forcing!(
+    xr,
+    yr,
+    upoint,
+    vpoint,
+    uocn_interp,
+    vocn_interp,
+    hflx_interp,
+    ma_ratio,
+    c,  # constants
+)
+    uocn = uocn_interp(xr, yr)
+    vocn = vocn_interp(xr, yr)
+    hflx_factor = hflx_interp(xr, yr)
+    Δu_OI = uocn - upoint
+    Δv_OI = vocn - vpoint
+    norm = sqrt(Δu_OI^2 + Δv_OI^2)
+    τx_ocn = c.ρo*c.Cd_io * norm * (cos(c.turnθ) * Δu_OI - sin(c.turnθ) * Δv_OI)
+    τy_ocn = c.ρo*c.Cd_io * norm * (sin(c.turnθ) * Δu_OI + cos(c.turnθ) * Δv_OI)
+    τx_pressure∇ = -ma_ratio * c.f * vocn
+    τy_pressure∇ = ma_ratio * c.f * uocn
+    return τx_ocn, τy_ocn, τx_pressure∇, τy_pressure∇, hflx_factor
+end
+
+
+
+"""
     calc_one_way_coupling!(...)
 
 Preforms calculations needed for one way coupling by calculating floe's forcings
