@@ -883,6 +883,68 @@ function calc_ocean_forcing!(
 end
 
 
+"""
+    floe_to_grid_info!(...)
+
+Add force from the ice on ocean to ocean force fields (fx & fy) for each grid
+cell and update ocean sea ice area fraction (si_area), representing total area
+of sea ice in a given cell. Function is called for each sub-floe point.
+
+## _Positional arguments_
+- `floeidx::Int`: index of floe within model's floe array
+- `xidx::Int`: grid x index that floe's point is within for grid centered on grid lines
+- `yidx::Int`: grid column that floe's point is within for grid centered on grid lines
+- `τx_ocn::AbstractFloat`: x-stress caused by ocean on point
+- `τy_ocn::AbstractFloat`: y-stress caused by ocean on point
+- $GRID_DEF
+- $DOMAIN_DEF
+- `cell_floes::Matrix{CellFloes}`: matrix of `CellFloes`, one for each grid cell
+- `scells::Matrix{CellStresses}`: matrix of `CellStressess`, one for each grid cell
+- `coupling_settings::CouplingSettings`: simulation's coupling settings
+
+## _Returns_
+- None. Updates `cell_floes` and `scells`.
+"""
+function floe_to_grid_info!(
+    floeidx,
+    xidx,
+    yidx,
+    τx_ocn::FT,
+    τy_ocn::FT,
+    grid,
+    ns_bound,
+    ew_bound,
+    scells,
+    coupling_settings,
+) where {FT}
+    # Determine grid cell point is in and if floe is shifted by periodic bounds
+    shifted_xidx = shift_cell_idx(xidx, grid.Nx + 1, ew_bound)
+    shifted_yidx = shift_cell_idx(yidx, grid.Ny + 1, ns_bound)
+    Δx = (shifted_xidx - xidx) * (grid.Δx)
+    Δy = (shifted_yidx - yidx) * (grid.Δy)
+    if coupling_settings.two_way_coupling_on 
+        # If two-way coupling, save stress on ocean per cell
+        add_point!(
+            grid.floe_locations[shifted_xidx, shifted_yidx],
+            scells[shifted_xidx, shifted_yidx],
+            floeidx,
+            -τx_ocn,
+            -τy_ocn,
+            Δx,
+            Δy,
+        )
+    else
+        add_point!(
+            grid.floe_locations[shifted_xidx, shifted_yidx],
+            floeidx,
+            Δx,
+            Δy,
+        )
+    end
+    return
+end
+
+
 
 """
     calc_one_way_coupling!(...)
