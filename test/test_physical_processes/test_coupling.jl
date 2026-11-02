@@ -677,3 +677,130 @@ function _ref_calc_subfloe_values!(
     end
     return j  # last spot in output arrays that has values for this floe
 end
+
+
+"""
+    calc_one_way_coupling!(...)
+
+Preforms calculations needed for one way coupling by calculating floe's forcings
+from ocean and atmosphere as well as the heatflux below a given floe.
+
+## _Positional arguments_
+- $FLOES_DEF
+- $GRID_DEF
+- `atmos::Atoms`: model's atmosphere
+- `ocean::Ocean`: model's ocean
+- $DOMAIN_DEF
+- `coupling_settings::CouplingSettings`: simulation coupling settings
+- $CONSTS_DEF
+
+## _Returns_
+- None. Update each floe's forces, torque, and heatflux factor from ocean/atmosphere.
+"""
+function calc_one_way_coupling!(
+    floes::StructArray{Floe{FT}},
+    grid,
+    atmos,
+    ocean,
+    domain,
+    coupling_settings,
+    consts,
+) where {FT}
+    max_points = maximum(length, floes.x_subfloe_points)
+    cart_vals = Matrix{FT}(undef, max_points, 2)
+    grid_idx = Matrix{Int}(undef, max_points, 2)
+    for i in eachindex(floes)
+        # Monte carlo point cartesian coordinates and grid cell indices
+        npoints = calc_subfloe_values!(
+            get_floe(floes, i),
+            grid,
+            domain,
+            cart_vals,
+            grid_idx,
+            validity_flag,
+            npoints,
+            backend,
+        )
+        if npoints == 0
+            floes.status[i].tag = remove
+        else
+            # Interpolaters for ocean and atmosphere
+            uatm_int, vatm_int, uocn_int, vocn_int, hflx_int = mc_interpolation(
+                npoints,
+                grid_idx,
+                grid,
+                domain,
+                atmos,
+                ocean,
+                coupling_settings,
+            )
+
+            # Add coriolis stress to total stress - same for every point
+            xcoriolis = (floes.mass[i]/floes.area[i]) * consts.f * floes.v[i]
+            ycoriolis = (floes.mass[i]/floes.area[i]) * consts.f * floes.u[i]
+            tot_τx = npoints * xcoriolis
+            tot_τy = -npoints * ycoriolis
+            tot_τtrq = FT(0)
+            tot_hflx_factor = FT(0)
+            ma_ratio = floes.mass[i]/floes.area[i]
+            # Determine total stress per-monte carlo point
+            for j in 1:npoints
+                # Monte carlo point properties
+                xcentered = cart_vals[j, 1] - floes.centroid[i][1]
+                ycentered = cart_vals[j, 2] - floes.centroid[i][2]
+                θ = atan(ycentered, xcentered)
+                rad = sqrt(xcentered^2 + ycentered^2)
+                upoint = floes.u[i] - floes.ξ[i] * rad * sin(θ)
+                vpoint = floes.v[i] + floes.ξ[i] * rad * cos(θ)
+                # Stress at monte carlo point from ocean and atmosphere
+                τx_atm, τy_atm = calc_atmosphere_forcing(
+                    cart_vals[j, 1], 
+                    cart_vals[j, 2],
+                    upoint,
+                    vpoint,
+                    uatm_int,
+                    vatm_int,
+                    consts,
+                )
+                τx_ocn, τy_ocn, τx_p∇, τy_p∇, hflx_factor = calc_ocean_forcing!(
+                    cart_vals[j, 1],
+                    cart_vals[j, 2],
+                    upoint,
+                    vpoint,
+                    uocn_int,
+                    vocn_int,
+                    hflx_int,
+                    ma_ratio,
+                    consts,
+                )
+                τx = τx_atm + τx_p∇ + τx_ocn
+                τy = τy_atm + τy_p∇ + τy_ocn
+                # Torque at monte carlo point
+                τtrq = (-τx * sin(θ) + τy * cos(θ)) * rad
+                # Add values to total stresses
+                tot_τx += τx
+                tot_τy += τy
+                tot_τtrq += τtrq
+                tot_hflx_factor += hflx_factor
+                # Save floe info onto the grid
+                floe_to_grid_info!(
+                    i,
+                    grid_idx[j, 1],
+                    grid_idx[j, 2],
+                    τx_ocn,
+                    τy_ocn,
+                    grid,
+                    domain.north,
+                    domain.east,
+                    ocean.scells,
+                    coupling_settings,
+                )
+            end
+            # Average forces on ice floe
+            floes.fxOA[i] = tot_τx/npoints * floes.area[i]
+            floes.fyOA[i] = tot_τy/npoints * floes.area[i]
+            floes.trqOA[i] = tot_τtrq/npoints * floes.area[i]
+            floes.hflx_factor[i] = tot_hflx_factor/npoints
+        end
+    end
+end
