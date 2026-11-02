@@ -638,3 +638,42 @@
         @test isapprox(model6.floes[1].trqOA/area, 523.2361, atol = 2e-1)
     end
 end
+
+#=
+CPU function that calculates subfloe point's cartesian coordiantes and index
+within the grid and records them in pre-allocated input arrays, cart_vals 
+and grid_idx. Returns the index of the last element in cart_vals and grid_idx
+that corresponds to elements from given floe.
+=#
+
+function _ref_calc_subfloe_values!(
+    floe::Union{Floe{FT}, LazyRow{Floe{FT}}},
+    grid,
+    domain,
+    cart_vals,
+    grid_idx,
+) where {FT<:AbstractFloat}
+    # Translate/rotate monte carlo points to floe location/orientation
+    α = floe.α
+    j = 0  # index in output array
+    for i in eachindex(floe.x_subfloe_points)  # index of monte carlo points
+        px = cos(α)*floe.x_subfloe_points[i] -
+            sin(α)*floe.y_subfloe_points[i]  # at origin
+        py = sin(α)*floe.x_subfloe_points[i] +
+            cos(α)*floe.y_subfloe_points[i]  # at origin
+        x = px + floe.centroid[1]  # at centroid
+        y = py + floe.centroid[2]  # at centroid
+        # If point is in bounds, continue to find rest of values
+        if in_bounds(x, y, grid, domain.north, domain.east)
+            j += 1  # if added to outputs, move to next index in output array
+            cart_vals[j, 1] = x
+            cart_vals[j, 2] = y
+            grid_idx[j, 1], grid_idx[j, 2] = find_center_cell_index(
+                cart_vals[j, 1],
+                cart_vals[j, 2],
+                grid,
+            )
+        end
+    end
+    return j  # last spot in output arrays that has values for this floe
+end
