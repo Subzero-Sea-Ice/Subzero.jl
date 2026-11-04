@@ -15,6 +15,12 @@ struct Atmos{FT<:AbstractFloat}
     end
 end
 
+struct dev_Atmos{FT<:AbstractFloat, M<:AbstractMatrix{FT}}
+    u::M
+    v::M
+    temp::M
+end
+
 """
     Atmos{FT}
 

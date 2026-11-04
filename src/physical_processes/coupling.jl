@@ -120,41 +120,40 @@ function in_bounds(
 end
 
 #=
+GPU version:
 Calculates subfloe point's cartesian coordiantes and index within the grid and 
 records them in pre-allocated input arrays, cart_vals and grid_idx. Returns
 the index of the last element in cart_vals and grid_idx that corresponds to
 elements from given floe.
 =#
 function calc_subfloe_values!(
-    floe::Union{Floe{FT}, LazyRow{Floe{FT}}},
+    floes::FixedWidthFloes,
+    i,
     grid,
     domain,
     cart_vals,
     grid_idx,
-) where {FT<:AbstractFloat}
-    # Translate/rotate monte carlo points to floe location/orientation
-    α = floe.α
-    j = 0  # index in output array
-    for i in eachindex(floe.x_subfloe_points)  # index of monte carlo points
-        px = cos(α)*floe.x_subfloe_points[i] -
-            sin(α)*floe.y_subfloe_points[i]  # at origin
-        py = sin(α)*floe.x_subfloe_points[i] +
-            cos(α)*floe.y_subfloe_points[i]  # at origin
-        x = px + floe.centroid[1]  # at centroid
-        y = py + floe.centroid[2]  # at centroid
+    validity_flag,
+    npoints,
+    backend = CPU(),
+)
+    α = floes.α[i]
+    for k in eachindex(floes.x_subfloe_points[i])  # index of monte carlo points
+        px = cos(α)*floes.x_subfloe_points[i,k] -
+            sin(α)*floes.y_subfloe_points[i,k]  # at origin
+        py = sin(α)*floes.x_subfloe_points[i,k] +
+            cos(α)*floes.y_subfloe_points[i,k]  # at origin
+        x = px + floes.centroid[i,1]  # at centroid
+        y = py + floes.centroid[i,2]  # at centroid
+
         # If point is in bounds, continue to find rest of values
-        if in_bounds(x, y, grid, domain.north, domain.east)
-            j += 1  # if added to outputs, move to next index in output array
-            cart_vals[j, 1] = x
-            cart_vals[j, 2] = y
-            grid_idx[j, 1], grid_idx[j, 2] = find_center_cell_index(
-                cart_vals[j, 1],
-                cart_vals[j, 2],
-                grid,
-            )
-        end
+        validity_flag[i, k] = in_bounds(x, y, grid, domain.north, domain.east)
+        cart_vals[i, j, 1] = x
+        cart_vals[i, j, 2] = y
+        grid_idx[j, 1], grid_idx[j, 2] = valid[i, k] ? find_center_cell_index(x, y, grid) : (0:0)
     end
-    return j  # last spot in output arrays that has values for this floe
+    npoints[i] = sum(validity_flag[i,:])
+    return
 end
 
 #-------------- Interpolation of Ocean and Atmosphere --------------#
@@ -777,6 +776,49 @@ function floe_to_grid_info!(
     return
 end
 
+
+
+function one_way_coupling(
+    floes::FixedWidthFloes,
+    i, 
+    grid, 
+    atmos,
+    ocean,
+    domain,
+    coupling_settings,
+    consts,
+    cart_vals,
+    grid_idx,
+    validity_flag,
+    npoints
+)
+
+    calc_subfloe_values!(
+        floes,
+        i,
+        grid,
+        domain,
+        cart_vals,
+        grid_idx,
+        validity_flag,
+        npoints,
+        backend,
+    )
+    if npoints[i] == 0
+        floes.status[i].tag == remove
+    else
+        # Interpolaters for ocean and atmosphere
+        uatm_int, vatm_int, uocn_int, vocn_int, hflx_int = mc_interpolation(
+            npoints,
+            grid_idx,
+            grid,
+            domain,
+            atmos,
+            ocean,
+            coupling_settings,
+        )
+end
+
 """
     calc_one_way_coupling!(...)
 
@@ -803,20 +845,37 @@ function calc_one_way_coupling!(
     domain,
     coupling_settings,
     consts,
+    dev_floes::FixedWidthFloes,
+    backend = CPU(),
 ) where {FT}
+    nfloes = length(floes.height)
     max_points = maximum(length, floes.x_subfloe_points)
-    cart_vals = Matrix{FT}(undef, max_points, 2)
-    grid_idx = Matrix{Int}(undef, max_points, 2)
+    cart_vals = Array{FT,3}(undef, nfloes, max_points, 2)
+    grid_idx = Array{Int,3}(undef, nfloes, max_points, 2)
+    validity_flag = Matrix(Bool)(false, nfloes, max_points)
+    npoints = zeros(Int, nfloes)
+
+    launch_per_floe!(one_way_coupling,
+                     backend,
+                     dev_floes,
+                     grid,
+                     atmos,
+                     ocean,
+                     domain,
+                     coupling_settings,
+                     consts,
+                     cart_vals,
+                     grid_idx,
+                     validity_flag,
+                     npoints)
+
     for i in eachindex(floes)
         # Monte carlo point cartesian coordinates and grid cell indices
-        npoints = calc_subfloe_values!(
-            get_floe(floes, i),
-            grid,
-            domain,
-            cart_vals,
-            grid_idx,
-        )
-        if npoints == 0
+        
+        KernelAbstractions.synchronize(sim.backend)
+        host_floes = adapt(Array, dev_floes)
+        update_floes!(floes, host_floes)
+        if npoints[i] == 0
             floes.status[i].tag = remove
         else
             # Interpolaters for ocean and atmosphere
@@ -1003,24 +1062,27 @@ the ice and atmosphere on the ocean if the coupling is two-way.
     two-way coupling is enabled in coupling_settings       
 """
 function timestep_coupling!(
+    dev_floes,
     model,
     Δt,
     consts,
     coupling_settings,
     floe_settings,
+    backend,
 )
     empty!.(model.grid.floe_locations)
     if coupling_settings.two_way_coupling_on
         empty!.(model.ocean.scells)
     end
     calc_one_way_coupling!(
-        model.floes,
+        dev_floes,
         model.grid,
         model.atmos,
         model.ocean,
         model.domain,
         coupling_settings,
         consts,
+        backend,
     )
     if coupling_settings.two_way_coupling_on
         calc_two_way_coupling!(
