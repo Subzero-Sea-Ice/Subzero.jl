@@ -218,6 +218,7 @@ function timestep_sim!(sim, tstep, dev_model, start_tstep = 0)
             timestep_coupling!(
                 dev_floes,
                 dev_model,
+                sim.model,
                 sim.Δt,
                 sim.consts,
                 sim.coupling_settings,

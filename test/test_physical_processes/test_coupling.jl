@@ -986,7 +986,6 @@ function calc_one_way_coupling!(
             grid_idx,
             validity_flag,
             npoints,
-            backend,
         )
         if npoints == 0
             floes.status[i].tag = remove
