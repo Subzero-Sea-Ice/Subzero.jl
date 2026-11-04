@@ -95,6 +95,9 @@ struct FixedWidthFloes{
     mass::AT1
     moment::AT1
     rmax::AT1
+    #Monte Carlo points
+    x_subfloe_points::AT2
+    y_subfloe_points::AT2
     # Velocity/orientation
     α::AT1
     u::AT1
@@ -155,6 +158,12 @@ function FixedWidthFloes(
     n_points = padded(Int32[GI.npoint(GI.getexterior(p)) for p in floes.poly])
     max_points = isempty(floes) ? 0 : Int(maximum(n_points))
     poly = zeros(FT, capacity, max_points, 2)
+
+    n_subfloe_points = padded(Int32[length(x) for x in floes.x_subfloe_points])
+    max_mc_points = isempty(floes) ? 0 : Int(maximum(n_subfloe_points))
+    x_subfloe_points = zeros(FT, capacity, max_mc_points)
+    y_subfloe_points = zeros(FT, capacity, max_mc_points)
+
     centroid = zeros(FT, capacity, 2)
     collision_force = zeros(FT, capacity, 2)
     num_inters = padded(Int32.(floes.num_inters))
@@ -167,6 +176,10 @@ function FixedWidthFloes(
     max_ghosts = max(MAX_GHOSTS, isempty(floes) ? 0 : Int(maximum(num_ghosts)))
     ghosts = zeros(Int32, capacity, max_ghosts)
     for i in 1:nfloes
+        n = n_subfloe_points[i]
+        x_subfloe_points[i, 1:n] .= floes.x_subfloe_points[i]
+        y_subfloe_points[i, 1:n] .= floes.y_subfloe_points[i]
+
         for (j, point) in enumerate(GI.getpoint(GI.getexterior(floes.poly[i])))
             poly[i, j, 1], poly[i, j, 2] = get_tuple_point(point, FT)
         end
@@ -189,6 +202,9 @@ function FixedWidthFloes(
         padded(floes.height),
         padded(floes.mass),
         padded(floes.moment),
+        n_subfloe_points,
+        x_subfloe_points,
+        y_subfloe_points,
         padded(floes.rmax),
         padded(floes.α),
         padded(floes.u),
