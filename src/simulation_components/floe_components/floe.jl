@@ -83,6 +83,9 @@ struct FixedWidthFloes{
     height::AT1
     mass::AT1
     moment::AT1
+    #Monte Carlo points
+    x_subfloe_points::AT2
+    y_subfloe_points::AT2
     # Velocity/orientation
     α::AT1
     u::AT1
@@ -120,6 +123,12 @@ function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
     n_points = Int32[GI.npoint(GI.getexterior(p)) for p in floes.poly]
     max_points = isempty(floes) ? 0 : Int(maximum(n_points))
     poly = zeros(FT, nfloes, max_points, 2)
+
+    n_subfloe_points = Int32[length(x) for x in floes.x_subfloe_points]
+    max_mc_points = isempty(floes) ? 0 : Int(maximum(n_subfloe_points))
+    x_subfloe_points = zeros(FT, nfloes, max_mc_points)
+    y_subfloe_points = zeros(FT, nfloes, max_mc_points)
+
     centroid = Matrix{FT}(undef, nfloes, 2)
     collision_force = Matrix{FT}(undef, nfloes, 2)
     num_inters = Int32.(floes.num_inters)
@@ -129,6 +138,10 @@ function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
     stress_instant = Array{FT}(undef, nfloes, 2, 2)
     strain = Array{FT}(undef, nfloes, 2, 2)
     for i in 1:nfloes
+        n = n_subfloe_points[i]
+        x_subfloe_points[i, 1:n] .= floes.x_subfloe_points[i]
+        y_subfloe_points[i, 1:n] .= floes.y_subfloe_points[i]
+
         for (j, point) in enumerate(GI.getpoint(GI.getexterior(floes.poly[i])))
             poly[i, j, 1], poly[i, j, 2] = get_tuple_point(point, FT)
         end
@@ -149,6 +162,8 @@ function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
         copy(floes.height),
         copy(floes.mass),
         copy(floes.moment),
+        x_subfloe_points,
+        y_subfloe_points,
         copy(floes.α),
         copy(floes.u),
         copy(floes.v),
