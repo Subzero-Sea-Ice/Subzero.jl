@@ -151,7 +151,7 @@ Run one step of the simulation and write output.
 !!! note
     This function must be updated to add any new functionalitites. It might be worth modularizing somehow to smooth that process over and make it easier to add new science functionality.
 """
-function timestep_sim!(sim, tstep, start_tstep = 0, dev_model::dev_Model)
+function timestep_sim!(sim, tstep, dev_model, start_tstep = 0)
     sim.verbose && mod(tstep, 50) == 0 && println(tstep, " timesteps")
     if !isempty(sim.model.floes)
         max_floe_id = maximum(sim.model.floes.id)
@@ -338,7 +338,7 @@ function run!(sim; logger = nothing, messages_per_tstep = 1, start_tstep = 0)
             tstep = start_tstep
             while tstep <= (start_tstep + sim.nΔt)
                 # Timestep the simulation forward
-                timestep_sim!(sim, tstep, start_tstep, dev_model)
+                timestep_sim!(sim, dev_model, tstep, start_tstep)
                 tstep+=1
             end
             teardown_sim(sim)
