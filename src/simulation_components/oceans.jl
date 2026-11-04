@@ -98,6 +98,22 @@ struct Ocean{FT<:AbstractFloat}
     end
 end
 
+struct dev_Ocean{FT<:AbstractFloat, M<:AbstractMatrix{FT}}
+    u::M
+    v::M
+    temp::M
+    hflx_factor::M
+    #TODO scells are only needed for two-way coupling 
+    # (to be implemented) # V<:AbstractVector{FT, 3}
+    # scells_τx::V
+    # scells_τy::V
+    # scells_npoints::V
+    τx::M
+    τy::M
+    si_frac::M
+    dissolved::M
+end
+
 const U_DEF = "`u::Union{Real, Matrix{Real}}`: user can either provide a single u-velocity value \
 (a constant field the size of the `grid` will be created) or provide a matrix field of  u-velocity values"
 const V_DEF = "`v::Union{Real, Matrix{Real}}`: user can either provide a single v-velocity value \
