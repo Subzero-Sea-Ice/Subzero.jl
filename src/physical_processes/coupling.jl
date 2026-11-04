@@ -1062,21 +1062,19 @@ the ice and atmosphere on the ocean if the coupling is two-way.
     two-way coupling is enabled in coupling_settings       
 """
 function timestep_coupling!(
+    dev_floes,
     model,
     Δt,
     consts,
     coupling_settings,
     floe_settings,
-    backend = CPU(),
+    backend,
 )
     empty!.(model.grid.floe_locations)
     if coupling_settings.two_way_coupling_on
         empty!.(model.ocean.scells)
     end
-    #Move floes to device
-    dev_floes = adapt(backend, FixedWidthFloes(model.floes))
     calc_one_way_coupling!(
-        model.floes,
         dev_floes,
         model.grid,
         model.atmos,
@@ -1084,7 +1082,6 @@ function timestep_coupling!(
         model.domain,
         coupling_settings,
         consts,
-        dev_floes,
         backend,
     )
     if coupling_settings.two_way_coupling_on
