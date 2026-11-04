@@ -232,7 +232,9 @@ end
         Δt = 10
         floe_settings = FloeSettings(FT)
         rtol = 10eps(FT)
-        is_flagged(fwf, flag) = fwf.flags .& flag .!= 0
+        # Field of the floes in use, without the spare capacity
+        in_use(fwf, field) = getproperty(fwf, field)[1:fwf.n_floes]
+        is_flagged(fwf, flag) = in_use(fwf, :flags) .& flag .!= 0
         @testset "calc_stress!" begin
             floes = _make_timestep_test_floes(FT, floe_settings)
             fwf = _launch_on(
@@ -262,7 +264,7 @@ end
             limited = [_reference_limit_height!(floes, i, max_height) for i in eachindex(floes)]
             @test limited[1]
             @test is_flagged(fwf, Subzero.FLAG_HEIGHT_LIMITED) == limited
-            @test fwf.height == floes.height
+            @test in_use(fwf, :height) == floes.height
         end
         @testset "limit_collision_force!" begin
             floes = _make_timestep_test_floes(FT, floe_settings)
@@ -285,9 +287,9 @@ end
             for i in eachindex(floes)
                 _reference_thermodynamic_growth!(floes, i)
             end
-            @test isapprox(fwf.height, floes.height; rtol)
-            @test isapprox(fwf.mass, floes.mass; rtol)
-            @test isapprox(fwf.moment, floes.moment; rtol)
+            @test isapprox(in_use(fwf, :height), floes.height; rtol)
+            @test isapprox(in_use(fwf, :mass), floes.mass; rtol)
+            @test isapprox(in_use(fwf, :moment), floes.moment; rtol)
         end
         @testset "update_ice_coordinates!" begin
             floes = _make_timestep_test_floes(FT, floe_settings)
@@ -305,7 +307,7 @@ end
                 @test isapprox(fwf.centroid[i, :], floes.centroid[i]; rtol)
             end
             @testset "$field" for field in (:α, :p_dxdt, :p_dydt, :p_dαdt)
-                @test isapprox(getproperty(fwf, field), getproperty(floes, field); rtol)
+                @test isapprox(in_use(fwf, field), getproperty(floes, field); rtol)
             end
         end
         @testset "update_velocities!" begin
@@ -325,7 +327,7 @@ end
             @test is_flagged(fwf, Subzero.FLAG_VELOCITY_ADJUSTED) == adjusted
             @test is_flagged(fwf, Subzero.FLAG_ξ_SHRUNK) == shrunk
             @testset "$field" for field in (:u, :v, :ξ, :p_dudt, :p_dvdt, :p_dξdt)
-                @test isapprox(getproperty(fwf, field), getproperty(floes, field); rtol)
+                @test isapprox(in_use(fwf, field), getproperty(floes, field); rtol)
             end
         end
     end

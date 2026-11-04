@@ -58,7 +58,10 @@ end
 
 #=
 Floe fields stored as plain arrays so that they can be moved to the GPU with `adapt`.
-The first index of every array is the floe index. Ragged fields are padded:
+The first index of every array is the floe index. The arrays have room for
+`capacity(floes)` floes, of which the first `n_floes` are in use, so that the number of
+floes can change without allocating new arrays (see `set_n_floes`). The spare rows are zero
+until they are used. Ragged fields are padded:
 - `poly[i, j, d]` is coordinate `d` of vertex `j` of floe `i`'s exterior ring, for
   `j in 1:n_points[i]` (the last vertex repeats the first); padding is zero.
 - `interactions[i, k, c]` is column `c` of interaction `k` of floe `i`, for
@@ -75,6 +78,8 @@ struct FixedWidthFloes{
     IT1<:AbstractArray{Int32, 1},
     UT1<:AbstractArray{UInt8, 1},
 }
+    # Number of floes in use
+    n_floes::Int
     # Shape
     n_points::IT1
     poly::AT3
@@ -114,20 +119,31 @@ end
 
 Adapt.@adapt_structure FixedWidthFloes
 
-# Copy of floes as a FixedWidthFloes on the CPU. Does not share memory with floes.
-function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
+#=
+Copy of floes as a FixedWidthFloes on the CPU, with room for `capacity` floes: by default
+25% more than there are now, so that floes can be added without allocating new arrays. Does
+not share memory with floes.
+=#
+function FixedWidthFloes(
+    floes::StructArray{<:Floe{FT}};
+    capacity = length(floes) + cld(length(floes), 4),
+) where FT
     nfloes = length(floes)
-    n_points = Int32[GI.npoint(GI.getexterior(p)) for p in floes.poly]
+    capacity >= nfloes || throw(ArgumentError(
+        "capacity ($capacity) is smaller than the number of floes ($nfloes)"))
+    # Copy of a vector field of floes, padded with zeros up to capacity
+    padded(x) = copyto!(zeros(eltype(x), capacity), x)
+    n_points = padded(Int32[GI.npoint(GI.getexterior(p)) for p in floes.poly])
     max_points = isempty(floes) ? 0 : Int(maximum(n_points))
-    poly = zeros(FT, nfloes, max_points, 2)
-    centroid = Matrix{FT}(undef, nfloes, 2)
-    collision_force = Matrix{FT}(undef, nfloes, 2)
-    num_inters = Int32.(floes.num_inters)
+    poly = zeros(FT, capacity, max_points, 2)
+    centroid = zeros(FT, capacity, 2)
+    collision_force = zeros(FT, capacity, 2)
+    num_inters = padded(Int32.(floes.num_inters))
     max_inters = isempty(floes) ? 0 : Int(maximum(num_inters))
-    interactions = zeros(FT, nfloes, max_inters, 7)
-    stress_accum = Array{FT}(undef, nfloes, 2, 2)
-    stress_instant = Array{FT}(undef, nfloes, 2, 2)
-    strain = Array{FT}(undef, nfloes, 2, 2)
+    interactions = zeros(FT, capacity, max_inters, 7)
+    stress_accum = zeros(FT, capacity, 2, 2)
+    stress_instant = zeros(FT, capacity, 2, 2)
+    strain = zeros(FT, capacity, 2, 2)
     for i in 1:nfloes
         for (j, point) in enumerate(GI.getpoint(GI.getexterior(floes.poly[i])))
             poly[i, j, 1], poly[i, j, 2] = get_tuple_point(point, FT)
@@ -142,47 +158,67 @@ function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
         strain[i, :, :] .= floes.strain[i]
     end
     return FixedWidthFloes(
+        nfloes,
         n_points,
         poly,
         centroid,
-        copy(floes.area),
-        copy(floes.height),
-        copy(floes.mass),
-        copy(floes.moment),
-        copy(floes.α),
-        copy(floes.u),
-        copy(floes.v),
-        copy(floes.ξ),
-        copy(floes.fxOA),
-        copy(floes.fyOA),
-        copy(floes.trqOA),
-        copy(floes.hflx_factor),
+        padded(floes.area),
+        padded(floes.height),
+        padded(floes.mass),
+        padded(floes.moment),
+        padded(floes.α),
+        padded(floes.u),
+        padded(floes.v),
+        padded(floes.ξ),
+        padded(floes.fxOA),
+        padded(floes.fyOA),
+        padded(floes.trqOA),
+        padded(floes.hflx_factor),
         collision_force,
-        copy(floes.collision_trq),
+        padded(floes.collision_trq),
         num_inters,
         interactions,
         stress_accum,
         stress_instant,
         strain,
-        copy(floes.damage),
-        copy(floes.p_dxdt),
-        copy(floes.p_dydt),
-        copy(floes.p_dudt),
-        copy(floes.p_dvdt),
-        copy(floes.p_dξdt),
-        copy(floes.p_dαdt),
-        zeros(UInt8, nfloes),
+        padded(floes.damage),
+        padded(floes.p_dxdt),
+        padded(floes.p_dydt),
+        padded(floes.p_dudt),
+        padded(floes.p_dvdt),
+        padded(floes.p_dξdt),
+        padded(floes.p_dαdt),
+        zeros(UInt8, capacity),
     )
+end
+
+# Number of floes that the arrays of floes have room for
+capacity(floes::FixedWidthFloes) = length(floes.flags)
+
+#=
+The same arrays as `floes`, with the first `n` floes in use. Arrays are not copied or
+allocated, so this can change the number of floes on the device, e.g. to add or remove
+ghosts. Rows that come into use keep whatever they hold, so fill them first.
+=#
+function set_n_floes(floes::FixedWidthFloes, n)
+    0 <= n <= capacity(floes) || throw(ArgumentError(
+        "number of floes ($n) must be between 0 and the capacity ($(capacity(floes)))"))
+    arrays = ntuple(k -> getfield(floes, k + 1), Val(fieldcount(typeof(floes)) - 1))
+    return FixedWidthFloes(Int(n), arrays...)
 end
 
 #=
 Copy the fields that `timestep_floe_properties!` changes from `fixed_width_floes` back into
-`floes`. `fixed_width_floes` must be on the CPU (use `adapt(Array, fixed_width_floes)`).
+`floes`. `fixed_width_floes` must be on the CPU (use `adapt(Array, fixed_width_floes)`), and
+have as many floes in use as `floes` has floes.
 Fields are written through the StructArray's columns: iterating over `floes` would create
 copies of each floe, so changes would be lost.
 =#
 function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedWidthFloes{FT}) where FT
     fwf = fixed_width_floes
+    n = fwf.n_floes
+    length(floes) == n || throw(ArgumentError(
+        "floes has $(length(floes)) floes, but fixed_width_floes has $n in use"))
     for i in eachindex(floes)
         points = [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:fwf.n_points[i]]
         floes.poly[i] = GI.Polygon([GI.LinearRing(points)])::Polys{FT}
@@ -191,19 +227,21 @@ function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedW
         floes.stress_instant[i] .= @view fwf.stress_instant[i, :, :]
         floes.strain[i] .= @view fwf.strain[i, :, :]
     end
-    floes.height .= fwf.height
-    floes.mass .= fwf.mass
-    floes.moment .= fwf.moment
-    floes.α .= fwf.α
-    floes.u .= fwf.u
-    floes.v .= fwf.v
-    floes.ξ .= fwf.ξ
-    floes.p_dxdt .= fwf.p_dxdt
-    floes.p_dydt .= fwf.p_dydt
-    floes.p_dudt .= fwf.p_dudt
-    floes.p_dvdt .= fwf.p_dvdt
-    floes.p_dξdt .= fwf.p_dξdt
-    floes.p_dαdt .= fwf.p_dαdt
+    @views begin
+        floes.height .= fwf.height[1:n]
+        floes.mass .= fwf.mass[1:n]
+        floes.moment .= fwf.moment[1:n]
+        floes.α .= fwf.α[1:n]
+        floes.u .= fwf.u[1:n]
+        floes.v .= fwf.v[1:n]
+        floes.ξ .= fwf.ξ[1:n]
+        floes.p_dxdt .= fwf.p_dxdt[1:n]
+        floes.p_dydt .= fwf.p_dydt[1:n]
+        floes.p_dudt .= fwf.p_dudt[1:n]
+        floes.p_dvdt .= fwf.p_dvdt[1:n]
+        floes.p_dξdt .= fwf.p_dξdt[1:n]
+        floes.p_dαdt .= fwf.p_dαdt[1:n]
+    end
     return
 end
 
