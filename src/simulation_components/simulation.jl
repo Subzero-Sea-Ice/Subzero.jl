@@ -77,6 +77,61 @@ Only keyword arguments are used!
     writers::OT = OutputWriters()
 end
 
+function adapt_Grid(grid::RegRectilinearGrid)
+    return dev_RegRectilinearGrid(
+        copy(grid.Nx),
+        copy(grid.Ny),
+        copy(grid.Δx),
+        copy(grid.Δy),
+        copy(grid.x0),
+        copy(grid.xf),
+        copy(grid.y0),
+        copy(grid.yf)
+    )
+end
+
+function adapt_Ocean(ocean::Ocean)
+    return dev_Ocean(
+        copy(ocean.u),
+        copy(ocean.v),
+        copy(ocean.temp),
+        copy(ocean.hflx_factor),
+        copy(ocean.τx),
+        copy(ocean.τy),
+        copy(ocean.si_frac),
+        copy(ocean.dissolved)
+    )
+end
+
+function adapt_Atmos(a::Atmos)
+    return dev_Atmos(
+        copy(a.u),
+        copy(a.v),
+        copy(a.temp)
+    )
+end
+
+function adapt_Domain(d::Domain)
+    return dev_Domain(
+        copy(d.north),
+        copy(d.south),
+        copy(d.east),
+        copy(d.west)
+    )
+end
+
+#Moves grid, ocean, atmosphere and domain to the device
+function adapt_model(m::Model, backend::KernelAbstractions.Backend)
+    temp_model = dev_Model(
+        adapt_Grid(m.grid),
+        adapt_Ocean(m.ocean),
+        adapt_Atmos(m.atmos),
+        adapt_Domain(m.domain)
+        )
+    dev_model = adapt(backend, temp_model)
+    return dev_model
+end
+
 """
     timestep_sim!(sim, tstep, start_tstep)
 
@@ -96,7 +151,7 @@ Run one step of the simulation and write output.
 !!! note
     This function must be updated to add any new functionalitites. It might be worth modularizing somehow to smooth that process over and make it easier to add new science functionality.
 """
-function timestep_sim!(sim, tstep, start_tstep = 0)
+function timestep_sim!(sim, tstep, start_tstep = 0, dev_model::dev_Model)
     sim.verbose && mod(tstep, 50) == 0 && println(tstep, " timesteps")
     if !isempty(sim.model.floes)
         max_floe_id = maximum(sim.model.floes.id)
@@ -150,24 +205,28 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
         # Add new pieces to the end of floe list
         append!(sim.model.floes, pieces_buffer)
 
+
+        # Move and update floes based on collisions and ocean/atmosphere forcing
+        dev_floes = adapt(sim.backend, FixedWidthFloes(sim.model.floes))
         # Physical processes without ghost floes
         # Effects of ocean and atmosphere on ice and visa versa
         if (
             sim.coupling_settings.coupling_on &&
             mod(tstep, sim.coupling_settings.Δt) == 0
         )
+            
             timestep_coupling!(
-                sim.model,
+                dev_floes,
+                dev_model,
                 sim.Δt,
                 sim.consts,
                 sim.coupling_settings,
-                sim.floe_settings,
+                sim.floe_settings, #needed only for the two-way coupling
                 sim.backend,
             )
         end
         
-        # Move and update floes based on collisions and ocean/atmosphere forcing
-        dev_floes = adapt(sim.backend, FixedWidthFloes(sim.model.floes))
+        
         timestep_floe_properties!(
             dev_floes,
             sim.Δt,
@@ -272,10 +331,14 @@ function run!(sim; logger = nothing, messages_per_tstep = 1, start_tstep = 0)
     try
         with_logger(logger) do
             startup_sim(sim)
+            
+            #Moves grid, ocean, atmosphere, domain to the device
+            dev_model = adapt_model(sim.model, sim.backend)
+            
             tstep = start_tstep
             while tstep <= (start_tstep + sim.nΔt)
                 # Timestep the simulation forward
-                timestep_sim!(sim, tstep, start_tstep)
+                timestep_sim!(sim, tstep, start_tstep, dev_model)
                 tstep+=1
             end
             teardown_sim(sim)
