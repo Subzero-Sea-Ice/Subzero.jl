@@ -817,6 +817,7 @@ function one_way_coupling(
             ocean,
             coupling_settings,
         )
+    end
 end
 
 """
