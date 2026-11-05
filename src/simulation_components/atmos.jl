@@ -20,6 +20,7 @@ struct dev_Atmos{FT<:AbstractFloat, M<:AbstractMatrix{FT}}
     v::M
     temp::M
 end
+Adapt.@adapt_structure dev_Atmos
 
 """
     Atmos{FT}

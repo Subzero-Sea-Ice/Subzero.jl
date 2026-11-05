@@ -114,6 +114,8 @@ struct dev_Ocean{FT<:AbstractFloat, M<:AbstractMatrix{FT}}
     dissolved::M
 end
 
+Adapt.@adapt_structure dev_Ocean
+
 const U_DEF = "`u::Union{Real, Matrix{Real}}`: user can either provide a single u-velocity value \
 (a constant field the size of the `grid` will be created) or provide a matrix field of  u-velocity values"
 const V_DEF = "`v::Union{Real, Matrix{Real}}`: user can either provide a single v-velocity value \

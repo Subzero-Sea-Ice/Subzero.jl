@@ -52,6 +52,7 @@ struct dev_Domain{FT<:AbstractFloat,
     east::EB
     west::WB
 end
+Adapt.@adapt_structure dev_Domain
 
 """
     Domain{FT, NB, SB, EB, WB, TT} 
