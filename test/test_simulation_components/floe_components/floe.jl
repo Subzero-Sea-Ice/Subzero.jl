@@ -327,19 +327,24 @@
         @test_throws ArgumentError Subzero.set_n_floes(spare, n + 4)
         @test_throws ArgumentError Subzero.set_n_floes(spare, -1)
         @test_throws ArgumentError Subzero.update_floes!(floes, fewer)
-        # Kernels only run on the floes in use
-        mark!(floes, i) = (floes.flags[i] = 0x01; nothing)
+        #= Kernels only run on the floes in use: mark! writes `floe_ran` into the flags of
+        every floe it runs on, and the other floes keep the `floe_did_not_run` flags they
+        start with. These are test markers, not FLAG_* event bits. =#
+        floe_ran = 0x01
+        floe_did_not_run = 0x00
+        mark!(floes, i, value) = (floes.flags[i] = value; nothing)
         @testset "launch_per_floe! on $backend" for backend in test_backends()
             for m in (0, n - 2, n + 3)
                 # A new copy each time: adapt to the CPU backend shares the arrays
                 fresh = Subzero.FixedWidthFloes(floes; capacity = n + 3)
                 dev_floes = Subzero.adapt(backend, Subzero.set_n_floes(fresh, m))
                 @test dev_floes.n_floes == m
-                Subzero.launch_per_floe!(mark!, backend, dev_floes)
+                Subzero.launch_per_floe!(mark!, backend, dev_floes, floe_ran)
                 Subzero.KernelAbstractions.synchronize(backend)
                 host_floes = Subzero.adapt(Array, dev_floes)
                 @test host_floes.n_floes == m
-                @test host_floes.flags == [i <= m ? 0x01 : 0x00 for i in 1:(n + 3)]
+                @test host_floes.flags ==
+                    [i <= m ? floe_ran : floe_did_not_run for i in 1:(n + 3)]
             end
         end
     end
