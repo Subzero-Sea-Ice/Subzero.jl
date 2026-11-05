@@ -113,10 +113,10 @@ end
 
 function adapt_Domain(d::Domain)
     return dev_Domain(
-        copy(d.north),
-        copy(d.south),
-        copy(d.east),
-        copy(d.west)
+        d.north,
+        d.south,
+        d.east,
+        d.west
     )
 end
 
@@ -151,7 +151,7 @@ Run one step of the simulation and write output.
 !!! note
     This function must be updated to add any new functionalitites. It might be worth modularizing somehow to smooth that process over and make it easier to add new science functionality.
 """
-function timestep_sim!(sim, tstep, dev_model, start_tstep = 0)
+function timestep_sim!(sim, dev_model, tstep, start_tstep = 0)
     sim.verbose && mod(tstep, 50) == 0 && println(tstep, " timesteps")
     if !isempty(sim.model.floes)
         max_floe_id = maximum(sim.model.floes.id)

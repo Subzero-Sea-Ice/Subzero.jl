@@ -74,6 +74,7 @@ struct FixedWidthFloes{
     AT1<:AbstractArray{FT, 1},
     IT1<:AbstractArray{Int32, 1},
     UT1<:AbstractArray{UInt8, 1},
+    UTt<:AbstractArray{StatusTag, 1}
 }
     # Shape
     n_points::IT1
@@ -113,6 +114,8 @@ struct FixedWidthFloes{
     p_dαdt::AT1
     # Events reported by kernels
     flags::UT1
+    # Flag for each floe
+    tag::UTt
 end
 
 Adapt.@adapt_structure FixedWidthFloes
@@ -187,6 +190,7 @@ function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
         copy(floes.p_dξdt),
         copy(floes.p_dαdt),
         zeros(UInt8, nfloes),
+        StatusTag[s.tag for s in floes.status],
     )
 end
 
@@ -205,6 +209,7 @@ function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedW
         floes.stress_accum[i] .= @view fwf.stress_accum[i, :, :]
         floes.stress_instant[i] .= @view fwf.stress_instant[i, :, :]
         floes.strain[i] .= @view fwf.strain[i, :, :]
+        floes.status[i].tag = fwf.tag[i]
     end
     floes.height .= fwf.height
     floes.mass .= fwf.mass

@@ -76,6 +76,9 @@ struct dev_Model
     # floes::FixedWidthFloes
 end
 
+Adapt.@adapt_structure dev_Model
+
+
 """
     Model{FT, GT, DT, FLT} 
 
