@@ -1,4 +1,4 @@
-export AbstractRectilinearGrid, RegRectilinearGrid
+export AbstractRectilinearGrid, RegRectilinearGrid, dev_RegRectilinearGrid
 
 # See CellFloes documentation below
 struct CellFloes{FT<:AbstractFloat}
