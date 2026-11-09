@@ -145,6 +145,18 @@ function axis_stencil(x, x0, Δx, N, ::PeriodicBoundary)
     return mod(i, N) + 1, mod(i + 1, N) + 1, s - k
 end
 
+#=
+Non-periodic boundary: the field has N + 1 grid lines and no wrap-around.
+Points are already filtered by `in_bounds`, so x is within [x0, x0 + N * Δx].
+The cell index is clamped to [0, N - 1] so that a point exactly on the last grid
+line uses lines N and N + 1 with weight 1, instead of reading past the array.
+=#
+function axis_stencil(x, x0, Δx, N, ::NonPeriodicBoundary)
+    s = (x - x0) / Δx
+    i = clamp(unsafe_trunc(Int, floor(s)), 0, N - 1)
+    return i + 1, i + 2, s - i
+end
+
 # Compute the value of one or more fields at a point (x, y) using a bilinear interpolation
 # Inputs:
 # - x, y = point coordinates
