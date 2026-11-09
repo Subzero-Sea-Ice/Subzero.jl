@@ -108,7 +108,7 @@ Note:
     Points can be outside of the grid, so index can be less than 1 or greater
     than the number of grid lines in a given direction.
 =#
-function _ref_find_Subzero.center_cell_index(xp, yp, grid::Union{RegRectilinearGrid, dev_RegRectilinearGrid})
+function _ref_find_center_cell_index(xp, yp, grid::Union{RegRectilinearGrid, dev_RegRectilinearGrid})
     xidx = floor(Int, (xp - grid.x0)/(grid.Δx) + 0.5) + 1
     yidx = floor(Int, (yp - grid.y0)/(grid.Δy) + 0.5) + 1
     return xidx, yidx
@@ -207,7 +207,7 @@ function _ref_calc_subfloe_values!(
             j += 1  # if added to outputs, move to next index in output array
             cart_vals[j, 1] = x
             cart_vals[j, 2] = y
-            grid_idx[j, 1], grid_idx[j, 2] = _ref_find_Subzero.center_cell_index(
+            grid_idx[j, 1], grid_idx[j, 2] = _ref_find_center_cell_index(
                 cart_vals[j, 1],
                 cart_vals[j, 2],
                 grid,
