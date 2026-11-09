@@ -97,6 +97,7 @@ struct FixedWidthFloes{
     moment::AT1
     rmax::AT1
     #Monte Carlo points
+    subfloe_points::IT1
     x_subfloe_points::AT2
     y_subfloe_points::AT2
     # Velocity/orientation
@@ -304,6 +305,10 @@ function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedW
         floes.u .= fwf.u[1:n]
         floes.v .= fwf.v[1:n]
         floes.ξ .= fwf.ξ[1:n]
+        floes.fxOA .= fwf.fxOA[1:n]
+        floes.fyOA .= fwf.fyOA[1:n]
+        floes.trqOA .= fwf.trqOA[1:n]
+        floes.hflx_factor .= fwf.hflx_factor[1:n]
         floes.p_dxdt .= fwf.p_dxdt[1:n]
         floes.p_dydt .= fwf.p_dydt[1:n]
         floes.p_dudt .= fwf.p_dudt[1:n]
