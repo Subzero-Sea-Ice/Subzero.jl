@@ -33,15 +33,15 @@ over if/else flags.
   `julia -e 'using Pkg; Pkg.add("TestEnv")'`:
 
   ```sh
-  julia --project=. -e 'using TestEnv; TestEnv.activate()
+  julia --project=. -e 'using TestEnv; TestEnv.activate(); include("test/gpu_packages.jl")
       using JLD2, Logging, NCDatasets, Random, SplitApplyCombine, Statistics, StructArrays, Subzero, Test
       import GeometryOps as GO; import GeometryOps.GeoInterface as GI; import JLArrays
       include("test/utils.jl"); include("test/test_floe_utils.jl")'
   ```
 
-  The `using` lines are the ones at the top of `test/runtests.jl`. Some tests read
+  The `include` and `using` lines are the ones at the top of `test/runtests.jl`. Some tests read
   files from `test/inputs/` with relative paths, so run those from `test/` with
-  `--project=..` and `include("utils.jl")`.
+  `--project=..` and `include("gpu_packages.jl")` and `include("utils.jl")`.
 - When adding a test file, also `include` it from `test/runtests.jl`.
 - `test/qualitative_behavior.jl` and `test/compare_results.jl` aren't part of the
   test suite. The first runs simulations you check by eye. The second is out of
@@ -93,11 +93,14 @@ over if/else flags.
   `--gpus=…` (`Pkg.test(test_args = ["--gpus=CUDA"])`) or, if that isn't given, in the
   environment variable `SUBZERO_TEST_GPUS` (`CUDA` and/or `AMDGPU`, comma-separated). The GPU
   packages are in `[extras]` and `[compat]` but not in the test target, so not everyone
-  installs them. `test/utils.jl` `Pkg.add`s the listed ones to the test environment and
-  errors if one can't use a GPU. Check whether a GPU works with
-  `SUBZERO_TEST_GPUS=CUDA julia --project=. -e 'using TestEnv; TestEnv.activate(); using Subzero; import JLArrays; include("test/utils.jl"); @show test_backends()'`.
+  installs them. `test/gpu_packages.jl` `Pkg.add`s the listed ones to the test environment,
+  and `test/utils.jl` errors if one can't use a GPU. Include `gpu_packages.jl` before loading
+  Subzero: adding a GPU package can change the versions of packages Subzero uses (AMDGPU 2.8
+  needs LLVM 9, but a resolve without it picks LLVM 10 via KernelAbstractions → Atomix →
+  UnsafeAtomics), and a loaded package can't be replaced. Check whether a GPU works with
+  `SUBZERO_TEST_GPUS=CUDA julia --project=. -e 'using TestEnv; TestEnv.activate(); include("test/gpu_packages.jl"); using Subzero; import JLArrays; include("test/utils.jl"); @show test_backends()'`.
   To test another GPU, add its package to `[extras]`, `[compat]` and `GPU_BACKENDS` in
-  `test/utils.jl`. Metal and oneAPI aren't in the list yet: the tests use Float64 floes,
+  `test/gpu_packages.jl`. Metal and oneAPI aren't in the list yet: the tests use Float64 floes,
   which Metal and many Intel GPUs can't handle.
 
 ### Porting a function
