@@ -176,7 +176,8 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
         KernelAbstractions.synchronize(sim.backend)
         host_floes = adapt(Array, dev_floes)
         update_floes!(sim.model.floes, host_floes)
-        _log_flags(host_floes.flags, tstep, sim.floe_settings)
+        # Only the floes in use: spare rows may hold flags of floes that were removed
+        _log_flags(@view(host_floes.flags[1:host_floes.n_floes]), tstep, sim.floe_settings)
         # Fracture floes
         if sim.fracture_settings.fractures_on && mod(tstep, sim.fracture_settings.Δt) == 0
             max_floe_id =
