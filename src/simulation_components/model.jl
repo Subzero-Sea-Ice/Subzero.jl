@@ -67,6 +67,18 @@ struct Model{FT, GT, DT, FLT}
     end
 end
 
+struct dev_Model
+    grid::dev_RegRectilinearGrid
+    ocean::dev_Ocean
+    atmos::dev_Atmos
+    domain::dev_Domain
+    #Floes are not implemented for testing purposes
+    # floes::FixedWidthFloes
+end
+
+Adapt.@adapt_structure dev_Model
+
+
 """
     Model{FT, GT, DT, FLT} 
 

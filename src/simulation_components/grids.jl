@@ -1,4 +1,4 @@
-export AbstractRectilinearGrid, RegRectilinearGrid
+export AbstractRectilinearGrid, RegRectilinearGrid, dev_RegRectilinearGrid
 
 # See CellFloes documentation below
 struct CellFloes{FT<:AbstractFloat}
@@ -114,6 +114,20 @@ struct RegRectilinearGrid{FT}<:AbstractRectilinearGrid{FT}
     yf::FT
     floe_locations::Matrix{CellFloes{FT}}
 end
+
+struct dev_RegRectilinearGrid{FT<:AbstractFloat}
+    Nx::Int
+    Ny::Int
+    Δx::FT
+    Δy::FT
+    x0::FT
+    xf::FT
+    y0::FT
+    yf::FT
+    #TODO floe_locations is needed only for two-way coupling
+    # floe_locations::Matrix{CellFloes{FT}}
+end
+
 
 """
     RegRectilinearGrid{FT} <: AbstractRectilinearGrid{FT}

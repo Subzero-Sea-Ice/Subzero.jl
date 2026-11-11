@@ -1,3 +1,82 @@
+include("../CPU_reference/coupling.jl")
+
+#=
+Helpers to test the port on GPU of timestep_coupling
+=#
+# Saves npoints (number of in-bounds sub-floe points of floe i), which launch_per_floe! would discard
+function _subfloe_values_test!(floes, i, grid, domain, cart, gidx, npoints)
+    npoints[i] = Subzero.calc_subfloe_values!(floes, i, grid, domain, cart, gidx)
+    return
+end
+
+# vals[i, j, :] = (atmos u, atmos v, ocean u, ocean v, ocean hflx_factor) at point j of floe i
+function _interpolate_test!(floes, i, grid, domain, atmos, ocean, cart, gidx, npoints, vals)
+    n = Subzero.calc_subfloe_values!(floes, i, grid, domain, cart, gidx)
+    npoints[i] = n
+    for j in 1:n
+        x, y = cart[i, j, 1], cart[i, j, 2]
+        vals[i, j, 1], vals[i, j, 2] =
+            Subzero.interpolate_fields(x, y, grid, domain, (atmos.u, atmos.v))
+        vals[i, j, 3], vals[i, j, 4], vals[i, j, 5] =
+            Subzero.interpolate_fields(x, y, grid, domain, (ocean.u, ocean.v, ocean.hflx_factor))
+    end
+    return
+end
+
+function _atmosphere_forcing(floes, i, grid, domain, atmos, cart, gidx, npoints, vals, consts)
+    n = Subzero.calc_subfloe_values!(floes, i, grid, domain, cart, gidx)
+    npoints[i] = n
+    for j in 1:n
+        x, y = cart[i, j, 1], cart[i, j, 2]
+        xcentered = cart[i, j, 1] - floes.centroid[i, 1]
+        ycentered = cart[i, j, 2] - floes.centroid[i, 2]
+        θ = atan(ycentered, xcentered)
+        rad = sqrt(xcentered^2 + ycentered^2)
+        upoint = floes.u[i] - floes.ξ[i] * rad * sin(θ)
+        vpoint = floes.v[i] + floes.ξ[i] * rad * cos(θ)
+        vals[i, j, 1], vals[i, j, 2] =
+            Subzero.atmosphere_forcing(x, y, upoint, vpoint, atmos, grid, domain, consts)
+    end
+end
+
+function _ocean_forcing(floes, i, grid, domain, ocean, cart, gidx, npoints, vals, consts)
+    n = Subzero.calc_subfloe_values!(floes, i, grid, domain, cart, gidx)
+    npoints[i] = n
+    for j in 1:n
+        x, y = cart[i, j, 1], cart[i, j, 2]
+        xcentered = cart[i, j, 1] - floes.centroid[i, 1]
+        ycentered = cart[i, j, 2] - floes.centroid[i, 2]
+        θ = atan(ycentered, xcentered)
+        rad = sqrt(xcentered^2 + ycentered^2)
+        upoint = floes.u[i] - floes.ξ[i] * rad * sin(θ)
+        vpoint = floes.v[i] + floes.ξ[i] * rad * cos(θ)
+        vals[i, j, 1], vals[i, j, 2],
+        vals[i, j, 3], vals[i, j, 4],
+        vals[i, j, 5] =
+            Subzero.ocean_forcing(x, y, upoint, vpoint, ocean, floes.mass[i]/floes.area[i], grid, domain, consts)
+    end
+end
+
+function _coupling_test_model(::Type{FT}, ns_bc, ew_bc) where FT
+    rng = Xoshiro(7)
+    # Δx ≠ Δy and Nx ≠ Ny (10 × 5 cells) so swapped x/y indices are caught
+    grid = RegRectilinearGrid(FT; x0 = 0, xf = 1e4, y0 = 0, yf = 1e4, Δx = 1e3, Δy = 2e3)
+    ocean = Ocean(FT; grid, u = 0, v = 0, temp = 0)
+    atmos = Atmos(FT; grid, u = 0, v = 0, temp = 0)
+    # Random fields: the last grid line differs from the first, so a wrong periodic wrap shows up
+    for f in (ocean.u, ocean.v, ocean.hflx_factor, atmos.u, atmos.v)
+        f .= rand(rng, FT, size(f)) .- FT(0.5)
+    end
+    domain = Domain(; north = ns_bc(North, FT; grid), south = ns_bc(South, FT; grid),
+                      east = ew_bc(East, FT; grid),  west = ew_bc(West, FT; grid))
+    floes = _make_timestep_test_floes(FT, FloeSettings(FT))
+    floes.α .= FT(2π) .* rand(rng, FT, length(floes))   # α (rotation angle) ≠ 0 exercises the rotation
+    floes.centroid[1] .= (FT(9.5e3), FT(9.5e3))  # straddles the north-east corner
+    floes.centroid[2] .= (FT(5e2),   FT(5e3))    # straddles the west edge
+    floes.centroid[3] .= (FT(1.25e4), FT(5e3))   # fully east of the grid: n = 0 if east-west is open
+    return Model(; grid, ocean, atmos, domain, floes)
+end
+
 @testset "Coupling" begin
     FT = Float64
     @testset "Generating sub-floe points" begin
@@ -194,9 +273,9 @@
             @test Subzero.in_bounds(x[i], y[i], grid, periodic_bound, periodic_bound) == periodic_periodic_answers[i]
         end
 
-        # Test find_interp_knots
+        # Test _ref_find_interp_knots
         # in bounds
-        @test Subzero.find_interp_knots(
+        @test _ref_find_interp_knots(
             [4],
             8,  # 8 grid cells
             0:10:80,  # grid lines
@@ -204,7 +283,7 @@
             2,
             open_bound,
         ) == (0:10:60, 1:7)
-        @test Subzero.find_interp_knots(
+        @test _ref_find_interp_knots(
             [4],
             8,  # 8 grid cells
             0:10:80,  # grid lines
@@ -213,7 +292,7 @@
             periodic_bound,
         ) == (0:10:60, 1:7)
         # out of bounds to left
-        @test Subzero.find_interp_knots(
+        @test _ref_find_interp_knots(
             [0, 1],
             8,  # 8 grid cells
             0:10:80,  # grid lines
@@ -221,7 +300,7 @@
             2,
             open_bound,
         ) == (0:10:30, 1:4)
-        @test Subzero.find_interp_knots(
+        @test _ref_find_interp_knots(
             [0, 1],
             8,  # 8 grid cells
             0:10:80,  # grid lines
@@ -230,7 +309,7 @@
             periodic_bound,
         ) == (-40:10:30, [5:8; 1:4])
         # out of bounds to right
-        @test Subzero.find_interp_knots(
+        @test _ref_find_interp_knots(
             [8, 9],
             8,  # 8 grid cells
             0:10:80,  # grid lines
@@ -238,7 +317,7 @@
             1,
             open_bound,
         ) == (50:10:80, 6:9)
-        @test Subzero.find_interp_knots(
+        @test _ref_find_interp_knots(
             [8, 9],
             8,  # 8 grid cells
             0:10:80,  # grid lines
@@ -247,7 +326,7 @@
             periodic_bound,
         ) == (50:10:100, [6:8; 1:3])
         # buffer out of bounds on both sides
-        @test Subzero.find_interp_knots(
+        @test _ref_find_interp_knots(
             1:8,
             8,  # 8 grid cells
             0:10:80,  # grid lines
@@ -255,7 +334,7 @@
             2,
             open_bound,
         ) == (0:10:80, 1:9)
-        @test Subzero.find_interp_knots(
+        @test _ref_find_interp_knots(
             1:8,
             8,  # 8 grid cells
             0:10:80,  # grid lines
@@ -264,7 +343,7 @@
             periodic_bound,
         ) == (-30:10:100, [6:8; 1:8; 1:3])
         # floe out of bounds on both sides - would be filtered out for periodic in advance
-        @test Subzero.find_interp_knots(
+        @test _ref_find_interp_knots(
             0:9,
             8,  # 8 grid cells
             0:10:80,  # grid lines
@@ -502,7 +581,7 @@
             domain,
             floes = StructArray([deepcopy(floe)]),
         )
-        Subzero.timestep_coupling!(
+        _ref_timestep_coupling!(
             model1,
             10,
             consts,
@@ -522,7 +601,7 @@
             domain,
             floes = StructArray([deepcopy(floe)]),
         )
-        Subzero.timestep_coupling!(
+        _ref_timestep_coupling!(
             model2,
             10,
             consts,
@@ -545,7 +624,7 @@
             domain,
             floes = StructArray([floe3]),
         )
-        Subzero.timestep_coupling!(
+        _ref_timestep_coupling!(
             model3,
             10,
             consts,
@@ -565,7 +644,7 @@
             domain,
             floes = StructArray([deepcopy(floe)]),
         )
-        Subzero.timestep_coupling!(
+        _ref_timestep_coupling!(
             model4,
             10,
             consts,
@@ -598,7 +677,7 @@
             domain,
             floes = StructArray([deepcopy(floe)]),
         )
-        Subzero.timestep_coupling!(
+        _ref_timestep_coupling!(
             model5,
             10,
             consts,
@@ -626,7 +705,7 @@
             domain,
             floes = StructArray([floe6]),
         )
-        Subzero.timestep_coupling!(
+        _ref_timestep_coupling!(
             model6,
             10,
             consts,
@@ -636,5 +715,150 @@
         @test isapprox(model6.floes[1].fxOA/area, -1.6300, atol = 1e-3)
         @test isapprox(model6.floes[1].fyOA/area, 1.1240, atol = 1e-3)
         @test isapprox(model6.floes[1].trqOA/area, 523.2361, atol = 2e-1)
+    end
+
+    @testset "Sub-floe points & interpolation on GPU: $backend, $FT, NS=$ns, EW=$ew" for backend in test_backends(),
+            FT in (Float64, Float32), ns in (OpenBoundary, PeriodicBoundary), ew in (OpenBoundary, PeriodicBoundary)
+        model = _coupling_test_model(FT, ns, ew)
+        dm = Subzero.adapt_model(model, backend)
+        fwf = Subzero.FixedWidthFloes(model.floes)
+
+        nfloes, maxp = size(fwf.x_subfloe_points)
+        cart = Subzero.adapt(backend, zeros(FT, nfloes, maxp, 2))
+        gidx = Subzero.adapt(backend, zeros(Int, nfloes, maxp, 2))
+        npts = Subzero.adapt(backend, zeros(Int, nfloes))
+        vals = Subzero.adapt(backend, zeros(FT, nfloes, maxp, 5))
+        
+        Subzero.launch_per_floe!(_interpolate_test!, backend, Subzero.adapt(backend, fwf),
+            dm.grid, dm.domain, dm.atmos, dm.ocean, cart, gidx, npts, vals)
+        Subzero.KernelAbstractions.synchronize(backend)
+        cart, gidx, npts, vals = (Subzero.adapt(Array, a) for a in (cart, gidx, npts, vals))
+
+        ref_cart = Matrix{FT}(undef, maxp, 2)
+        ref_gidx = Matrix{Int}(undef, maxp, 2)
+        npts_cpu = zeros(Int, nfloes)
+        cart_cpu = zeros(FT, nfloes, maxp, 2)
+        gidx_cpu = zeros(Int, nfloes, maxp, 2)
+        vals_cpu = zeros(FT, nfloes, maxp, 5)
+        for i in 1:nfloes
+            n = _ref_calc_subfloe_values!(_ref_get_floe(model.floes, i), model.grid, model.domain, ref_cart, ref_gidx)
+            npts_cpu[i] = n
+            cart_cpu[i, 1:n, :] .= ref_cart[1:n, :]
+            gidx_cpu[i, 1:n, :] .= ref_gidx[1:n, :]
+            n == 0 && continue
+            interps = _ref_mc_interpolation(n, ref_gidx, model.grid, model.domain,
+                                            model.atmos, model.ocean, CouplingSettings())
+            vals_cpu[i, 1:n, :] .= [itp(ref_cart[j, 1], ref_cart[j, 2]) for j in 1:n, itp in interps]
+        end
+        @test npts == npts_cpu
+        @test gidx == gidx_cpu
+        @test isapprox(cart, cart_cpu; rtol = 10eps(FT))
+        @test all(isapprox.(vals, vals_cpu; atol = 100eps(FT)))
+    end
+
+    @testset "Atmosphere and ocean forcing in one-way-coupling: $backend, $FT, NS=$ns, EW=$ew" for backend in test_backends(),
+            FT in (Float64, Float32), ns in (OpenBoundary, PeriodicBoundary), ew in (OpenBoundary, PeriodicBoundary)
+        model = _coupling_test_model(FT, ns, ew)
+        dm = Subzero.adapt_model(model, backend)
+        fwf = Subzero.FixedWidthFloes(model.floes)
+
+        nfloes, maxp = size(fwf.x_subfloe_points)
+        cart = Subzero.adapt(backend, zeros(FT, nfloes, maxp, 2))
+        gidx = Subzero.adapt(backend, zeros(Int, nfloes, maxp, 2))
+        npts = Subzero.adapt(backend, zeros(Int, nfloes))
+        atm_vals = Subzero.adapt(backend, zeros(FT, nfloes, maxp, 2))
+        ocean_vals = Subzero.adapt(backend, zeros(FT, nfloes, maxp, 5))
+        sim_const = Subzero.Constants()  
+
+        Subzero.launch_per_floe!(_atmosphere_forcing, backend, Subzero.adapt(backend, fwf),
+            dm.grid, dm.domain, dm.atmos, cart, gidx, npts, atm_vals, sim_const)
+        Subzero.KernelAbstractions.synchronize(backend)
+        Subzero.launch_per_floe!(_ocean_forcing, backend, Subzero.adapt(backend, fwf),
+            dm.grid, dm.domain, dm.ocean, cart, gidx, npts, ocean_vals, sim_const)
+        Subzero.KernelAbstractions.synchronize(backend)
+        cart, gidx, npts, atm_vals, ocean_vals = (Subzero.adapt(Array, a) for a in (cart, gidx, npts, atm_vals, ocean_vals))
+
+        ref_cart = Matrix{FT}(undef, maxp, 2)
+        ref_gidx = Matrix{Int}(undef, maxp, 2)
+        atm_cpu   = zeros(FT, nfloes, maxp, 2)   # τx_atm, τy_atm
+        ocean_cpu = zeros(FT, nfloes, maxp, 5)   # τx_ocn, τy_ocn, τx_p∇, τy_p∇, hflx_factor
+        for i in 1:nfloes
+            n = _ref_calc_subfloe_values!(_ref_get_floe(model.floes, i), model.grid, model.domain, ref_cart, ref_gidx)
+            n == 0 && continue
+            # B: interpolation
+            uatm_int, vatm_int, uocn_int, vocn_int, hflx_int = _ref_mc_interpolation(n, ref_gidx, model.grid, model.domain,
+                                            model.atmos, model.ocean, CouplingSettings())
+            for j in 1:n
+                xcentered = ref_cart[j, 1] - model.floes.centroid[i][1]
+                ycentered = ref_cart[j, 2] - model.floes.centroid[i][2]
+                θ = atan(ycentered, xcentered)
+                rad = sqrt(xcentered^2 + ycentered^2)
+                upoint = model.floes.u[i] - model.floes.ξ[i] * rad * sin(θ)
+                vpoint = model.floes.v[i] + model.floes.ξ[i] * rad * cos(θ)
+                # Stress at monte carlo point from ocean and atmosphere
+                atm_cpu[i, j, 1], atm_cpu[i, j, 2] = _ref_calc_atmosphere_forcing(
+                    ref_cart[j, 1], 
+                    ref_cart[j, 2],
+                    upoint,
+                    vpoint,
+                    uatm_int,
+                    vatm_int,
+                    sim_const,
+                )
+                ocean_cpu[i, j, 1], ocean_cpu[i, j, 2], ocean_cpu[i, j, 3],
+                ocean_cpu[i, j, 4], ocean_cpu[i, j, 5] =  _ref_calc_ocean_forcing!(
+                    ref_cart[j, 1], 
+                    ref_cart[j, 2],
+                    upoint,
+                    vpoint,
+                    uocn_int,
+                    vocn_int,
+                    hflx_int,
+                    model.floes.mass[i]/model.floes.area[i],
+                    sim_const,
+                )
+            end
+        end
+        @test all(isapprox.(atm_vals, atm_cpu; atol = 10eps(FT)))
+        @test all(isapprox.(ocean_vals, ocean_cpu; atol = 10eps(FT)))
+    end
+
+    @testset "One way coupling on GPU: $backend, $FT, NS=$ns, EW=$ew" for backend in test_backends(),
+            FT in (Float64, Float32), ns in (OpenBoundary, PeriodicBoundary), ew in (OpenBoundary, PeriodicBoundary)
+
+        model = _coupling_test_model(FT, ns, ew)
+        dm = Subzero.adapt_model(model, backend)
+        fwf = Subzero.FixedWidthFloes(model.floes)
+        dev_floes = Subzero.adapt(backend, fwf)
+
+        nfloes, _ = size(fwf.x_subfloe_points)
+
+        Subzero.calc_one_way_coupling!(
+            dev_floes,
+            dm.grid,
+            dm.atmos,
+            dm.ocean,
+            dm.domain,
+            CouplingSettings(),
+            Subzero.Constants(),
+            backend
+        )
+        Subzero.KernelAbstractions.synchronize(backend)
+        gpu_floes = Subzero.adapt(Array, dev_floes)
+
+        _ref_calc_one_way_coupling!(
+            model.floes,
+            model.grid,
+            model.atmos,
+            model.ocean, 
+            model.domain, 
+            CouplingSettings(),
+            Subzero.Constants(),
+        )
+
+        @test all(isapprox.(model.floes.fxOA, gpu_floes.fxOA; rtol = 100eps(FT)))
+        @test all(isapprox.(model.floes.fyOA, gpu_floes.fyOA; rtol = 100eps(FT)))
+        @test all(isapprox.(model.floes.trqOA, gpu_floes.trqOA; rtol = 100eps(FT)))
+        @test all(isapprox.(model.floes.hflx_factor, gpu_floes.hflx_factor; rtol = 100eps(FT)))
     end
 end

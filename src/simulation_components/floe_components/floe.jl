@@ -74,6 +74,7 @@ struct FixedWidthFloes{
     AT1<:AbstractArray{FT, 1},
     IT1<:AbstractArray{Int32, 1},
     UT1<:AbstractArray{UInt8, 1},
+    UTt<:AbstractArray{StatusTag, 1}
 }
     # Shape
     n_points::IT1
@@ -83,6 +84,10 @@ struct FixedWidthFloes{
     height::AT1
     mass::AT1
     moment::AT1
+    #Monte Carlo points
+    subfloe_points::IT1
+    x_subfloe_points::AT2
+    y_subfloe_points::AT2
     # Velocity/orientation
     α::AT1
     u::AT1
@@ -110,6 +115,8 @@ struct FixedWidthFloes{
     p_dαdt::AT1
     # Events reported by kernels
     flags::UT1
+    # Flag for each floe
+    tag::UTt
 end
 
 Adapt.@adapt_structure FixedWidthFloes
@@ -120,6 +127,12 @@ function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
     n_points = Int32[GI.npoint(GI.getexterior(p)) for p in floes.poly]
     max_points = isempty(floes) ? 0 : Int(maximum(n_points))
     poly = zeros(FT, nfloes, max_points, 2)
+
+    n_subfloe_points = Int32[length(x) for x in floes.x_subfloe_points]
+    max_mc_points = isempty(floes) ? 0 : Int(maximum(n_subfloe_points))
+    x_subfloe_points = zeros(FT, nfloes, max_mc_points)
+    y_subfloe_points = zeros(FT, nfloes, max_mc_points)
+
     centroid = Matrix{FT}(undef, nfloes, 2)
     collision_force = Matrix{FT}(undef, nfloes, 2)
     num_inters = Int32.(floes.num_inters)
@@ -129,6 +142,10 @@ function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
     stress_instant = Array{FT}(undef, nfloes, 2, 2)
     strain = Array{FT}(undef, nfloes, 2, 2)
     for i in 1:nfloes
+        n = n_subfloe_points[i]
+        x_subfloe_points[i, 1:n] .= floes.x_subfloe_points[i]
+        y_subfloe_points[i, 1:n] .= floes.y_subfloe_points[i]
+
         for (j, point) in enumerate(GI.getpoint(GI.getexterior(floes.poly[i])))
             poly[i, j, 1], poly[i, j, 2] = get_tuple_point(point, FT)
         end
@@ -149,6 +166,9 @@ function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
         copy(floes.height),
         copy(floes.mass),
         copy(floes.moment),
+        n_subfloe_points,
+        x_subfloe_points,
+        y_subfloe_points,
         copy(floes.α),
         copy(floes.u),
         copy(floes.v),
@@ -172,6 +192,7 @@ function FixedWidthFloes(floes::StructArray{<:Floe{FT}}) where FT
         copy(floes.p_dξdt),
         copy(floes.p_dαdt),
         zeros(UInt8, nfloes),
+        StatusTag[s.tag for s in floes.status],
     )
 end
 
@@ -190,6 +211,7 @@ function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedW
         floes.stress_accum[i] .= @view fwf.stress_accum[i, :, :]
         floes.stress_instant[i] .= @view fwf.stress_instant[i, :, :]
         floes.strain[i] .= @view fwf.strain[i, :, :]
+        floes.status[i].tag = fwf.tag[i]
     end
     floes.height .= fwf.height
     floes.mass .= fwf.mass
@@ -198,6 +220,10 @@ function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedW
     floes.u .= fwf.u
     floes.v .= fwf.v
     floes.ξ .= fwf.ξ
+    floes.fxOA .= fwf.fxOA
+    floes.fyOA .= fwf.fyOA
+    floes.trqOA .= fwf.trqOA
+    floes.hflx_factor .= fwf.hflx_factor
     floes.p_dxdt .= fwf.p_dxdt
     floes.p_dydt .= fwf.p_dydt
     floes.p_dudt .= fwf.p_dudt
