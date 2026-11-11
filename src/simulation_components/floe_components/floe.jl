@@ -203,8 +203,11 @@ ghosts. Rows that come into use keep whatever they hold, so fill them first.
 function set_n_floes(floes::FixedWidthFloes, n)
     0 <= n <= capacity(floes) || throw(ArgumentError(
         "number of floes ($n) must be between 0 and the capacity ($(capacity(floes)))"))
-    arrays = ntuple(k -> getfield(floes, k + 1), Val(fieldcount(typeof(floes)) - 1))
-    return FixedWidthFloes(Int(n), arrays...)
+    # Every field as it is, except n_floes, so this doesn't depend on the order of the fields
+    fields = ntuple(Val(fieldcount(typeof(floes)))) do k
+        fieldname(typeof(floes), k) === :n_floes ? Int(n) : getfield(floes, k)
+    end
+    return FixedWidthFloes(fields...)
 end
 
 #=
