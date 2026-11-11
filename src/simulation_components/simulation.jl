@@ -40,6 +40,12 @@ Only keyword arguments are used!
 
 !!! note
     If a `FloeSettings` object is required since it is also an input to the [`_initialize_floe_field!`](@ref) functions.
+
+!!! note
+    The floes are copied to the `backend` and back on every timestep. With AMDGPU.jl 2.11 or later
+    on Linux, allocating GPU memory for them is slow by default: AMDGPU then uses a memory pool
+    that other processes can share with GPU-aware MPI. If you don't use GPU-aware MPI, run
+    `AMDGPU.memory_pool_handle_type!("none")` once in your environment and restart Julia.
 """
 @kwdef struct Simulation{
     FT<:AbstractFloat,
