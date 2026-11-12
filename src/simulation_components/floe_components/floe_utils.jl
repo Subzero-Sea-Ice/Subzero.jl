@@ -86,6 +86,55 @@ function _move_floe!(floes::FixedWidthFloes, i, Δx, Δy, Δα)
 end
 
 #=
+Translate floe i by Δx and Δy. Same result as `_translate_floe!` for a `Floe`, but written as
+scalar operations on the arrays of a `FixedWidthFloes`, so it can be called from a GPU
+kernel.
+=#
+function _translate_floe!(floes::FixedWidthFloes, i, Δx, Δy)
+    floes.centroid[i, 1] += Δx
+    floes.centroid[i, 2] += Δy
+    for j in 1:floes.n_points[i]
+        floes.poly[i, j, 1] += Δx
+        floes.poly[i, j, 2] += Δy
+    end
+    return
+end
+
+#=
+Copy every field of floe `src` into floe `dst`, including the padding of ragged fields, so
+that floe `dst` is the same as floe `src`, e.g. to make a ghost of it. The fields are found
+by name, so fields that are added to `FixedWidthFloes` are copied too. Written as scalar
+operations, so it can be called from a GPU kernel.
+=#
+function _copy_floe!(floes::FixedWidthFloes, dst, src)
+    # unrolled at compile time, so that each field has a known type
+    ntuple(Val(fieldcount(typeof(floes)))) do k
+        field = getfield(floes, k)
+        field isa AbstractArray && _copy_row!(field, dst, src)
+        return nothing
+    end
+    return
+end
+
+# Copy row src of an array of a FixedWidthFloes, whose first index is the floe, into row dst
+function _copy_row!(a::AbstractArray{<:Any, 1}, dst, src)
+    a[dst] = a[src]
+    return
+end
+function _copy_row!(a::AbstractArray{<:Any, 2}, dst, src)
+    for k in axes(a, 2)
+        a[dst, k] = a[src, k]
+    end
+    return
+end
+function _copy_row!(a::AbstractArray{<:Any, 3}, dst, src)
+    for l in axes(a, 3), k in axes(a, 2)
+        a[dst, k, l] = a[src, k, l]
+    end
+    return
+end
+
+#=
 Whether floe i's polygon overlaps the rectangle `xmin ≤ x ≤ xmax`, `ymin ≤ y ≤ ymax` with a
 positive area. Same result as `!isempty(intersect_polys(poly, rectangle))`: a polygon that
 only touches the rectangle doesn't overlap it. Written as scalar operations, without
