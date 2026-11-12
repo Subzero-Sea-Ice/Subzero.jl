@@ -126,36 +126,6 @@
         end
     end
     #=
-    Copy each floe i into the spare row n + i, on every backend. The spare rows start with
-    a marker value in every field, so that the copy must overwrite all of it, padding too.
-    The floes have ghosts, statuses, and flags, so that every field has non-zero values.
-    =#
-    @testset "_copy_floe! on $backend" for backend in test_backends()
-        FT = Float64
-        floes = _make_timestep_test_floes(FT, FloeSettings(FT))
-        n = length(floes)
-        floes.ghosts[1] = [8, 9, 10]
-        floes.ghosts[2] = [7]
-        floes.ghost_id[7:10] .= [1, 1, 2, 3]
-        floes.status[3].tag = Subzero.remove
-        fwf = Subzero.FixedWidthFloes(floes; capacity = 2n)
-        fwf.flags[1:n] .= 1:n
-        marker = 7
-        for field in fieldnames(Subzero.FixedWidthFloes)
-            a = getfield(fwf, field)
-            a isa AbstractArray && (selectdim(a, 1, (n + 1):2n) .= marker)
-        end
-        copy_to_spare!(floes, i, n) = Subzero._copy_floe!(floes, i + n, i)
-        copied = _launch_on(copy_to_spare!, backend, fwf, n)
-        for field in fieldnames(Subzero.FixedWidthFloes)
-            a = getfield(copied, field)
-            a isa AbstractArray || continue
-            # the floes themselves are unchanged
-            @test selectdim(a, 1, 1:n) == selectdim(getfield(fwf, field), 1, 1:n)
-            @test selectdim(a, 1, (n + 1):2n) == selectdim(a, 1, 1:n)
-        end
-    end
-    #=
     Floes for testing `_overlaps_rectangle`, and rectangles to test them with. Besides
     random star-shaped floes, there are axis-aligned rectangles and L-shapes on a grid with a
     spacing of 250 m, and the rectangles' sides are on the same grid or go through floe

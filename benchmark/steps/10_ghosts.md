@@ -11,10 +11,19 @@ Correctness check: the centroids and the ghost indices of 1,000 floes after `add
 
 `add_ghosts!(floes::FixedWidthFloes, domain, backend; workspace)` and
 `remove_ghosts!(floes, n_floes, backend)`. Each of the two passes (east/west, then
-north/south) is a kernel that counts the ghosts of each floe, a scan of the counts with
-AcceleratedKernels, a copy of the total to the host, and a kernel that makes the ghosts in
-the rows the scan gives them. Removing the ghosts lowers `n_floes` and empties the parents'
-lists of ghosts with one kernel.
+north/south) is:
+
+1. a kernel that counts the ghosts of each floe,
+2. a scan of the counts with AcceleratedKernels, which gives each floe the rows of its
+   ghosts, and a copy of the total to the host,
+3. a kernel that plans the ghosts of each floe: source row, ghost id, and shift,
+4. a kernel with one thread per value of each ghost, which copies the value from the source
+   row (and shifts the centroid and the polygon),
+5. a kernel that adds the ghosts to the lists of their parents and swaps parents whose
+   centroid is outside of the domain with their last ghost.
+
+Removing the ghosts lowers `n_floes` and empties the parents' lists of ghosts with one
+kernel.
 
 `current` measures the kernels only: the floes are already on the device, and one
 `GhostWorkspace` is used for all samples, so nothing is allocated on the device. Every sample
@@ -28,24 +37,24 @@ centroid is outside of the domain. `add_ghosts!` alone is recorded too.
 | | add and remove | `add_ghosts!` |
 |---|--:|--:|
 | baseline, 1 and 8 threads | 21.4 ms | – |
-| CPU, 1 thread | 2.03 ms | 1.85 ms |
-| CPU, 8 threads | 1.31 ms | 1.20 ms |
-| AMDGPU Float64 | 1.96 ms | 1.73 ms |
-| AMDGPU Float32 | 1.59 ms | 1.51 ms |
+| CPU, 1 thread | 4.33 ms | 4.33 ms |
+| CPU, 8 threads | 1.93 ms | 1.80 ms |
+| AMDGPU Float64 | 1.31 ms | 1.24 ms |
+| AMDGPU Float32 | 1.25 ms | 1.19 ms |
 
 The checks match the baseline exactly on the CPU and the GPU (maximum relative difference 0).
 
-The ported code is 11–16× faster than the baseline on the CPU, but the GPU is no faster
-than the CPU. There is little work: only floes at the edges of the domain get ghosts, 805
-of 100,000 floes in this input, and 798 of those in the north/south pass, because the floe
-field is copied side by side in x. So most of the time is fixed costs and latency:
+There is little work: only floes at the edges of the domain get ghosts, 805 of 100,000
+floes in this input, and 798 of those in the north/south pass, because the floe field is
+copied side by side in x. So a large part of the time is fixed costs: each pass launches
+five kernels, a `fill!`, and the scan, and waits for the device twice. On this GPU, a kernel
+launch costs tens of µs.
 
-- Each pass waits for the device twice and copies the total to the host, and launches two
-  kernels, a `fill!` and the scan: about 0.2 ms per pass on the GPU.
-- On the GPU, most of the north/south pass (about 1.2 ms of it) is `_make_ghosts!`: each of
-  the few hundred threads that make ghosts copies whole floes field by field, one memory
-  access after another, so the kernel waits for memory, and there are too few threads to
-  hide that. Copying with one thread per value instead of per floe would probably help.
-- `remove_ghosts!` takes about 0.1–0.3 ms.
+The ghosts are copied with one thread per value, rather than one thread per floe that
+copies a whole floe, value after value. On the GPU, that took the north/south pass from
+about 1.2 ms to 0.7 ms, and adding and removing the ghosts from 1.96 ms to 1.31 ms
+(Float64). On the CPU it's slower (1.31 ms to 1.93 ms with 8 threads, 2.03 ms to 4.33 ms
+with 1 thread), because every thread first has to find the field of its value. The GPU
+matters more, and both are much faster than the baseline.
 
 The baseline takes as long with 8 threads as with 1, because it isn't threaded.
