@@ -25,6 +25,27 @@ if !hasmethod(Subzero.KernelAbstractions.synchronize, Tuple{JLArrays.JLBackend})
 end
 
 #=
+Helpers to compare the values of many floes in one test: a failure then lists the floes (or
+cases) that differ, instead of being one of many tests per floe.
+
+`_not_approx(a, b; kwargs...)` gives the indices of the elements of `a` and `b` that aren't
+`isapprox`. Each element is compared as a whole, as `isapprox(a[i], b[i]; kwargs...)`, e.g.
+a floe's centroid or stress, and elements of different sizes aren't approx. This is stricter
+than `isapprox(a, b)`, which compares the norm of the difference of the whole arrays. Gives
+`[:size]` if `a` and `b` have different sizes.
+`_failing(f, is)` gives the elements `i` of `is` for which `f(i)` is false.
+=#
+function _not_approx(a, b; kwargs...)
+    size(a) == size(b) || return [:size]
+    return findall(map((x, y) -> !(size(x) == size(y) && isapprox(x, y; kwargs...)), a, b))
+end
+_failing(f, is) = filter(!f, collect(is))
+
+# The vertices of floe i of a FixedWidthFloes, and whether the padding after them is zero
+_fwf_points(fwf, i) = [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:fwf.n_points[i]]
+_fwf_padding_is_zero(fwf, i) = all(iszero, fwf.poly[i, (fwf.n_points[i] + 1):end, :])
+
+#=
 Run the per-floe function `f` on a copy of `fwf::FixedWidthFloes` on `backend` with
 `launch_per_floe!` and return the result as a `FixedWidthFloes` on the CPU.
 =#

@@ -249,16 +249,17 @@
         @test size(fwf.poly) == (Subzero.capacity(fwf), maximum(n_points), 2)
         @test fwf.num_inters[1:n] == floes.num_inters
         @test size(fwf.interactions) == (Subzero.capacity(fwf), maximum(floes.num_inters), 7)
-        for i in eachindex(floes)
-            @test all(fwf.poly[i, (n_points[i] + 1):end, :] .== 0)
-            @test [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:n_points[i]] ==
-                collect(GI.getpoint(floes.poly[i]))
-            ninters = floes.num_inters[i]
-            @test fwf.interactions[i, 1:ninters, :] == floes.interactions[i][1:ninters, :]
-            @test all(fwf.interactions[i, (ninters + 1):end, :] .== 0)
-            @test fwf.collision_force[i, :] == vec(floes.collision_force[i])
-            @test fwf.stress_accum[i, :, :] == floes.stress_accum[i]
-        end
+        # each test gives the floes for which the field differs
+        @test isempty(_failing(1:n) do i
+            _fwf_points(fwf, i) == collect(GI.getpoint(floes.poly[i])) && _fwf_padding_is_zero(fwf, i)
+        end)
+        @test isempty(_failing(1:n) do i
+            k = floes.num_inters[i]
+            fwf.interactions[i, 1:k, :] == floes.interactions[i][1:k, :] &&
+                all(iszero, fwf.interactions[i, (k + 1):end, :])
+        end)
+        @test isempty(_failing(i -> fwf.collision_force[i, :] == vec(floes.collision_force[i]), 1:n))
+        @test isempty(_failing(i -> fwf.stress_accum[i, :, :] == floes.stress_accum[i], 1:n))
         @test fwf.rmax[1:n] == floes.rmax
         @test fwf.status[1:n] == fill(Int32(Subzero.active), n)
         @test all(iszero, fwf.ghost_id) && all(iszero, fwf.num_ghosts) && all(iszero, fwf.ghosts)
@@ -272,10 +273,10 @@
         fwf = Subzero.FixedWidthFloes(ghosted)
         @test size(fwf.ghosts) == (Subzero.capacity(fwf), Subzero.MAX_GHOSTS)
         @test fwf.num_ghosts[1:n] == length.(ghosted.ghosts)
-        for i in eachindex(ghosted)
-            @test fwf.ghosts[i, 1:fwf.num_ghosts[i]] == ghosted.ghosts[i]
-            @test all(iszero, fwf.ghosts[i, (fwf.num_ghosts[i] + 1):end])
-        end
+        @test isempty(_failing(1:n) do i
+            fwf.ghosts[i, 1:fwf.num_ghosts[i]] == ghosted.ghosts[i] &&
+                all(iszero, fwf.ghosts[i, (fwf.num_ghosts[i] + 1):end])
+        end)
         @test fwf.ghost_id[1:n] == ghosted.ghost_id
         @test fwf.status[1:4] == Int32.([Subzero.active, Subzero.active, Subzero.remove, Subzero.fuse])
         # More ghosts than MAX_GHOSTS still fit
@@ -290,10 +291,10 @@
         floes = _make_timestep_test_floes(FT, FloeSettings())
         expected = deepcopy(floes)
         Subzero.update_floes!(floes, Subzero.adapt(Array, Subzero.FixedWidthFloes(floes)))
-        for field in propertynames(floes)
-            field == :status && continue  # Status has no ==, compared below
-            @test getproperty(floes, field) == getproperty(expected, field)
-        end
+        # the fields that changed (Status has no ==, compared below)
+        @test isempty(filter(propertynames(floes)) do field
+            field != :status && getproperty(floes, field) != getproperty(expected, field)
+        end)
         @test [s.tag for s in floes.status] == [s.tag for s in expected.status]
         # Changes are written back to floes
         fwf = Subzero.FixedWidthFloes(floes)
@@ -325,13 +326,13 @@
         @test spare.n_floes == n
         @test Subzero.capacity(spare) == n + 3
         # The floes in use are the same as without spare capacity, the spare rows are zero
-        for field in fieldnames(Subzero.FixedWidthFloes)
-            field == :n_floes && continue
+        # the fields for which that isn't so
+        @test isempty(filter(fieldnames(Subzero.FixedWidthFloes)) do field
+            field == :n_floes && return false
             a, b = getfield(spare, field), getfield(fwf, field)
-            @test size(a) == (n + 3, size(b)[2:end]...)
-            @test selectdim(a, 1, 1:n) == b
-            @test all(iszero, selectdim(a, 1, (n + 1):(n + 3)))
-        end
+            !(size(a) == (n + 3, size(b)[2:end]...) && selectdim(a, 1, 1:n) == b &&
+                all(iszero, selectdim(a, 1, (n + 1):(n + 3))))
+        end)
         @test_throws ArgumentError Subzero.FixedWidthFloes(floes; capacity = n - 1)
         # Round trip with spare capacity leaves floes unchanged
         expected = deepcopy(floes)
