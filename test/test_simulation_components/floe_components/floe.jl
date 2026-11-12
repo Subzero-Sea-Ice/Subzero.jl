@@ -259,6 +259,28 @@
             @test fwf.collision_force[i, :] == vec(floes.collision_force[i])
             @test fwf.stress_accum[i, :, :] == floes.stress_accum[i]
         end
+        @test fwf.rmax[1:n] == floes.rmax
+        @test fwf.status[1:n] == fill(Int32(Subzero.active), n)
+        @test all(iszero, fwf.ghost_id) && all(iszero, fwf.num_ghosts) && all(iszero, fwf.ghosts)
+        # Ghosts, ghost ids, and status
+        ghosted = deepcopy(floes)
+        ghosted.ghosts[1] = [8, 9, 10]
+        ghosted.ghosts[2] = [7]
+        ghosted.ghost_id[7:10] .= [1, 1, 2, 3]
+        ghosted.status[3].tag = Subzero.remove
+        ghosted.status[4].tag = Subzero.fuse
+        fwf = Subzero.FixedWidthFloes(ghosted)
+        @test size(fwf.ghosts) == (Subzero.capacity(fwf), Subzero.MAX_GHOSTS)
+        @test fwf.num_ghosts[1:n] == length.(ghosted.ghosts)
+        for i in eachindex(ghosted)
+            @test fwf.ghosts[i, 1:fwf.num_ghosts[i]] == ghosted.ghosts[i]
+            @test all(iszero, fwf.ghosts[i, (fwf.num_ghosts[i] + 1):end])
+        end
+        @test fwf.ghost_id[1:n] == ghosted.ghost_id
+        @test fwf.status[1:4] == Int32.([Subzero.active, Subzero.active, Subzero.remove, Subzero.fuse])
+        # More ghosts than MAX_GHOSTS still fit
+        ghosted.ghosts[1] = [7, 8, 9, 10]
+        @test Subzero.FixedWidthFloes(ghosted).ghosts[1, :] == [7, 8, 9, 10]
         # Does not share memory with floes
         fwf.height .= 0
         fwf.centroid .= 0
