@@ -955,3 +955,192 @@ function add_ghosts!(
     add_floe_ghosts!(elems, domain.north, domain.south)
     return
 end
+
+#=
+Adding ghosts to floes on a device (`FixedWidthFloes`), with the same result as
+`add_ghosts!` on the CPU: the same ghosts in the same rows, with the same values. The ghosts
+are added after the floes in use, in two passes as on the CPU: through the east/west
+boundaries, then through the north/south boundaries, which also makes ghosts of the ghosts
+from the first pass. Each pass:
+1. `_count_ghosts!`: per floe, the number of ghosts it needs.
+2. A scan of these counts, which gives each floe the rows of its new ghosts, in the order in
+   which the CPU appends them.
+3. `_make_ghosts!`: per floe, copy and translate its ghosts into those rows.
+=#
+
+#=
+Scratch memory for adding ghosts to floes with the capacity of `floes`, on the same device:
+the number of new ghosts per floe, its inclusive scan, AcceleratedKernels' scratch memory
+for the scan, and a host buffer for the total. Make it once and pass it to `add_ghosts!` so
+that it doesn't allocate device memory.
+=#
+struct GhostWorkspace{IT1, W}
+    counts::IT1
+    offsets::IT1
+    scan::W
+    total::Vector{Int32}
+end
+
+function GhostWorkspace(floes::FixedWidthFloes)
+    counts = similar(floes.num_ghosts)
+    offsets = similar(counts)
+    scan = AK.workspace(AK.accumulate!, +, offsets, counts)
+    return GhostWorkspace(counts, offsets, scan, zeros(Int32, 1))
+end
+
+"""
+    add_ghosts!(floes::FixedWidthFloes, domain, backend; workspace = nothing)
+
+Add ghosts of the floes that pass through periodic boundaries of `domain`, on `backend`,
+with the same result as `add_ghosts!(floes::StructArray, domain)`: the ghosts are added
+after the floes in use, and their indices are stored in the `ghosts` of their parents.
+Returns the floes with the ghosts in use (see `set_n_floes`), which share the arrays of
+`floes` unless they had to be made larger. `workspace` is a `GhostWorkspace` for the
+capacity of `floes`, made if not given. This waits for the kernels to finish, because the
+number of ghosts is needed on the host.
+"""
+function add_ghosts!(floes::FixedWidthFloes, domain::Domain, backend; workspace = nothing)
+    floes, workspace = _add_floe_ghosts!(floes, domain.east, domain.west, backend, workspace)
+    floes, _ = _add_floe_ghosts!(floes, domain.north, domain.south, backend, workspace)
+    return floes
+end
+
+# No ghosts through boundaries that aren't periodic
+_add_floe_ghosts!(floes, ::AbstractBoundary, ::AbstractBoundary, backend, workspace) =
+    floes, workspace
+
+#=
+Add the ghosts through `max_boundary` (north or east) and `min_boundary` (south or west),
+as `add_floe_ghosts!`. Returns the floes with the ghosts in use, and the workspace.
+=#
+function _add_floe_ghosts!(
+    floes::FixedWidthFloes{FT},
+    max_boundary::PeriodicBoundary{D},
+    min_boundary::PeriodicBoundary,
+    backend,
+    workspace,
+) where {FT, D}
+    n = floes.n_floes
+    n == 0 && return floes, workspace
+    # the coordinate that crosses the boundaries: 1 (x) for east/west, 2 (y) for north/south
+    axis = D == East ? 1 : 2
+    min_val, max_val = FT(min_boundary.val), FT(max_boundary.val)
+    min_rect = _bounding_box(FT, min_boundary.poly)
+    max_rect = _bounding_box(FT, max_boundary.poly)
+    workspace = _ghost_workspace(workspace, floes)
+    total = _count_ghosts(floes, axis, min_val, max_val, min_rect, max_rect, backend, workspace)
+    total == 0 && return floes, workspace
+    if n + total > capacity(floes)
+        # rare: make room for the ghosts and 25% more, and count again with a new workspace
+        floes = with_capacity(floes, n + total + cld(n + total, 4))
+        workspace = GhostWorkspace(floes)
+        _count_ghosts(floes, axis, min_val, max_val, min_rect, max_rect, backend, workspace)
+    end
+    launch_per_floe!(_make_ghosts!, backend, floes, workspace.counts, workspace.offsets,
+        axis, max_val - min_val, min_val, max_val)
+    KernelAbstractions.synchronize(backend)
+    return set_n_floes(floes, n + total), workspace
+end
+
+# The given workspace if it fits the capacity of floes, else a new one
+function _ghost_workspace(workspace, floes)
+    if isnothing(workspace) || length(workspace.counts) != capacity(floes)
+        return GhostWorkspace(floes)
+    end
+    return workspace
+end
+
+# xmin, xmax, ymin, ymax of a polygon
+function _bounding_box(::Type{FT}, poly) where FT
+    xs = [GI.x(p) for p in GI.getpoint(poly)]
+    ys = [GI.y(p) for p in GI.getpoint(poly)]
+    return FT(minimum(xs)), FT(maximum(xs)), FT(minimum(ys)), FT(maximum(ys))
+end
+
+#=
+Count the ghosts each floe needs into `workspace.counts` and scan them into
+`workspace.offsets`. Returns the total number of ghosts. The counts of the spare rows are
+zero, so the last element of the scan is the total.
+=#
+function _count_ghosts(floes, axis, min_val, max_val, min_rect, max_rect, backend, workspace)
+    fill!(workspace.counts, 0)
+    launch_per_floe!(_count_ghosts!, backend, floes, workspace.counts, axis, min_val, max_val,
+        min_rect, max_rect)
+    # the scan may run on the host's threads, so the kernel must have finished
+    KernelAbstractions.synchronize(backend)
+    AK.accumulate!(+, workspace.offsets, workspace.counts; workspace = workspace.scan)
+    last = length(workspace.offsets)
+    copyto!(workspace.total, 1, workspace.offsets, last, 1)
+    return Int(workspace.total[1])
+end
+
+#=
+The number of ghosts that floe i needs, as in `find_ghosts!` and `ghosts_on_bounds!`: if an
+active parent floe overlaps the boundary that it may cross, it needs a ghost of itself and
+of each of its ghosts.
+=#
+function _count_ghosts!(floes::FixedWidthFloes, i, counts, axis, min_val, max_val, min_rect, max_rect)
+    (floes.status[i] == Int32(active) && floes.ghost_id[i] == 0) || return
+    c = floes.centroid[i, axis]
+    r = floes.rmax[i]
+    if c - r < min_val
+        _overlaps_rectangle(floes, i, min_rect...) || return
+    elseif c + r > max_val
+        _overlaps_rectangle(floes, i, max_rect...) || return
+    else
+        return
+    end
+    counts[i] = floes.num_ghosts[i] + 1
+    return
+end
+
+#=
+Make the ghosts of floe i in the rows that the scan gave it, as `ghosts_on_bounds!`, and
+update floe i as `find_ghosts!` and `add_floe_ghosts!`:
+- copies of its ghosts (in order), then of itself, translated by the domain size `L` to the
+  other side of the domain,
+- with the values that `deepcopy_floe` doesn't copy (`interactions`, `num_inters`, `damage`)
+  at their defaults, and no ghosts of their own,
+- with ghost ids that follow those of floe i's ghosts, and added to floe i's ghosts,
+- if floe i's centroid is outside of the domain, it swaps places with its last new ghost.
+=#
+function _make_ghosts!(floes::FixedWidthFloes{FT}, i, counts, offsets, axis, L, min_val, max_val) where FT
+    nnew = counts[i]
+    nnew == 0 && return
+    # the new ghosts go into rows before + 1, ..., before + nnew
+    before = floes.n_floes + offsets[i] - nnew
+    c = floes.centroid[i, axis]
+    # through the min boundary, the ghost is on the max side of the domain, and vice versa
+    Δx, Δy = _along_axis(axis, c - floes.rmax[i] < min_val ? L : -L)
+    nghosts = floes.num_ghosts[i]
+    #= Copy first, then change the copies and floe i's ghosts. Doing both in one loop gives
+    the same result, but takes about a minute to compile for the CPU backend (PoCL). =#
+    for k in 1:nnew
+        _copy_floe!(floes, before + k, k <= nghosts ? floes.ghosts[i, k] : i)
+    end
+    for k in 1:nnew
+        row = before + k
+        floes.num_inters[row] = 0
+        _zero_row!(floes.interactions, row)
+        floes.damage[row] = zero(FT)
+        floes.num_ghosts[row] = 0
+        _zero_row!(floes.ghosts, row)
+        floes.ghost_id[row] = nghosts + k
+        floes.flags[row] = 0
+        _translate_floe!(floes, row, Δx, Δy)
+        floes.ghosts[i, nghosts + k] = row
+    end
+    floes.num_ghosts[i] = nghosts + nnew
+    # the copy of floe i is the last new ghost
+    if c < min_val
+        _translate_floe!(floes, i, _along_axis(axis, L)...)
+        _translate_floe!(floes, before + nnew, _along_axis(axis, -L)...)
+    elseif max_val < c
+        _translate_floe!(floes, i, _along_axis(axis, -L)...)
+        _translate_floe!(floes, before + nnew, _along_axis(axis, L)...)
+    end
+    return
+end
+
+# A translation by Δ along an axis (1 = x, 2 = y), as (Δx, Δy)
+_along_axis(axis, Δ) = axis == 1 ? (Δ, zero(Δ)) : (zero(Δ), Δ)

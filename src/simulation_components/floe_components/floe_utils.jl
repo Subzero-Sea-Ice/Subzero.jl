@@ -134,6 +134,20 @@ function _copy_row!(a::AbstractArray{<:Any, 3}, dst, src)
     return
 end
 
+# Set row i of an array of a FixedWidthFloes to zero
+function _zero_row!(a::AbstractArray{<:Any, 2}, i)
+    for k in axes(a, 2)
+        a[i, k] = zero(eltype(a))
+    end
+    return
+end
+function _zero_row!(a::AbstractArray{<:Any, 3}, i)
+    for l in axes(a, 3), k in axes(a, 2)
+        a[i, k, l] = zero(eltype(a))
+    end
+    return
+end
+
 #=
 Whether floe i's polygon overlaps the rectangle `xmin ≤ x ≤ xmax`, `ymin ≤ y ≤ ymax` with a
 positive area. Same result as `!isempty(intersect_polys(poly, rectangle))`: a polygon that

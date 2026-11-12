@@ -238,6 +238,26 @@ function set_n_floes(floes::FixedWidthFloes, n)
 end
 
 #=
+A copy of `floes` with room for `capacity` floes, on the same device. The floes in use are
+copied and the new spare rows are zero. This allocates new arrays, so only use it when
+`floes` is full.
+=#
+function with_capacity(floes::FixedWidthFloes, capacity)
+    n = floes.n_floes
+    capacity >= n || throw(ArgumentError(
+        "capacity ($capacity) is smaller than the number of floes in use ($n)"))
+    fields = ntuple(Val(fieldcount(typeof(floes)))) do k
+        field = getfield(floes, k)
+        field isa AbstractArray || return field
+        new = similar(field, (capacity, size(field)[2:end]...))
+        fill!(new, 0)
+        selectdim(new, 1, 1:n) .= selectdim(field, 1, 1:n)
+        return new
+    end
+    return FixedWidthFloes(fields...)
+end
+
+#=
 Copy the fields that `timestep_floe_properties!` changes from `fixed_width_floes` back into
 `floes`. `fixed_width_floes` must be on the CPU (use `adapt(Array, fixed_width_floes)`), and
 have as many floes in use as `floes` has floes.
