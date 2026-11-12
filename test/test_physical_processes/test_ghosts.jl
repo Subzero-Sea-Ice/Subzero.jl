@@ -49,6 +49,15 @@ function _ghosts_on(backend, floes, domain; capacity = length(floes) + cld(lengt
     return cpu, Subzero.adapt(Array, dev)
 end
 
+# Remove the ghosts from floes on the CPU, as timestep_sim! does
+function _remove_ghosts_cpu!(floes, n)
+    for i in reverse((n + 1):length(floes))
+        StructArrays.foreachfield(field -> deleteat!(field, i), floes)
+    end
+    empty!.(floes.ghosts)
+    return floes
+end
+
 # The fields of the FixedWidthFloes `got` that differ from those of the floes `expected`
 function _differing_fields(got, expected::StructArray)
     want = Subzero.FixedWidthFloes(expected)
@@ -105,6 +114,24 @@ end
             @test isempty(_differing_fields(Subzero.adapt(Array, dev), cpu))
             # remove the ghosts again, as timestep_sim! does
             fwf = Subzero.adapt(backend, Subzero.FixedWidthFloes(floes; capacity = 2n))
+        end
+        #= Removing the ghosts, as timestep_sim! does, and adding them again to the same
+        arrays, as the next timestep would, when the rows of the old ghosts still hold their
+        values. =#
+        for (name, domain) in pairs(domains)
+            cpu = deepcopy(floes)
+            Subzero.add_ghosts!(cpu, domain)
+            _remove_ghosts_cpu!(cpu, n)
+            dev = Subzero.adapt(backend, Subzero.FixedWidthFloes(floes))
+            dev = Subzero.add_ghosts!(dev, domain, backend)
+            dev = Subzero.remove_ghosts!(dev, n, backend)
+            Subzero.KernelAbstractions.synchronize(backend)
+            @test isempty(_differing_fields(Subzero.adapt(Array, dev), cpu))
+            # some floes swapped places with a ghost and keep their new place
+            name == :both && @test cpu.centroid != floes.centroid
+            Subzero.add_ghosts!(cpu, domain)
+            dev = Subzero.add_ghosts!(dev, domain, backend)
+            @test isempty(_differing_fields(Subzero.adapt(Array, dev), cpu))
         end
         # No floes
         empty_floes = Subzero.adapt(backend, Subzero.FixedWidthFloes(floes[1:0]))

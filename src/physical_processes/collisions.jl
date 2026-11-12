@@ -1144,3 +1144,22 @@ end
 
 # A translation by Δ along an axis (1 = x, 2 = y), as (Δx, Δy)
 _along_axis(axis, Δ) = axis == 1 ? (Δ, zero(Δ)) : (zero(Δ), Δ)
+
+#=
+Remove the ghosts that `add_ghosts!` added to floes on a device, as `timestep_sim!` does on
+the CPU: keep the first `n_floes` floes, which are the floes without ghosts, and empty their
+lists of ghosts. Floes that swapped places with a ghost keep their new place. Returns the
+floes without ghosts, which share the arrays of `floes`. The kernel is launched
+asynchronously. The rows of the ghosts keep their values, so fill them before using them.
+=#
+function remove_ghosts!(floes::FixedWidthFloes, n_floes, backend)
+    floes = set_n_floes(floes, n_floes)
+    launch_per_floe!(_clear_ghosts!, backend, floes)
+    return floes
+end
+
+function _clear_ghosts!(floes::FixedWidthFloes, i)
+    floes.num_ghosts[i] = 0
+    _zero_row!(floes.ghosts, i)
+    return
+end
