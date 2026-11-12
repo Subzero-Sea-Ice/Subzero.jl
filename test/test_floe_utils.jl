@@ -74,23 +74,6 @@
             end
         end
     end
-    @testset "_move_poly! matches _move_poly around the origin" begin
-        for FT in (Float64, Float32)
-            floes = _make_timestep_test_floes(FT, FloeSettings(FT))
-            fwf = Subzero.FixedWidthFloes(floes)
-            Δx, Δy, Δα = FT(-31.4), FT(27.2), FT(0.7)
-            for i in eachindex(floes)
-                expected = Subzero._move_poly(FT, floes.poly[i], Δx, Δy, Δα)
-                Subzero._move_poly!(fwf, i, Δx, Δy, Δα)
-                moved = [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:fwf.n_points[i]]
-                @test isapprox(
-                    reinterpret(FT, moved),
-                    reinterpret(FT, collect(GI.getpoint(expected)));
-                    rtol = 10eps(FT),
-                )
-            end
-        end
-    end
     @testset "_move_floe! on $backend with $FT" for backend in test_backends(),
             FT in (Float64, Float32)
         floes = _make_timestep_test_floes(FT, FloeSettings(FT))

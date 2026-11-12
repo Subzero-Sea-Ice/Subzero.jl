@@ -62,7 +62,7 @@ Rotate the polygon of floe i by Δα around (cx, cy) and then translate it by Δ
 place. Same result as `_move_poly`, but written as scalar operations on the arrays of a
 `FixedWidthFloes`, so it can be called from a GPU kernel.
 =#
-function _move_poly!(floes::FixedWidthFloes{FT}, i, Δx, Δy, Δα, cx = zero(FT), cy = zero(FT)) where FT
+function _move_poly!(floes::FixedWidthFloes{FT}, i, Δx, Δy, Δα, cx, cy) where FT
     sinα, cosα = sincos(FT(Δα))
     for j in 1:floes.n_points[i]
         x = floes.poly[i, j, 1] - cx
