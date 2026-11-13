@@ -32,15 +32,15 @@ centroid is outside of the domain. `add_ghosts!` alone is recorded too.
 
 ## Results
 
-`thinkpad-p14s` (Ryzen AI 9 HX PRO 470, Radeon 890M), 100,000 floes, 2026-11-12:
+`thinkpad-p14s` (Ryzen AI 9 HX PRO 470, Radeon 890M), 100,000 floes, 2026-11-13, `4f83ec2`:
 
 | | add and remove | `add_ghosts!` |
 |---|--:|--:|
 | baseline, 1 and 8 threads | 21.4 ms | – |
-| CPU, 1 thread | 4.33 ms | 4.33 ms |
-| CPU, 8 threads | 1.93 ms | 1.80 ms |
-| AMDGPU Float64 | 1.31 ms | 1.24 ms |
-| AMDGPU Float32 | 1.25 ms | 1.19 ms |
+| CPU, 1 thread | 4.08 ms | 3.96 ms |
+| CPU, 8 threads | 1.85 ms | 1.75 ms |
+| AMDGPU Float64 | 1.27 ms | 1.03 ms |
+| AMDGPU Float32 | 1.08 ms | 1.17 ms |
 
 The checks match the baseline exactly on the CPU and the GPU (maximum relative difference 0).
 
@@ -51,7 +51,7 @@ five kernels, a `fill!`, and the scan, and waits for the device twice. On this G
 launch costs tens of µs.
 
 The ghosts are copied with one thread per value, rather than one thread per floe that
-copies a whole floe, value after value. On the GPU, that took the north/south pass from
+copies a whole floe, value after value. Measured on 2026-11-12, on the GPU, that took the north/south pass from
 about 1.2 ms to 0.7 ms, and adding and removing the ghosts from 1.96 ms to 1.31 ms
 (Float64). On the CPU it's slower (1.31 ms to 1.93 ms with 8 threads, 2.03 ms to 4.33 ms
 with 1 thread), because every thread first has to find the field of its value. The GPU
