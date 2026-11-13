@@ -85,6 +85,65 @@ function _move_floe!(floes::FixedWidthFloes, i, Δx, Δy, Δα)
     return
 end
 
+#=
+Whether floe i's polygon overlaps the rectangle `xmin ≤ x ≤ xmax`, `ymin ≤ y ≤ ymax` with a
+positive area. Same result as `!isempty(intersect_polys(poly, rectangle))`: a polygon that
+only touches the rectangle doesn't overlap it. Written as scalar operations, without
+GeometryOps, so it can be called from a GPU kernel.
+
+The interiors overlap if an edge of the polygon passes through the inside of the rectangle.
+If no edge does, the inside of the rectangle is either entirely inside or entirely outside
+the polygon, so it overlaps if the polygon contains the rectangle's centre.
+=#
+function _overlaps_rectangle(floes::FixedWidthFloes{FT}, i, xmin, xmax, ymin, ymax) where FT
+    # in the floes' precision, so that e.g. Float64 bounds don't make Float32 floes use
+    # Float64 maths, which some GPUs can't do
+    xmin, xmax, ymin, ymax = FT(xmin), FT(xmax), FT(ymin), FT(ymax)
+    xc = (xmin + xmax) / 2
+    yc = (ymin + ymax) / 2
+    centre_inside = false
+    # the ring is closed, so edge j goes from vertex j to vertex j + 1
+    for j in 1:(floes.n_points[i] - 1)
+        x1, y1 = floes.poly[i, j, 1], floes.poly[i, j, 2]
+        x2, y2 = floes.poly[i, j + 1, 1], floes.poly[i, j + 1, 2]
+        _edge_through_rectangle(x1, y1, x2, y2, xmin, xmax, ymin, ymax) && return true
+        # even-odd rule: count the edges that a ray from the centre in +x direction crosses
+        if (y1 > yc) != (y2 > yc) && xc < x1 + (yc - y1) * (x2 - x1) / (y2 - y1)
+            centre_inside = !centre_inside
+        end
+    end
+    return centre_inside
+end
+
+#=
+Whether the edge from (x1, y1) to (x2, y2) passes through the inside of the rectangle
+`xmin ≤ x ≤ xmax`, `ymin ≤ y ≤ ymax`, rather than only touching its sides or missing it.
+Liang–Barsky clipping gives the part of the edge in the closed rectangle, as the
+parameters t0 ≤ t ≤ t1 of the points (x1, y1) + t * (x2 - x1, y2 - y1). If the edge passes
+through the inside, every point between the ends of that part is inside, so the midpoint
+is. If it only touches the sides, the midpoint is on a side too.
+=#
+function _edge_through_rectangle(x1, y1, x2, y2, xmin, xmax, ymin, ymax)
+    dx = x2 - x1
+    dy = y2 - y1
+    t0, t1 = zero(dx), one(dx)
+    # the edge is on the inner side of each side of the rectangle where p * t ≤ q
+    for (p, q) in ((-dx, x1 - xmin), (dx, xmax - x1), (-dy, y1 - ymin), (dy, ymax - y1))
+        if iszero(p)  # parallel to this side
+            q < 0 && return false
+        elseif p < 0
+            t0 = max(t0, q / p)
+        else
+            t1 = min(t1, q / p)
+        end
+    end
+    t0 < t1 || return false
+    tm = (t0 + t1) / 2
+    xm = x1 + tm * dx
+    ym = y1 + tm * dy
+    return xmin < xm < xmax && ymin < ym < ymax
+end
+
 
 #= 
 Deepcopy of a floe by creating a new floe and deep copying all fields.

@@ -75,10 +75,11 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 ```
 The first run can take a while because Julia has to precompile the packages. The output is long, so it can help to redirect it to a file and look at the `Test Summary` table at the end.
 
-To run a single test file, use [`TestEnv.jl`](https://github.com/JuliaTesting/TestEnv.jl) to activate the test environment. Install it once in your global environment with `julia -e 'using Pkg; Pkg.add("TestEnv")'`. Then start Julia in the `test` folder (some tests read files from `test/inputs` using relative paths) and load the same packages as at the top of `test/runtests.jl`:
+To run a single test file, use [`TestEnv.jl`](https://github.com/JuliaTesting/TestEnv.jl) to activate the test environment. Install it once in your global environment with `julia -e 'using Pkg; Pkg.add("TestEnv")'`. Then start Julia in the `test` folder (some tests read files from `test/inputs` using relative paths), include `gpu_packages.jl` and load the same packages as at the top of `test/runtests.jl`:
 ```julia
 julia> using Pkg; Pkg.activate("..")
 julia> using TestEnv; TestEnv.activate()
+julia> include("gpu_packages.jl")
 julia> using JLD2, Logging, NCDatasets, Random, SplitApplyCombine, Statistics, StructArrays, Subzero, Test
 julia> import GeometryOps as GO; import GeometryOps.GeoInterface as GI; import JLArrays
 julia> include("utils.jl")
@@ -99,11 +100,11 @@ or, from a terminal:
 ```sh
 julia --project=. -e 'using Pkg; Pkg.test(test_args = ["--gpus=AMDGPU"])'
 ```
-Instead of the test argument, you can also set the environment variable `SUBZERO_TEST_GPUS`, for example `SUBZERO_TEST_GPUS=AMDGPU`. This is useful if you run a single test file: set `ENV["SUBZERO_TEST_GPUS"] = "AMDGPU"` before you `include("utils.jl")`.
+Instead of the test argument, you can also set the environment variable `SUBZERO_TEST_GPUS`, for example `SUBZERO_TEST_GPUS=AMDGPU`. This is useful if you run a single test file: set `ENV["SUBZERO_TEST_GPUS"] = "AMDGPU"` before you `include("gpu_packages.jl")`. Include it before you load Subzero: adding the GPU package can change the versions of packages that Subzero also uses, and Julia can't replace a package that is already loaded.
 
 The tests stop with an error if the package can't use your GPU. For an AMD GPU you need [ROCm](https://rocm.docs.amd.com) and a GPU that it supports; for an NVIDIA GPU you need a recent driver. To check that Julia can use the GPU, run:
 ```sh
-SUBZERO_TEST_GPUS=AMDGPU julia --project=. -e 'using TestEnv; TestEnv.activate(); using Subzero; import JLArrays; include("test/utils.jl"); @show test_backends()'
+SUBZERO_TEST_GPUS=AMDGPU julia --project=. -e 'using TestEnv; TestEnv.activate(); include("test/gpu_packages.jl"); using Subzero; import JLArrays; include("test/utils.jl"); @show test_backends()'
 ```
 If this fails, see the [AMDGPU.jl](https://amdgpu.juliagpu.org/stable/) or [CUDA.jl](https://cuda.juliagpu.org/stable/) documentation.
 
