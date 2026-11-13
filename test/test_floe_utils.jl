@@ -110,6 +110,21 @@
             @test all(fwf.poly[i, (n + 1):end, :] .== 0)
         end
     end
+    # Same as the CPU version, exactly: both add Δx and Δy to every coordinate
+    @testset "_translate_floe! on $backend with $FT" for backend in test_backends(),
+            FT in (Float64, Float32)
+        floes = _make_timestep_test_floes(FT, FloeSettings(FT))
+        Δx, Δy = FT(-2e4), FT(1234.5)  # e.g. a ghost through the eastern boundary
+        fwf = _launch_on(Subzero._translate_floe!, backend, Subzero.FixedWidthFloes(floes), Δx, Δy)
+        for i in eachindex(floes)
+            Subzero._translate_floe!(FT, Subzero.get_floe(floes, i), Δx, Δy)
+            n = fwf.n_points[i]
+            @test [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:n] ==
+                collect(GI.getpoint(floes.poly[i]))
+            @test fwf.centroid[i, :] == floes.centroid[i]
+            @test all(fwf.poly[i, (n + 1):end, :] .== 0)
+        end
+    end
     #=
     Floes for testing `_overlaps_rectangle`, and rectangles to test them with. Besides
     random star-shaped floes, there are axis-aligned rectangles and L-shapes on a grid with a

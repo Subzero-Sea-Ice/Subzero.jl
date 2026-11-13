@@ -66,8 +66,12 @@ until they are used. Ragged fields are padded:
   `j in 1:n_points[i]` (the last vertex repeats the first); padding is zero.
 - `interactions[i, k, c]` is column `c` of interaction `k` of floe `i`, for
   `k in 1:num_inters[i]`; padding is zero.
+- `ghosts[i, k]` is the index of ghost `k` of floe `i`, for `k in 1:num_ghosts[i]`; padding
+  is zero. There are at least `MAX_GHOSTS` columns.
 - `collision_force[i, d]`, `stress_accum[i, r, c]`, `stress_instant[i, r, c]`, and
   `strain[i, r, c]` hold the floe's small vector/matrix fields.
+`status` is the tag of the floe's `Status` as an integer (`Int32(active)`, ...). Its
+`fuse_idx` isn't stored. Spare rows have status 0, which isn't a valid tag.
 `flags` is a per-floe bit field that kernels can set to report events to the host.
 =#
 struct FixedWidthFloes{
@@ -75,6 +79,7 @@ struct FixedWidthFloes{
     AT3<:AbstractArray{FT, 3},
     AT2<:AbstractArray{FT, 2},
     AT1<:AbstractArray{FT, 1},
+    IT2<:AbstractArray{Int32, 2},
     IT1<:AbstractArray{Int32, 1},
     UT1<:AbstractArray{UInt8, 1},
 }
@@ -88,6 +93,7 @@ struct FixedWidthFloes{
     height::AT1
     mass::AT1
     moment::AT1
+    rmax::AT1
     # Velocity/orientation
     α::AT1
     u::AT1
@@ -113,9 +119,21 @@ struct FixedWidthFloes{
     p_dvdt::AT1
     p_dξdt::AT1
     p_dαdt::AT1
+    # Status and ghosts
+    status::IT1
+    ghost_id::IT1
+    num_ghosts::IT1
+    ghosts::IT2
     # Events reported by kernels
     flags::UT1
 end
+
+#=
+The most ghosts a floe can have. `add_ghosts!` gives a floe that crosses the east or west
+boundary one ghost. Then a floe that crosses the north or south boundary gets a ghost of
+itself and of each of its ghosts, so a floe in a corner has 3.
+=#
+const MAX_GHOSTS = 3
 
 Adapt.@adapt_structure FixedWidthFloes
 
@@ -144,6 +162,9 @@ function FixedWidthFloes(
     stress_accum = zeros(FT, capacity, 2, 2)
     stress_instant = zeros(FT, capacity, 2, 2)
     strain = zeros(FT, capacity, 2, 2)
+    num_ghosts = padded(Int32.(length.(floes.ghosts)))
+    max_ghosts = max(MAX_GHOSTS, isempty(floes) ? 0 : Int(maximum(num_ghosts)))
+    ghosts = zeros(Int32, capacity, max_ghosts)
     for i in 1:nfloes
         for (j, point) in enumerate(GI.getpoint(GI.getexterior(floes.poly[i])))
             poly[i, j, 1], poly[i, j, 2] = get_tuple_point(point, FT)
@@ -156,6 +177,7 @@ function FixedWidthFloes(
         stress_accum[i, :, :] .= floes.stress_accum[i]
         stress_instant[i, :, :] .= floes.stress_instant[i]
         strain[i, :, :] .= floes.strain[i]
+        ghosts[i, 1:num_ghosts[i]] .= floes.ghosts[i]
     end
     return FixedWidthFloes(
         nfloes,
@@ -166,6 +188,7 @@ function FixedWidthFloes(
         padded(floes.height),
         padded(floes.mass),
         padded(floes.moment),
+        padded(floes.rmax),
         padded(floes.α),
         padded(floes.u),
         padded(floes.v),
@@ -188,6 +211,10 @@ function FixedWidthFloes(
         padded(floes.p_dvdt),
         padded(floes.p_dξdt),
         padded(floes.p_dαdt),
+        padded(Int32[Int32(s.tag) for s in floes.status]),
+        padded(Int32.(floes.ghost_id)),
+        num_ghosts,
+        ghosts,
         zeros(UInt8, capacity),
     )
 end
@@ -206,6 +233,26 @@ function set_n_floes(floes::FixedWidthFloes, n)
     # Every field as it is, except n_floes, so this doesn't depend on the order of the fields
     fields = ntuple(Val(fieldcount(typeof(floes)))) do k
         fieldname(typeof(floes), k) === :n_floes ? Int(n) : getfield(floes, k)
+    end
+    return FixedWidthFloes(fields...)
+end
+
+#=
+A copy of `floes` with room for `capacity` floes, on the same device. The floes in use are
+copied and the new spare rows are zero. This allocates new arrays, so only use it when
+`floes` is full.
+=#
+function with_capacity(floes::FixedWidthFloes, capacity)
+    n = floes.n_floes
+    capacity >= n || throw(ArgumentError(
+        "capacity ($capacity) is smaller than the number of floes in use ($n)"))
+    fields = ntuple(Val(fieldcount(typeof(floes)))) do k
+        field = getfield(floes, k)
+        field isa AbstractArray || return field
+        new = similar(field, (capacity, size(field)[2:end]...))
+        fill!(new, 0)
+        selectdim(new, 1, 1:n) .= selectdim(field, 1, 1:n)
+        return new
     end
     return FixedWidthFloes(fields...)
 end

@@ -86,6 +86,29 @@ function _move_floe!(floes::FixedWidthFloes, i, Δx, Δy, Δα)
 end
 
 #=
+Translate floe i by Δx and Δy. Same result as `_translate_floe!` for a `Floe`, but written as
+scalar operations on the arrays of a `FixedWidthFloes`, so it can be called from a GPU
+kernel.
+=#
+function _translate_floe!(floes::FixedWidthFloes, i, Δx, Δy)
+    floes.centroid[i, 1] += Δx
+    floes.centroid[i, 2] += Δy
+    for j in 1:floes.n_points[i]
+        floes.poly[i, j, 1] += Δx
+        floes.poly[i, j, 2] += Δy
+    end
+    return
+end
+
+# Set row i of an array of a FixedWidthFloes to zero
+function _zero_row!(a::AbstractArray{<:Any, 2}, i)
+    for k in axes(a, 2)
+        a[i, k] = zero(eltype(a))
+    end
+    return
+end
+
+#=
 Whether floe i's polygon overlaps the rectangle `xmin ≤ x ≤ xmax`, `ymin ≤ y ≤ ymax` with a
 positive area. Same result as `!isempty(intersect_polys(poly, rectangle))`: a polygon that
 only touches the rectangle doesn't overlap it. Written as scalar operations, without
