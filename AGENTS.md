@@ -145,10 +145,11 @@ over if/else flags.
   `GOG.ArrayPolygon`s, and files laid out as in GeometryOps' `src/`. It must not use
   Subzero, so that it can become a package of its own. Test it against GeometryOps in
   `test/test_geometry_ops_gpu.jl`. GeometryOps is fine on the CPU.
-  `src/tools/device_geom_utils.jl` has more kernel versions of GeometryOps functions (area,
-  centroid, point in polygon, distances, edge intersections) on polygons stored in arrays
-  (`_Ring`, `_floe_ring`), tested in `test/test_device_geom_utils.jl`. They are to be moved
-  into `GeometryOpsGPU`.
+  `src/tools/device_geom_utils.jl` has more kernel versions of the geometry functions in
+  `geom_utils.jl` (`area_poly`, `centroid_poly`, `dist_to_poly`, `coveredby_poly`,
+  `get_intersection_points!`, ...) as methods for `_ArrayPoly`s (`_floe_poly`), with
+  helpers named after the GeometryOps functions they follow, tested in
+  `test/test_device_geom_utils.jl`. They are to be moved into `GeometryOpsGPU`.
 - Don't log. Set a bit in `floes.flags` (the `FLAG_*` constants in
   `update_floe.jl`). The host logs each type of event once per timestep after copying
   back (`_log_flags`).

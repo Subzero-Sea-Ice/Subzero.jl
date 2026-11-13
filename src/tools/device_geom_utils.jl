@@ -3,7 +3,13 @@ Geometry on polygons stored in plain arrays, so that it can run in GPU kernels: 
 allocations and no GeometryOps or GeoInterface objects. Each function gives the same result
 as the GeometryOps function named in its comment, bit for bit: it does the same operations
 in the same order and in the same types, including where GeometryOps converts to Float64.
-Rings are closed (the last point repeats the first) and have no holes, like floes.
+Polygons are closed (the last point repeats the first) and have no holes, like floes.
+
+The functions that `geom_utils.jl` defines for the CPU (`area_poly`, `centroid_poly`,
+`dist_to_poly`, `coveredby_poly`, ...) get methods for `_ArrayPoly` here, with the same
+arguments; functions that write into a buffer instead of returning a vector end in `!`. The
+helpers have the names of the GeometryOps functions they follow (`_signed_area`,
+`_distance_curve`, `_intersection_point`, ...). Points are tuples `(x, y)`.
 
 Like GeometryOps, the orientation tests (`_orient_inexact`, `_orient_exact`) use Float64 even
 for Float32 floes, so these functions can't run on GPUs without Float64 (Metal) yet. The
@@ -11,20 +17,13 @@ exact test is AdaptivePredicates' `orient2p`, which runs in kernels.
 =#
 
 #=
-A closed ring of points stored in a 3D array: point `j` of ring `i` is
-`(coords[i, j, 1], coords[i, j, 2])`, for `j in 1:n`, where point `n` repeats point 1. This is
-the layout of `FixedWidthFloes.poly` (see `_floe_ring`), so any buffer with that layout, e.g.
-one holding the overlap regions of two floes, can be used the same way. It's isbits on the
-device, so kernels can create and pass it.
+A polygon without holes stored in a 3D array (see `_floe_poly`). Transitional: an alias for
+`GOG.ArrayPolygon` until these functions move into `GeometryOpsGPU`; remove it then.
 =#
-struct _Ring{A<:AbstractArray{<:Any, 3}}
-    coords::A
-    i::Int
-    n::Int
-end
+const _ArrayPoly = GOG.ArrayPolygon
 
-_npoint(r::_Ring) = r.n
-@inline _getpoint(r::_Ring, j) = (r.coords[r.i, j, 1], r.coords[r.i, j, 2])
+_npoint(p::_ArrayPoly) = GOG.npoint(p)
+@inline _getpoint(p::_ArrayPoly, j) = GOG.getpoint(p, j)
 
 # Results of the point-in-polygon test, as GeometryOps' `point_in`, `point_on`, `point_out`
 const _POINT_IN = Int8(1)
@@ -38,12 +37,12 @@ const _LINE_HINGE = Int8(2)
 const _LINE_OVER = Int8(3)
 const _LINE_OUT = Int8(4)
 
-# Bounding box of the ring as (xmin, xmax, ymin, ymax), like `GI.extent`
-function _ring_extent(r::_Ring)
-    xmin, ymin = _getpoint(r, 1)
+# Bounding box of the polygon as (xmin, xmax, ymin, ymax), like `GI.extent`
+function _poly_extent(p::_ArrayPoly)
+    xmin, ymin = _getpoint(p, 1)
     xmax, ymax = xmin, ymin
-    for j in 2:_npoint(r)
-        x, y = _getpoint(r, j)
+    for j in 2:_npoint(p)
+        x, y = _getpoint(p, j)
         xmin, xmax = min(xmin, x), max(xmax, x)
         ymin, ymax = min(ymin, y), max(ymax, y)
     end
@@ -53,16 +52,16 @@ end
 # Whether the closed boxes (xmin, xmax, ymin, ymax) overlap or touch, like `Extents.intersects`
 _extents_intersect(a, b) = a[1] <= b[2] && b[1] <= a[2] && a[3] <= b[4] && b[3] <= a[4]
 
-#= Signed area of the ring, as `GO._signed_area(T, ring)`: the shoelace formula, closing the
-ring from the last point to the first (which adds zero for a closed ring). =#
-function _ring_signed_area(::Type{T}, r::_Ring) where T
+#= Signed area of the polygon's ring, as `GO._signed_area(T, ring)`: the shoelace formula,
+closing the ring from the last point to the first (which adds zero for a closed ring). =#
+function _signed_area(::Type{T}, p::_ArrayPoly) where T
     area = zero(T)
-    n = _npoint(r)
+    n = _npoint(p)
     n == 0 && return area
-    xfirst, yfirst = _getpoint(r, 1)
+    xfirst, yfirst = _getpoint(p, 1)
     x1, y1 = xfirst, yfirst
     for j in 2:n
-        x2, y2 = _getpoint(r, j)
+        x2, y2 = _getpoint(p, j)
         area += x1 * y2 - y1 * x2
         x1, y1 = x2, y2
     end
@@ -70,19 +69,19 @@ function _ring_signed_area(::Type{T}, r::_Ring) where T
     return T(area / 2)
 end
 
-# Area of a polygon without holes, as `GO.area(poly, T)` (`area_poly`)
-_ring_area(::Type{T}, r::_Ring) where T = abs(_ring_signed_area(T, r))
+# Area of the polygon, as `area_poly(poly, T)` (`GO.area`)
+area_poly(p::_ArrayPoly, ::Type{T}) where T = abs(_signed_area(T, p))
 
-#= Centroid of a polygon without holes, as `GO.centroid(poly, T)` (`centroid_poly`). Like
-GeometryOps, it computes the ring's centroid and then weights it by the area and divides by
-the area again, as for a polygon with holes, which can change the last bit. =#
-function _ring_centroid(::Type{T}, r::_Ring) where T
+#= Centroid of the polygon, as `centroid_poly(poly, T)` (`GO.centroid`). Like GeometryOps, it
+computes the ring's centroid and then weights it by the area and divides by the area again,
+as for a polygon with holes, which can change the last bit. =#
+function centroid_poly(p::_ArrayPoly, ::Type{T}) where T
     xcentroid = zero(T)
     ycentroid = zero(T)
     area = zero(T)
-    x1, y1 = _getpoint(r, 1)
-    for j in 1:_npoint(r)
-        x2, y2 = _getpoint(r, j)
+    x1, y1 = _getpoint(p, 1)
+    for j in 1:_npoint(p)
+        x2, y2 = _getpoint(p, j)
         area_component = x1 * y2 - x2 * y1
         area += area_component
         xcentroid += (x1 + x2) * area_component
@@ -100,10 +99,13 @@ function _ring_centroid(::Type{T}, r::_Ring) where T
     return xcentroid, ycentroid
 end
 
-#= Squared distance from (x0, y0) to the segment from (x1, y1) to (x2, y2), as
+#= Squared distance from point p0 to the segment from p1 to p2, as
 `GO._squared_distance_line`. The point and the segment can be of different types; the
 result is converted to T at the end. =#
-function _squared_distance_line(::Type{T}, x0, y0, x1, y1, x2, y2) where T
+function _squared_distance_line(::Type{T}, p0, p1, p2) where T
+    x0, y0 = p0
+    x1, y1 = p1
+    x2, y2 = p2
     xfirst, yfirst, xlast, ylast = x1 < x2 ? (x1, y1, x2, y2) : (x2, y2, x1, y1)
     v1, v2 = xlast - xfirst, ylast - yfirst
     w1, w2 = x0 - xfirst, y0 - yfirst
@@ -115,32 +117,32 @@ function _squared_distance_line(::Type{T}, x0, y0, x1, y1, x2, y2) where T
     return T((xfirst + (b2 * v1) - x0)^2 + (yfirst + (b2 * v2) - y0)^2)
 end
 
-_distance_line(::Type{T}, x0, y0, x1, y1, x2, y2) where T =
-    sqrt(_squared_distance_line(T, x0, y0, x1, y1, x2, y2))
+# Distance from point p0 to the segment from p1 to p2, as `GO._distance_line`
+_distance_line(::Type{T}, p0, p1, p2) where T = sqrt(_squared_distance_line(T, p0, p1, p2))
 
-#= Distance from (x, y) to the ring's edges, as `GO._distance_curve(T, point, ring;
+#= Distance from the point to the polygon's edges, as `GO._distance_curve(T, point, ring;
 close_curve = true)`. =#
-function _ring_distance(::Type{T}, x, y, r::_Ring) where T
-    n = _npoint(r)
-    first_last_equal = _getpoint(r, 1) == _getpoint(r, n)
+function _distance_curve(::Type{T}, point, p::_ArrayPoly) where T
+    n = _npoint(p)
+    first_last_equal = _getpoint(p, 1) == _getpoint(p, n)
     close_curve = first_last_equal
     n -= first_last_equal ? 1 : 0
     min_dist = typemax(T)
-    x1, y1 = _getpoint(r, close_curve ? n : 1)
+    p1 = _getpoint(p, close_curve ? n : 1)
     for j in (close_curve ? 1 : 2):n
-        x2, y2 = _getpoint(r, j)
-        dist = _distance_line(T, x, y, x1, y1, x2, y2)
+        p2 = _getpoint(p, j)
+        dist = _distance_line(T, point, p1, p2)
         min_dist = dist < min_dist ? dist : min_dist
-        x1, y1 = x2, y2
+        p1 = p2
     end
     return min_dist
 end
 
-#= Signed distance from (x, y) to a polygon without holes, as `GO.signed_distance(point,
-poly, T)` (`dist_to_poly`): negative if the point is inside, i.e. within the polygon. =#
-function _ring_signed_distance(::Type{T}, x, y, r::_Ring) where T
-    dist = _ring_distance(T, x, y, r)
-    return _point_within_ring(x, y, r) ? -dist : dist
+#= Signed distance from the point to the polygon, as `dist_to_poly(point, poly, T)`
+(`GO.signed_distance`): negative if the point is inside, i.e. within the polygon. =#
+function dist_to_poly(point, p::_ArrayPoly, ::Type{T}) where T
+    dist = _distance_curve(T, point, p)
+    return _within_poly(point, p) ? -dist : dist
 end
 
 #= Orientation of c relative to the line from a to b, without exact arithmetic, as
@@ -164,16 +166,17 @@ _orient_exact(a, b, c) = AdaptivePredicates.orient2p(
     (Float64(c[1]), Float64(c[2])),
 )
 
-#= Whether (x, y) is inside, on or outside the ring, as
+#= Whether the point is inside, on or outside the polygon's ring, as
 `GO._point_filled_curve_orientation(point, ring; exact = False())`: a ray-crossing test
 that also detects points on an edge. =#
-function _point_ring_orientation(x, y, r::_Ring)
-    n = _npoint(r)
-    n -= _getpoint(r, 1) == _getpoint(r, n) ? 1 : 0
+function _point_filled_curve_orientation(point, p::_ArrayPoly)
+    x, y = point
+    n = _npoint(p)
+    n -= _getpoint(p, 1) == _getpoint(p, n) ? 1 : 0
     k = 0  # number of ray crossings
-    xs, ys = _getpoint(r, n)
+    xs, ys = _getpoint(p, n)
     for j in 1:n
-        xe, ye = _getpoint(r, j)
+        xe, ye = _getpoint(p, j)
         v1 = ys - y
         v2 = ye - y
         if !((v1 < 0 && v2 < 0) || (v1 > 0 && v2 > 0))
@@ -199,26 +202,27 @@ function _point_ring_orientation(x, y, r::_Ring)
     return iseven(k) ? _POINT_OUT : _POINT_IN
 end
 
-#= Orientation of (x, y) relative to a polygon without holes, as GeometryOps'
+#= Whether the point is inside, on or outside the polygon, as GeometryOps'
 `_point_polygon_process`: a point outside the polygon's bounding box is outside, without
 the ray-crossing test. =#
-function _point_polygon_orientation(x, y, r::_Ring)
-    xmin, xmax, ymin, ymax = _ring_extent(r)
+function _point_poly_orientation(point, p::_ArrayPoly)
+    x, y = point
+    xmin, xmax, ymin, ymax = _poly_extent(p)
     _extents_intersect((x, x, y, y), (xmin, xmax, ymin, ymax)) || return _POINT_OUT
-    return _point_ring_orientation(x, y, r)
+    return _point_filled_curve_orientation(point, p)
 end
 
-# Whether (x, y) is inside or on a polygon without holes, as `GO.coveredby` (`coveredby_poly`)
-_point_coveredby_ring(x, y, r::_Ring) = _point_polygon_orientation(x, y, r) != _POINT_OUT
+# Whether the point is inside or on the polygon, as `coveredby_poly(point, poly)` (`GO.coveredby`)
+coveredby_poly(point, p::_ArrayPoly) = _point_poly_orientation(point, p) != _POINT_OUT
 
-# Whether (x, y) is strictly inside a polygon without holes, as `GO.within`
-_point_within_ring(x, y, r::_Ring) = _point_polygon_orientation(x, y, r) == _POINT_IN
+# Whether the point is strictly inside the polygon, as `GO.within(point, poly)`
+_within_poly(point, p::_ArrayPoly) = _point_poly_orientation(point, p) == _POINT_IN
 
 # x / y clamped between ϵ and 1 - ϵ, as `GO._clamped_frac`
 _clamped_frac(x::T, y::T, ϵ = zero(T)) where T = clamp(x / y, ϵ, one(T) - ϵ)
 
-# Distance between two points, as `GO.distance(p1, p2, T)`
-_point_distance(::Type{T}, p1, p2) where T = sqrt(T((p2[1] - p1[1])^2 + (p2[2] - p1[2])^2))
+# Distance between two points, as `GO._euclid_distance(T, p1, p2)` (`GO.distance`)
+_euclid_distance(::Type{T}, p1, p2) where T = sqrt(T((p2[1] - p1[1])^2 + (p2[2] - p1[2])^2))
 
 # Whether p is in the closed box (xmin, xmax, ymin, ymax), as `GO._point_in_extent`
 _point_in_extent(p, ext) = ext[1] ≤ p[1] ≤ ext[2] && ext[3] ≤ p[2] ≤ ext[4]
@@ -264,17 +268,17 @@ function _find_collinear_intersection(::Type{T}, a1, a2, b1, b2, a_ext, b_ext, n
     a2_in_b = _point_in_extent(a2, b_ext)
     b1_in_a = _point_in_extent(b1, a_ext)
     b2_in_a = _point_in_extent(b2, a_ext)
-    a_dist, b_dist = _point_distance(T, a1, a2), _point_distance(T, b1, b2)
+    a_dist, b_dist = _euclid_distance(T, a1, a2), _euclid_distance(T, b1, b2)
     if a1_in_b && a2_in_b
         line_orient = _LINE_OVER
-        β1 = _clamped_frac(_point_distance(T, a1, b1), b_dist)
-        β2 = _clamped_frac(_point_distance(T, a2, b1), b_dist)
+        β1 = _clamped_frac(_euclid_distance(T, a1, b1), b_dist)
+        β2 = _clamped_frac(_euclid_distance(T, a2, b1), b_dist)
         intr1 = (a1, (zero(T), β1))
         intr2 = (a2, (one(T), β2))
     elseif b1_in_a && b2_in_a
         line_orient = _LINE_OVER
-        α1 = _clamped_frac(_point_distance(T, b1, a1), a_dist)
-        α2 = _clamped_frac(_point_distance(T, b2, a1), a_dist)
+        α1 = _clamped_frac(_euclid_distance(T, b1, a1), a_dist)
+        α2 = _clamped_frac(_euclid_distance(T, b2, a1), a_dist)
         intr1 = (b1, (α1, zero(T)))
         intr2 = (b2, (α2, one(T)))
     elseif a1_in_b && b1_in_a
@@ -316,8 +320,8 @@ end
 # As `GO._set_ab_collinear_intrs`
 _set_ab_collinear_intrs(::Type{T}, a_pt, b_pt, a_pt_α, b_pt_β, a1, b1, a_dist, b_dist) where T =
     (
-        (a_pt, (a_pt_α, _clamped_frac(_point_distance(T, a_pt, b1), b_dist))),
-        (b_pt, (_clamped_frac(_point_distance(T, b_pt, a1), a_dist), b_pt_β)),
+        (a_pt, (a_pt_α, _clamped_frac(_euclid_distance(T, a_pt, b1), b_dist))),
+        (b_pt, (_clamped_frac(_euclid_distance(T, b_pt, a1), a_dist), b_pt_β)),
     )
 
 # Edges that touch at one point but aren't collinear, as `GO._find_hinge_intersection`
@@ -331,13 +335,13 @@ function _find_hinge_intersection(::Type{T}, a1, a2, b1, b2, a1_orient, a2_orien
     elseif a2 == b2
         a2, one(T), one(T)
     elseif a1_orient == 0
-        a1, zero(T), _clamped_frac(_point_distance(T, b1, a1), _point_distance(T, b1, b2), eps(T))
+        a1, zero(T), _clamped_frac(_euclid_distance(T, b1, a1), _euclid_distance(T, b1, b2), eps(T))
     elseif a2_orient == 0
-        a2, one(T), _clamped_frac(_point_distance(T, b1, a2), _point_distance(T, b1, b2), eps(T))
+        a2, one(T), _clamped_frac(_euclid_distance(T, b1, a2), _euclid_distance(T, b1, b2), eps(T))
     elseif b1_orient == 0
-        b1, _clamped_frac(_point_distance(T, a1, b1), _point_distance(T, a1, a2), eps(T)), zero(T)
+        b1, _clamped_frac(_euclid_distance(T, a1, b1), _euclid_distance(T, a1, a2), eps(T)), zero(T)
     else  # b2_orient == 0
-        b2, _clamped_frac(_point_distance(T, a1, b2), _point_distance(T, a1, a2), eps(T)), one(T)
+        b2, _clamped_frac(_euclid_distance(T, a1, b2), _euclid_distance(T, a1, a2), eps(T)), one(T)
     end
     return pt, (α, β)
 end
@@ -377,24 +381,24 @@ end
 #= End of either edge that is closest to the other edge, as `GO._nearest_endpoint`. Like
 GeometryOps, the fraction for b2 is measured from a2, not a1. =#
 function _nearest_endpoint(::Type{T}, a1, a2, b1, b2) where T
-    a_dist = _point_distance(T, a1, a2)
-    b_dist = _point_distance(T, b1, b2)
-    min_pt, min_dist = a1, _distance_line(T, a1..., b1..., b2...)
-    α, β = eps(T), _clamped_frac(_point_distance(T, min_pt, b1), b_dist, eps(T))
-    dist = _distance_line(T, a2..., b1..., b2...)
+    a_dist = _euclid_distance(T, a1, a2)
+    b_dist = _euclid_distance(T, b1, b2)
+    min_pt, min_dist = a1, _distance_line(T, a1, b1, b2)
+    α, β = eps(T), _clamped_frac(_euclid_distance(T, min_pt, b1), b_dist, eps(T))
+    dist = _distance_line(T, a2, b1, b2)
     if dist < min_dist
         min_pt, min_dist = a2, dist
-        α, β = one(T) - eps(T), _clamped_frac(_point_distance(T, min_pt, b1), b_dist, eps(T))
+        α, β = one(T) - eps(T), _clamped_frac(_euclid_distance(T, min_pt, b1), b_dist, eps(T))
     end
-    dist = _distance_line(T, b1..., a1..., a2...)
+    dist = _distance_line(T, b1, a1, a2)
     if dist < min_dist
         min_pt, min_dist = b1, dist
-        α, β = _clamped_frac(_point_distance(T, min_pt, a1), a_dist, eps(T)), eps(T)
+        α, β = _clamped_frac(_euclid_distance(T, min_pt, a1), a_dist, eps(T)), eps(T)
     end
-    dist = _distance_line(T, b2..., a1..., a2...)
+    dist = _distance_line(T, b2, a1, a2)
     if dist < min_dist
         min_pt, min_dist = b2, dist
-        α, β = _clamped_frac(_point_distance(T, min_pt, a2), a_dist, eps(T)), one(T) - eps(T)
+        α, β = _clamped_frac(_euclid_distance(T, min_pt, a2), a_dist, eps(T)), one(T) - eps(T)
     end
     return min_pt, α, β
 end
@@ -425,19 +429,19 @@ function _insert_sorted_unique!(out, k, m, p)
 end
 
 #=
-Points where the edges of two rings intersect, as `GO.intersection_points(p1, p2, T)`
-(`get_intersection_points`, with T = Float64): sorted and distinct. They're written to
+Points where the edges of two polygons intersect, as `get_intersection_points(poly1,
+poly2)` (`GO.intersection_points`, with T = Float64): sorted and distinct. They're written to
 `out[k, 1:m, :]`, and the number of points m is returned, or -1 if `out` has too few columns
 for them.
 =#
-function _ring_intersection_points!(out, k, ::Type{T}, r1::_Ring, r2::_Ring) where T
+function get_intersection_points!(out, k, poly1::_ArrayPoly, poly2::_ArrayPoly, ::Type{T} = Float64) where T
     m = 0
-    _extents_intersect(_ring_extent(r1), _ring_extent(r2)) || return m
-    for i in 1:(_npoint(r1) - 1)
-        p1, p2 = _getpoint(r1, i), _getpoint(r1, i + 1)
+    _extents_intersect(_poly_extent(poly1), _poly_extent(poly2)) || return m
+    for i in 1:(_npoint(poly1) - 1)
+        p1, p2 = _getpoint(poly1, i), _getpoint(poly1, i + 1)
         a1, a2 = (T(p1[1]), T(p1[2])), (T(p2[1]), T(p2[2]))
-        for j in 1:(_npoint(r2) - 1)
-            q1, q2 = _getpoint(r2, j), _getpoint(r2, j + 1)
+        for j in 1:(_npoint(poly2) - 1)
+            q1, q2 = _getpoint(poly2, j), _getpoint(poly2, j + 1)
             b1, b2 = (T(q1[1]), T(q1[2])), (T(q2[1]), T(q2[2]))
             line_orient, (pt1, _), (pt2, _) = _intersection_point(T, a1, a2, b1, b2)
             line_orient == _LINE_OUT && continue
@@ -453,10 +457,10 @@ function _ring_intersection_points!(out, k, ::Type{T}, r1::_Ring, r2::_Ring) whe
 end
 
 #=
-Indices of the ring's points that are within `atol` of each of the points
+Indices of the region's points that are within `atol` of each of the points
 `points[k, 1:m, :]`, in increasing order, as `which_vertices_match_points(points, region,
-atol)`. For each point, it takes the closest of the ring's points, the first one if there is
-a tie; an index can appear more than once. Like that function:
+atol)`. For each point, it takes the closest of the region's points, the first one if there
+is a tie; an index can appear more than once. Like that function:
 - the distances are square roots of GeometryOps distances, so a point matches if it's
   closer than `atol^2`;
 - if the first and last points are equal, the last isn't used, so a single point matches
@@ -464,8 +468,8 @@ a tie; an index can appear more than once. Like that function:
 The indices are written to `out[k, 1:c]`, and their number c is returned, or -1 if `out` has
 too few columns for them.
 =#
-function _which_vertices_match_points!(out, k, points, m, r::_Ring, atol = 1)
-    FT = eltype(r.coords)
+function which_vertices_match_points!(out, k, points, m, region::_ArrayPoly, atol = 1)
+    FT = eltype(region.coords)
     c = 0
     m == 0 && return c  # which_vertices_match_points throws a BoundsError
     npoints = m
@@ -476,8 +480,8 @@ function _which_vertices_match_points!(out, k, points, m, r::_Ring, atol = 1)
         p = (points[k, l, 1], points[k, l, 2])
         min_dist = FT(Inf)
         min_vert = 1
-        for j in 1:_npoint(r)
-            dist = sqrt(_point_distance(FT, _getpoint(r, j), p))
+        for j in 1:_npoint(region)
+            dist = sqrt(_euclid_distance(FT, _getpoint(region, j), p))
             if dist < min_dist
                 min_dist = dist
                 min_vert = j

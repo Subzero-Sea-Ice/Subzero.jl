@@ -30,16 +30,16 @@ them in a kernel on every backend and compares with the CPU.
         end
         return polys
     end
-    # The polygons as closed rings in a 3D array, the layout of FixedWidthFloes.poly
-    function _ring_array(polys::Vector{Vector{Tuple{FT, FT}}}) where FT
+    # The polygons as closed apolys in a 3D array, the layout of FixedWidthFloes.poly
+    function _array_polys(polys::Vector{Vector{Tuple{FT, FT}}}) where FT
         coords = zeros(FT, length(polys), maximum(length, polys) + 1, 2)
-        rings = map(enumerate(polys)) do (i, p)
+        apolys = map(enumerate(polys)) do (i, p)
             for (j, (x, y)) in enumerate([p; [p[1]]])
                 coords[i, j, 1], coords[i, j, 2] = x, y
             end
-            Subzero._Ring(coords, i, length(p) + 1)
+            Subzero._ArrayPoly(coords, i, length(p) + 1)
         end
-        return coords, rings
+        return coords, apolys
     end
     _gi_poly(p) = GI.Polygon([GI.LinearRing([p; [p[1]]])])
     #= Test points for polygon p: its vertices, points along its edges, grid points, and
@@ -62,22 +62,22 @@ them in a kernel on every backend and compares with the CPU.
 
     @testset "Area, centroid, and point tests with $FT" for FT in (Float64, Float32)
         polys = _geom_test_polys(FT)
-        _, rings = _ring_array(polys)
+        _, apolys = _array_polys(polys)
         gps = _gi_poly.(polys)
-        @test all(i -> isequal(Subzero._ring_area(FT, rings[i]), GO.area(gps[i], FT)), eachindex(polys))
-        @test all(i -> isequal(Subzero._ring_centroid(FT, rings[i]), GO.centroid(gps[i], FT)), eachindex(polys))
+        @test all(i -> isequal(Subzero.area_poly(apolys[i], FT), GO.area(gps[i], FT)), eachindex(polys))
+        @test all(i -> isequal(Subzero.centroid_poly(apolys[i], FT), GO.centroid(gps[i], FT)), eachindex(polys))
         rng = Xoshiro(2)
         orientations = Int8[]
         same = trues(4)
         for _ in 1:5000
             i = rand(rng, eachindex(polys))
-            r, gp = rings[i], gps[i]
+            r, gp = apolys[i], gps[i]
             for pt in _geom_test_points(rng, polys[i], polys)
-                push!(orientations, Subzero._point_polygon_orientation(pt..., r))
-                same[1] &= isequal(Subzero._point_coveredby_ring(pt..., r), GO.coveredby(pt, gp))
-                same[2] &= isequal(Subzero._point_within_ring(pt..., r), GO.within(pt, gp))
-                same[3] &= isequal(Subzero._ring_signed_distance(FT, pt..., r), GO.signed_distance(pt, gp, FT))
-                same[4] &= isequal(Subzero._ring_distance(FT, pt..., r), abs(GO.signed_distance(pt, gp, FT)))
+                push!(orientations, Subzero._point_poly_orientation(pt, r))
+                same[1] &= isequal(Subzero.coveredby_poly(pt, r), GO.coveredby(pt, gp))
+                same[2] &= isequal(Subzero._within_poly(pt, r), GO.within(pt, gp))
+                same[3] &= isequal(Subzero.dist_to_poly(pt, r, FT), GO.signed_distance(pt, gp, FT))
+                same[4] &= isequal(Subzero._distance_curve(FT, pt, r), abs(GO.signed_distance(pt, gp, FT)))
             end
         end
         @test all(same)
@@ -128,7 +128,7 @@ them in a kernel on every backend and compares with the CPU.
 
     @testset "Intersection points and matching vertices with $FT" for FT in (Float64, Float32)
         polys = _geom_test_polys(FT)
-        _, rings = _ring_array(polys)
+        _, apolys = _array_polys(polys)
         gps = _gi_poly.(polys)
         points = zeros(1, 64, 2)
         idxs = zeros(Int, 1, 64)
@@ -138,11 +138,11 @@ them in a kernel on every backend and compares with the CPU.
             i, j = rand(rng, eachindex(polys), 2)
             i == j && continue
             ref = GO.intersection_points(gps[i], gps[j])
-            m = Subzero._ring_intersection_points!(points, 1, Float64, rings[i], rings[j])
+            m = Subzero.get_intersection_points!(points, 1, apolys[i], apolys[j], Float64)
             same_points &= isequal([(points[1, l, 1], points[1, l, 2]) for l in 1:m], ref)
             isempty(ref) && continue
             n_nonempty += 1
-            c = Subzero._which_vertices_match_points!(idxs, 1, points, m, rings[j])
+            c = Subzero.which_vertices_match_points!(idxs, 1, points, m, apolys[j])
             same_idxs &= isequal(idxs[1, 1:c], Subzero.which_vertices_match_points(ref, gps[j]))
         end
         @test same_points
@@ -153,26 +153,26 @@ them in a kernel on every backend and compares with the CPU.
         sq1 = [(FT(0), FT(0)), (FT(2), FT(0)), (FT(2), FT(2)), (FT(0), FT(2))]
         sq2 = [(FT(1), FT(-1)), (FT(3), FT(-1)), (FT(3), FT(1)), (FT(1), FT(1))]
         region = [(FT(1), FT(0)), (FT(2), FT(0)), (FT(2), FT(1)), (FT(1), FT(1))]
-        _, (r1, r2, rr) = _ring_array([sq1, sq2, region])
+        _, (r1, r2, rr) = _array_polys([sq1, sq2, region])
         pts = zeros(1, 2, 2)
-        @test Subzero._ring_intersection_points!(pts, 1, Float64, r1, r2) == 2
+        @test Subzero.get_intersection_points!(pts, 1, r1, r2, Float64) == 2
         @test pts[1, :, :] == [1 0; 2 1]
         idx = zeros(Int, 1, 2)
-        @test Subzero._which_vertices_match_points!(idx, 1, pts, 2, rr) == 2
+        @test Subzero.which_vertices_match_points!(idx, 1, pts, 2, rr) == 2
         @test idx[1, :] == [1, 3]
         # Too little room for the points or indices: -1
-        @test Subzero._ring_intersection_points!(zeros(1, 1, 2), 1, Float64, r1, r2) == -1
-        @test Subzero._which_vertices_match_points!(zeros(Int, 1, 1), 1, pts, 2, rr) == -1
+        @test Subzero.get_intersection_points!(zeros(1, 1, 2), 1, r1, r2, Float64) == -1
+        @test Subzero.which_vertices_match_points!(zeros(Int, 1, 1), 1, pts, 2, rr) == -1
         # Like which_vertices_match_points, a single point matches nothing; no points either
-        @test Subzero._which_vertices_match_points!(idx, 1, pts, 1, rr) == 0
-        @test Subzero._which_vertices_match_points!(idx, 1, pts, 0, rr) == 0
+        @test Subzero.which_vertices_match_points!(idx, 1, pts, 1, rr) == 0
+        @test Subzero.which_vertices_match_points!(idx, 1, pts, 0, rr) == 0
     end
 
-    function _geom_point_tests!(orient, sdist, i, s, v, ::Type{FT}, x, y, r) where FT
-        orient[i, s, v] = Subzero._point_polygon_orientation(x, y, r) +
-            Int8(4) * Subzero._point_coveredby_ring(x, y, r) +
-            Int8(8) * Subzero._point_within_ring(x, y, r)
-        sdist[i, s, v] = Subzero._ring_signed_distance(FT, x, y, r)
+    function _geom_point_tests!(orient, sdist, i, s, v, ::Type{FT}, point, r) where FT
+        orient[i, s, v] = Subzero._point_poly_orientation(point, r) +
+            Int8(4) * Subzero.coveredby_poly(point, r) +
+            Int8(8) * Subzero._within_poly(point, r)
+        sdist[i, s, v] = Subzero.dist_to_poly(point, r, FT)
         return
     end
     #= Kernel test: each floe computes its area and centroid, the point tests for its test
@@ -180,19 +180,19 @@ them in a kernel on every backend and compares with the CPU.
     function _geom_kernel!(floes, i, pts, pts64, mids, orient, sdist, areas, cents, partner,
             ipts, nipts, idxs, nidxs)
         FT = eltype(floes.area)
-        r = Subzero._floe_ring(floes, i)
-        areas[i] = Subzero._ring_area(FT, r)
-        cents[i, 1], cents[i, 2] = Subzero._ring_centroid(FT, r)
+        r = Subzero._floe_poly(floes, i)
+        areas[i] = Subzero.area_poly(r, FT)
+        cents[i, 1], cents[i, 2] = Subzero.centroid_poly(r, FT)
         # One call per point type: a loop over the three would be type-unstable for Float32
         for s in axes(pts, 2)
-            _geom_point_tests!(orient, sdist, i, s, 1, FT, pts[i, s, 1], pts[i, s, 2], r)
-            _geom_point_tests!(orient, sdist, i, s, 2, FT, pts64[i, s, 1], pts64[i, s, 2], r)
-            _geom_point_tests!(orient, sdist, i, s, 3, FT, mids[i, s, 1], mids[i, s, 2], r)
+            _geom_point_tests!(orient, sdist, i, s, 1, FT, (pts[i, s, 1], pts[i, s, 2]), r)
+            _geom_point_tests!(orient, sdist, i, s, 2, FT, (pts64[i, s, 1], pts64[i, s, 2]), r)
+            _geom_point_tests!(orient, sdist, i, s, 3, FT, (mids[i, s, 1], mids[i, s, 2]), r)
         end
-        rj = Subzero._floe_ring(floes, partner[i])
-        m = Subzero._ring_intersection_points!(ipts, i, Float64, r, rj)
+        rj = Subzero._floe_poly(floes, partner[i])
+        m = Subzero.get_intersection_points!(ipts, i, r, rj, Float64)
         nipts[i] = m
-        nidxs[i] = m < 0 ? 0 : Subzero._which_vertices_match_points!(idxs, i, ipts, m, rj)
+        nidxs[i] = m < 0 ? 0 : Subzero.which_vertices_match_points!(idxs, i, ipts, m, rj)
         return
     end
     @testset "Kernels on $backend with $FT" for backend in test_backends(), FT in (Float64, Float32)

@@ -62,9 +62,6 @@ end
 @inline _floe_poly(floes::FixedWidthFloes, i) =
     GOG.ArrayPolygon(floes.poly, Int(i), Int(floes.n_points[i]))
 
-# Floe i's polygon as a `_Ring`, for the geometry functions in `device_geom_utils.jl`
-_floe_ring(floes::FixedWidthFloes, i) = _Ring(floes.poly, Int(i), Int(floes.n_points[i]))
-
 #=
 Rotate floe i by Δα around its centroid and translate it by Δx and Δy.
 =#
