@@ -185,6 +185,23 @@
     flags. These are test markers, not FLAG_* event bits. =#
     mark_overlap!(floes, i, rect...) =
         (floes.flags[i] = Subzero._overlaps_rectangle(floes, i, rect...) ? 0x01 : 0x00; nothing)
+    #= Bounds of another type are converted to the floes' type: Float64 and integer bounds
+    give the same results as the same bounds in the floes' type =#
+    @testset "_overlaps_rectangle with bounds of another type" begin
+        floes, _, rects = _overlap_test_floes(Float32)
+        fwf = Subzero.FixedWidthFloes(floes)
+        n = length(floes)
+        results(rect) = [Subzero._overlaps_rectangle(fwf, i, rect...) for i in 1:n]
+        @test all(rect -> results(Float64.(rect)) == results(rect), rects)
+        @test results((10_000, 15_000, -5_000, 15_000)) ==
+            results(Float32.((10_000, 15_000, -5_000, 15_000)))
+        # With Float64 bounds, the maths stays in Float32: no intermediate value is a Float64,
+        # neither in _overlaps_rectangle nor in _edge_through_rectangle, which it calls
+        float64_values(f, types) = count(==(Float64), only(Base.code_typed(f, types))[1].ssavaluetypes)
+        @test float64_values(Subzero._overlaps_rectangle,
+            Tuple{typeof(fwf), Int, Float64, Float64, Float64, Float64}) == 0
+        @test float64_values(Subzero._edge_through_rectangle, NTuple{8, Float32}) == 0
+    end
     @testset "_overlaps_rectangle on $backend with $FT" for backend in test_backends(),
             FT in (Float64, Float32)
         floes, _, rects = _overlap_test_floes(FT)

@@ -96,6 +96,9 @@ If no edge does, the inside of the rectangle is either entirely inside or entire
 the polygon, so it overlaps if the polygon contains the rectangle's centre.
 =#
 function _overlaps_rectangle(floes::FixedWidthFloes{FT}, i, xmin, xmax, ymin, ymax) where FT
+    # in the floes' precision, so that e.g. Float64 bounds don't make Float32 floes use
+    # Float64 maths, which some GPUs can't do
+    xmin, xmax, ymin, ymax = FT(xmin), FT(xmax), FT(ymin), FT(ymax)
     xc = (xmin + xmax) / 2
     yc = (ymin + ymax) / 2
     centre_inside = false
