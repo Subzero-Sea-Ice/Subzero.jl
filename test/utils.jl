@@ -18,9 +18,11 @@ const TEST_BACKENDS = let backends = Any[Subzero.KernelAbstractions.CPU(), JLArr
 end
 test_backends() = TEST_BACKENDS
 
-# JLArrays (0.3.3) doesn't define `synchronize` for its backend. Its kernels run
+# JLArrays 0.3 doesn't define `synchronize` for its backend (0.5 does). Its kernels run
 # synchronously, so there is nothing to wait for.
-Subzero.KernelAbstractions.synchronize(::JLArrays.JLBackend) = nothing
+if !hasmethod(Subzero.KernelAbstractions.synchronize, Tuple{JLArrays.JLBackend})
+    Subzero.KernelAbstractions.synchronize(::JLArrays.JLBackend) = nothing
+end
 
 #=
 Run the per-floe function `f` on a copy of `fwf::FixedWidthFloes` on `backend` with

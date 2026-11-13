@@ -107,7 +107,11 @@ function save_results!(step, env, records, checks)
         "date" => string(Dates.today()), "cpu" => cpu_name(), "cpus" => cpu_set(),
         "smt" => smt(), "sockets" => sockets(), "input" => input_checksum(),
     )
-    new = [merge(r, common, Dict("device" => device_name(r["backend"]))) for r in records]
+    new = map(records) do r
+        device = Dict{String, Any}("device" => device_name(r["backend"]))
+        r["backend"] == "AMDGPU" && (device["memory_pool"] = amdgpu_memory_pool())
+        merge(r, common, device)
+    end
     for r in new
         r["median_ms"] = round4(r["median_ms"])
         r["min_ms"] = round4(r["min_ms"])

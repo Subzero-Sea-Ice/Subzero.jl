@@ -171,6 +171,14 @@ node (18 cores, one A100); see the comments in the script.
 `rocminfo` or `rocm-smi` is; choose with `BENCH_GPU` (e.g. `BENCH_GPU=AMDGPU`, or `""` for
 none). Its second argument is the baseline commit (default ae96ff2).
 
+The benchmarks use AMDGPU.jl's default memory pool. Since AMDGPU 2.11, the default pool on
+Linux can be shared with other processes (for GPU-aware MPI), but allocating from it is much
+slower than from the pool of older versions: about 0.2 ms per array on a Radeon 890M, against
+about 1 µs. With 100,000 floes, that's about 6 ms more for each `adapt` to the device, which
+doubles the time of `adapt to device`. Copying is just as fast with both pools. Results
+record the pool type of AMDGPU runs as `memory_pool`, and the log prints it after the HIP
+runtime.
+
 `run.sh`, on the CPUs in `BENCH_CPUS` with `BENCH_THREADS` threads:
 
 1. `make_input.jl 10000 100 floes_10k.jld2`: the input, with 1 thread and the baseline (a few

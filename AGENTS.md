@@ -95,9 +95,11 @@ over if/else flags.
   packages are in `[extras]` and `[compat]` but not in the test target, so not everyone
   installs them. `test/gpu_packages.jl` `Pkg.add`s the listed ones to the test environment,
   and `test/utils.jl` errors if one can't use a GPU. Include `gpu_packages.jl` before loading
-  Subzero: adding a GPU package can change the versions of packages Subzero uses (AMDGPU 2.8
-  needs LLVM 9, but a resolve without it picks LLVM 10 via KernelAbstractions → Atomix →
-  UnsafeAtomics), and a loaded package can't be replaced. Check whether a GPU works with
+  Subzero: adding a GPU package can change the versions of packages Subzero uses, and a
+  loaded package can't be replaced. With current versions they usually line up (AMDGPU 2.9
+  and later use LLVM 10, like KernelAbstractions 0.10), but an older one can still clash:
+  AMDGPU 2.8 needs LLVM 9, while a resolve without it picks LLVM 10 via KernelAbstractions →
+  Atomix → UnsafeAtomics. Check whether a GPU works with
   `SUBZERO_TEST_GPUS=CUDA julia --project=. -e 'using TestEnv; TestEnv.activate(); include("test/gpu_packages.jl"); using Subzero; import JLArrays; include("test/utils.jl"); @show test_backends()'`.
   To test another GPU, add its package to `[extras]`, `[compat]` and `GPU_BACKENDS` in
   `test/gpu_packages.jl`. Metal and oneAPI aren't in the list yet: the tests use Float64 floes,
