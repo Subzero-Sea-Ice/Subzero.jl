@@ -5,6 +5,7 @@ authors = ["Skylar Gering"]
 
 [deps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
+AdaptivePredicates = "35492f91-a3bd-45ad-95db-fcad7dcfedb7"
 CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Extents = "411431e0-e8b7-467b-b5e0-f676ba4f2910"
@@ -37,6 +38,7 @@ SubzeroMatExt = ["MAT", "GeoInterface"]
 [compat]
 AMDGPU = "2.8"
 Adapt = "4.7.0"
+AdaptivePredicates = "1.2"
 CUDA = "6.3.1"
 CairoMakie = "0.12, 0.13, 0.15"
 CoordinateTransformations = "0.6"
