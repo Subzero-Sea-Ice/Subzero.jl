@@ -57,8 +57,9 @@ function _translate_floe!(::Type{FT}, floe, Δx, Δy) where FT
     return
 end
 
-# Floe i's polygon as a `_Ring`, for the geometry functions in `device_geom_utils.jl`
-_floe_ring(floes::FixedWidthFloes, i) = _Ring(floes.poly, Int(i), Int(floes.n_points[i]))
+# Floe i's polygon as an `_ArrayPoly`, like `floe.poly`, for the geometry functions in
+# `device_geom_utils.jl`
+_floe_poly(floes::FixedWidthFloes, i) = _ArrayPoly(floes.poly, Int(i), Int(floes.n_points[i]))
 
 #=
 Rotate the polygon of floe i by Δα around (cx, cy) and then translate it by Δx and Δy, in

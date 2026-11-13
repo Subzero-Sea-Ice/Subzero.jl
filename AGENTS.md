@@ -136,10 +136,12 @@ over if/else flags.
   broadcasting or `zeros`. Loop over scalars instead.
 - Don't call GeometryOps or GeoInterface, because they build geometry objects. Write
   the geometry maths by hand (see `_move_floe!`). GeometryOps is fine on the CPU.
-  `src/tools/device_geom_utils.jl` has kernel versions of GeometryOps functions (area,
-  centroid, point in polygon, distances, edge intersections) on polygons stored in arrays
-  (`_Ring`, `_floe_ring`). They match GeometryOps bit for bit; keep it that way, and test
-  new ones against GeometryOps in `test/test_device_geom_utils.jl`.
+  `src/tools/device_geom_utils.jl` has kernel versions of the geometry functions in
+  `geom_utils.jl` (`area_poly`, `centroid_poly`, `dist_to_poly`, `coveredby_poly`,
+  `get_intersection_points!`, ...) as methods for polygons stored in arrays (`_ArrayPoly`,
+  `_floe_poly`), with helpers named after the GeometryOps functions they follow. They match
+  GeometryOps bit for bit; keep it that way, and test new ones against GeometryOps in
+  `test/test_device_geom_utils.jl`.
 - Don't log. Set a bit in `floes.flags` (the `FLAG_*` constants in
   `update_floe.jl`). The host logs each type of event once per timestep after copying
   back (`_log_flags`).
