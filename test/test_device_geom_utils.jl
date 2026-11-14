@@ -168,6 +168,64 @@ them in a kernel on every backend and compares with the CPU.
         @test Subzero.which_vertices_match_points!(idx, 1, pts, 0, rr) == 0
     end
 
+    #= Real floe shapes (7 to 591 vertices, from test/inputs/floe_shapes.jld2) and the
+    synthetic polygons, at large coordinates, where floats are further apart: shifted by 1e6 m
+    in x and y. Points include vertices and points on edges nudged by one or two floats, so
+    the tolerance of the point-in-polygon test decides whether they are on an edge. Pairs
+    overlap because one polygon is moved onto the other. =#
+    @testset "Real floe shapes and large coordinates with $FT, offset $offset" for
+            FT in (Float64, Float32), offset in (0.0, 1e6)
+        real_shapes = jldopen(joinpath(@__DIR__, "inputs", "floe_shapes.jld2")) do f
+            [[(c[1], c[2]) for c in p[1]] for p in vec(f["floe_vertices"])[1:4:end]]
+        end
+        base = [real_shapes; _geom_test_polys(Float64; n = 100)]
+        shifted(p, Δx, Δy) = [(FT(x + Δx + offset), FT(y + Δy + offset)) for (x, y) in p]
+        polys = [shifted(p, 0, 0) for p in base]
+        _, apolys = _array_polys(polys)
+        gps = _gi_poly.(polys)
+        @test all(i -> isequal(Subzero.area_poly(apolys[i], FT), GO.area(gps[i], FT)), eachindex(polys))
+        @test all(i -> isequal(Subzero.centroid_poly(apolys[i], FT), GO.centroid(gps[i], FT)), eachindex(polys))
+        rng = Xoshiro(7)
+        same, n_on = trues(3), 0
+        for (p, r, gp) in zip(polys, apolys, gps), _ in 1:10
+            k = rand(rng, eachindex(p))
+            e1, e2 = p[k], p[mod1(k + 1, end)]
+            t = FT(rand(rng))
+            on_edge = (e1[1] + t * (e2[1] - e1[1]), e1[2] + t * (e2[2] - e1[2]))
+            v = rand(rng) < 0.5 ? e1 : on_edge
+            pt = (nextfloat(v[1], rand(rng, -2:2)), nextfloat(v[2], rand(rng, -2:2)))
+            for q in (pt, Float64.(pt))
+                n_on += Subzero._point_poly_orientation(q, r) == Subzero._POINT_ON
+                same[1] &= isequal(Subzero.coveredby_poly(q, r), GO.coveredby(q, gp))
+                same[2] &= isequal(Subzero._within_poly(q, r), GO.within(q, gp))
+                same[3] &= isequal(Subzero.dist_to_poly(q, r, FT), GO.signed_distance(q, gp, FT))
+            end
+        end
+        @test all(same)
+        @test n_on > 100
+        points, idxs = zeros(1, 64, 2), zeros(Int, 1, 64)
+        same_points, same_idxs, n_nonempty = true, true, 0
+        for i in eachindex(base), _ in 1:2
+            j = rand(rng, eachindex(base))
+            i == j && continue
+            # move polygon j close to polygon i
+            ci = (mean(first, base[i]), mean(last, base[i]))
+            cj = (mean(first, base[j]), mean(last, base[j]))
+            d = sqrt(abs(GO.area(_gi_poly(base[i])))) * (rand(rng) - 0.5)
+            pj = shifted(base[j], ci[1] - cj[1] + d, ci[2] - cj[2] + rand(rng) * d)
+            _, (ri, rj) = _array_polys([polys[i], pj])
+            ref = GO.intersection_points(gps[i], _gi_poly(pj))
+            m = Subzero.get_intersection_points!(points, 1, ri, rj, Float64)
+            same_points &= isequal([(points[1, l, 1], points[1, l, 2]) for l in 1:m], ref)
+            isempty(ref) && continue
+            n_nonempty += 1
+            c = Subzero.which_vertices_match_points!(idxs, 1, points, m, rj)
+            same_idxs &= isequal(idxs[1, 1:c], Subzero.which_vertices_match_points(ref, _gi_poly(pj)))
+        end
+        @test same_points
+        @test same_idxs
+        @test n_nonempty > 100
+    end
     function _geom_point_tests!(orient, sdist, i, s, v, ::Type{FT}, point, r) where FT
         orient[i, s, v] = Subzero._point_poly_orientation(point, r) +
             Int8(4) * Subzero.coveredby_poly(point, r) +
