@@ -971,6 +971,20 @@ from the first pass. Each pass:
    after another, which is slow on a GPU, where there are often only a few hundred ghosts.
 5. `_link_ghosts!`: per floe, add its ghosts to its list of ghosts, and swap places with its
    last ghost if its centroid is outside of the domain.
+
+On the CPU, `add_floe_ghosts!` loops over the floes and calls `find_ghosts!` for each, which
+calls `ghosts_on_bounds!`. Kernels can't append floes one at a time, so the work is split
+differently:
+
+- `add_ghosts!` and `add_floe_ghosts!` are methods of the CPU functions.
+- `_count_ghosts!`: the boundary tests in `find_ghosts!` and the overlap test in
+  `ghosts_on_bounds!`.
+- `_plan_ghosts!`: which floes `ghosts_on_bounds!` copies, and its `trans_vec`.
+- `_ghost_values_kernel!` and `_ghost_value!`: `deepcopy_floe` and `_translate_floe!` in
+  `ghosts_on_bounds!`.
+- `_link_ghosts!`: the updates of `ghost_id` and `ghosts` in `add_floe_ghosts!`, and the swap
+  in `find_ghosts!`.
+- `remove_ghosts!`: the `deleteat!` and `empty!` in `timestep_sim!`.
 =#
 
 #=
@@ -1009,30 +1023,31 @@ capacity of `floes`, made if not given. This waits for the kernels to finish, be
 number of ghosts is needed on the host.
 """
 function add_ghosts!(floes::FixedWidthFloes, domain::Domain, backend; workspace = nothing)
-    floes, workspace = _add_floe_ghosts!(floes, domain.east, domain.west, backend, workspace)
-    floes, _ = _add_floe_ghosts!(floes, domain.north, domain.south, backend, workspace)
+    floes, workspace = add_floe_ghosts!(floes, domain.east, domain.west, backend, workspace)
+    floes, _ = add_floe_ghosts!(floes, domain.north, domain.south, backend, workspace)
     return floes
 end
 
 # No ghosts through boundaries that aren't periodic
-_add_floe_ghosts!(floes, ::AbstractBoundary, ::AbstractBoundary, backend, workspace) =
-    floes, workspace
+add_floe_ghosts!(floes::FixedWidthFloes{FT}, ::AbstractBoundary, ::AbstractBoundary, backend,
+    workspace) where FT = floes, workspace
 
 #=
 Add the ghosts through `max_boundary` (north or east) and `min_boundary` (south or west),
-as `add_floe_ghosts!`. Returns the floes with the ghosts in use, and the workspace.
+as `add_floe_ghosts!` for a `StructArray` of floes. Unlike that method, it doesn't only
+change `floes` in place: it returns the floes with the ghosts in use, which may have new,
+larger arrays (see `with_capacity`), and the workspace that fits them.
 =#
-function _add_floe_ghosts!(
+function add_floe_ghosts!(
     floes::FixedWidthFloes{FT},
-    max_boundary::PeriodicBoundary{D},
+    max_boundary::PeriodicBoundary,
     min_boundary::PeriodicBoundary,
     backend,
     workspace,
-) where {FT, D}
+) where FT
     n = floes.n_floes
     n == 0 && return floes, workspace
-    # the coordinate that crosses the boundaries: 1 (x) for east/west, 2 (y) for north/south
-    axis = D == East ? 1 : 2
+    axis = _ghost_axis(max_boundary)
     min_val, max_val = FT(min_boundary.val), FT(max_boundary.val)
     min_rect = _bounding_box(FT, min_boundary.poly)
     max_rect = _bounding_box(FT, max_boundary.poly)
@@ -1056,6 +1071,13 @@ function _add_floe_ghosts!(
     KernelAbstractions.synchronize(backend)
     return set_n_floes(floes, n + total), workspace
 end
+
+#=
+The coordinate that crosses the boundary: 1 (x) for east/west, 2 (y) for north/south, as
+the two methods of `find_ghosts!`. It's passed to the kernels as a number.
+=#
+_ghost_axis(::PeriodicBoundary{<:Union{East, West}}) = 1
+_ghost_axis(::PeriodicBoundary{<:Union{North, South}}) = 2
 
 # The given workspace if it fits the capacity of floes, else a new one
 function _ghost_workspace(workspace, floes)
@@ -1239,13 +1261,13 @@ _along_axis(axis, Δ) = axis == 1 ? (Δ, zero(Δ)) : (zero(Δ), Δ)
 
 #=
 Remove the ghosts that `add_ghosts!` added to floes on a device, as `timestep_sim!` does on
-the CPU: keep the first `n_floes` floes, which are the floes without ghosts, and empty their
-lists of ghosts. Floes that swapped places with a ghost keep their new place. Returns the
-floes without ghosts, which share the arrays of `floes`. The kernel is launched
+the CPU: keep the first `n_init_floes` floes, which are the floes without ghosts, and empty
+their lists of ghosts. Floes that swapped places with a ghost keep their new place. Returns
+the floes without ghosts, which share the arrays of `floes`. The kernel is launched
 asynchronously. The rows of the ghosts keep their values, so fill them before using them.
 =#
-function remove_ghosts!(floes::FixedWidthFloes, n_floes, backend)
-    floes = set_n_floes(floes, n_floes)
+function remove_ghosts!(floes::FixedWidthFloes, n_init_floes, backend)
+    floes = set_n_floes(floes, n_init_floes)
     launch_per_floe!(_clear_ghosts!, backend, floes)
     return floes
 end

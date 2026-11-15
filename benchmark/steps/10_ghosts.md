@@ -10,7 +10,7 @@ Correctness check: the centroids and the ghost indices of 1,000 floes after `add
 ## Ported
 
 `add_ghosts!(floes::FixedWidthFloes, domain, backend; workspace)` and
-`remove_ghosts!(floes, n_floes, backend)`. Each of the two passes (east/west, then
+`remove_ghosts!(floes, n_init_floes, backend)`. Each of the two passes (east/west, then
 north/south) is:
 
 1. a kernel that counts the ghosts of each floe,
