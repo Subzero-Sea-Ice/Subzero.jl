@@ -165,3 +165,48 @@ function _float64_kernels(f)
     return unique!([_kernel_name(job) for job in jobs if
         occursin(r"\bdouble\b|\bfpext\b", llvm(job))])
 end
+
+#= Polygons for testing the device geometry functions: random polygons around the origin,
+so that most pairs overlap. Star-shaped polygons with 3 to 9 vertices, and rectangles and
+L-shapes on a 250 m grid, which share edges and vertices with each other. Some are
+clockwise. =#
+function _geom_test_polys(::Type{FT}; n = 150, rng = Xoshiro(1)) where FT
+    polys = Vector{Vector{Tuple{FT, FT}}}()
+    while length(polys) < n
+        if rand(rng) < 0.4
+            nv = rand(rng, 3:9)
+            θs = sort(2π .* rand(rng, nv))
+            rs = rand(rng) < 0.5 ? fill(1e3, nv) : 1e3 .* (0.3 .+ rand(rng, nv))
+            c = 500 .* (rand(rng, 2) .- 0.5)
+            push!(polys, [(FT(c[1] + r * cos(θ)), FT(c[2] + r * sin(θ))) for (r, θ) in zip(rs, θs)])
+        else
+            g = FT.(250 .* sort(rand(rng, -4:4, 3)))
+            h = FT.(250 .* sort(rand(rng, -4:4, 3)))
+            (allunique(g) && allunique(h)) || continue
+            push!(polys, rand(rng) < 0.5 ?
+                [(g[1], h[1]), (g[3], h[1]), (g[3], h[3]), (g[1], h[3])] :
+                [(g[1], h[1]), (g[3], h[1]), (g[3], h[2]), (g[2], h[2]), (g[2], h[3]), (g[1], h[3])])
+        end
+        rand(rng) < 0.3 && reverse!(polys[end])
+    end
+    return polys
+end
+# The polygons as `GOG.ArrayPolygon`s: closed rings in a 3D array, with the layout of
+# FixedWidthFloes.poly
+function _array_polys(polys::Vector{Vector{Tuple{FT, FT}}}) where FT
+    coords = zeros(FT, length(polys), maximum(length, polys) + 1, 2)
+    apolys = map(enumerate(polys)) do (i, p)
+        for (j, (x, y)) in enumerate([p; [p[1]]])
+            coords[i, j, 1], coords[i, j, 2] = x, y
+        end
+        Subzero.GeometryOpsGPU.ArrayPolygon(coords, i, length(p) + 1)
+    end
+    return coords, apolys
+end
+_gi_poly(p) = GI.Polygon([GI.LinearRing([p; [p[1]]])])
+
+#= The exterior rings of the floe shapes in test/inputs/floe_shapes.jld2 (7 to 591 vertices,
+coordinates up to ±65 km), as vectors of (x, y), without repeating the first point =#
+_floe_shape_rings() = jldopen(joinpath(@__DIR__, "inputs", "floe_shapes.jld2")) do f
+    [[(c[1], c[2]) for c in p[1]] for p in vec(f["floe_vertices"])]
+end
