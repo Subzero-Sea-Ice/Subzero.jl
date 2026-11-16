@@ -24,38 +24,6 @@ function midpoint(edge::GB.Line)
     GB.Point2((p1[1] + p2[1])/2, (p1[2] + p2[2])/2)
 end
 
-# Function to check if point is inside polygon (outer ring)
-function point_in_polygon(p::GB.Point2, poly_coords::Vector{Vector{Float64}})
-    x, y = p[1], p[2]
-    n = length(poly_coords)
-    inside = false
-    j = n
-    tol = 1e-9
-
-    for i in 1:n
-        xi, yi = poly_coords[i]
-        xj, yj = poly_coords[j]
-
-        # --- Check if point lies on this edge ---
-        cross = (x - xi) * (yj - yi) - (y - yi) * (xj - xi)
-        if abs(cross) < tol
-            if (min(xi, xj) - tol ≤ x ≤ max(xi, xj) + tol) &&
-               (min(yi, yj) - tol ≤ y ≤ max(yi, yj) + tol)
-                return true  # point is on the boundary
-            end
-        end
-
-        # --- Ray casting for inside/outside test ---
-        intersect = ((yi > y) != (yj > y)) &&
-                    (x < (xj - xi) * (y - yi) / (yj - yi + eps()) + xi)
-
-        inside ⊻= intersect
-        j = i
-    end
-
-    return inside
-end
-
 #Function to calculate differences in velocities at the endpoints of a bond
 function get_vel_diff(floes, idx_floe, idx_neighbour, mid)
     u_floe = floes.u[idx_floe] - floes.ξ[idx_floe] * (mid[2] - floes.centroid[idx_floe][2])
@@ -82,7 +50,8 @@ function timestep_bonds!(
     SF_b  = bond_settings.SF_b
     
     # --- Step 1. Update bonds due to fracturing ---
-    update_bonds!(floes)
+    update_bonds!(floes)     # To take exiting floes into account
+   
 
     # --- Step 2. Reset per-edge global xy forces (Keep nt historical states intact!) ---
     Threads.@threads for id in eachindex(floes)
@@ -92,17 +61,20 @@ function timestep_bonds!(
         end
     end
 
-    # --- Step 3. Build ID lookup table ---
-    id_to_indices = Dict{Int, Int}()
-    for (i, f) in enumerate(floes)
-        id_to_indices[f.id] = i
-    end
-
+    # --- Step 3. Build ID lookup table for al floes, including ghosts---
+   id_to_indices = Dict{Int, Vector{Int}}()
+   for (i, f) in enumerate(floes)
+       push!(get!(id_to_indices, f.id, Int[]), i)
+   end
+    # println("<<No. of floes>>",length(floes.id))
+    # println("<<ids>>",floes.id)
+    # println("<<Bonds>>",floes.bonds)
+    # println("<<Breakmode>>",floes.bond_break_mode)
     # --- Step 5. Main parallel bond computation ---
     Threads.@threads for idx in eachindex(floes)
         id = floes.id[idx]
         
-        if floes.ghost_id[idx] == 0  # Process parent elements
+        if floes.ghost_id[idx] == 0  # Process parent elements 
             floes.bond_force[idx] .= FT(0)
             edges_i = polygon_edges(floes.coords[idx][1]) 
             num_edges_i = length(edges_i) - 1
@@ -112,118 +84,148 @@ function timestep_bonds!(
                 
                 # Symmetrical safety: process bond interaction exactly once
                 if neighbor_id != 0 && id < neighbor_id
-                    
-                    nei_idx = id_to_indices[neighbor_id]
-                    edges_j = polygon_edges(floes.coords[nei_idx][1])
-                    
-                    ci = floes.centroid[idx]
-                    cj = floes.centroid[nei_idx]
-                    
-                    floei_edge = edges_i[edge_idx]
-                    
-                    # Find matching shared edge index position on our neighbor
-                    edge_idx_j = findfirst(x -> x == id, floes.bonds[nei_idx])
-                    floej_edge = edges_j[edge_idx_j]
-                    
-                    # Midline averaging calculations
-                    p1 = (floei_edge.points[1] + floej_edge.points[2]) / 2.0  
-                    p2 = (floei_edge.points[2] + floej_edge.points[1]) / 2.0  
-                    m = (p1 + p2) / 2.0
-                    Lb = norm(p2 - p1)
-                    
-                    # Thread-safe local variables for unit vectors
-                    local_tx, local_ty = (p2[1] - p1[1]) / (Lb + eps(FT)), (p2[2] - p1[2]) / (Lb + eps(FT))
-                    local_nx, local_ny = -local_ty, local_tx
-                    
-                    # Outward pointing alignment check via Centroid vector compass
-                    R_ij = cj - ci
-                    if (local_nx * R_ij[1] + local_ny * R_ij[2]) < 0
-                        local_nx = -local_nx
-                        local_ny = -local_ny
+                    # Find all ghost floes of current floe (geometry differs, that's why!!)
+                    i_indices = id_to_indices[id]
+                    neighbor_indices = get(id_to_indices, neighbor_id, Int[])
+                    best_dist = Inf
+                    best_dx = 0.0
+                    best_dy = 0.0
+                    best_pair = nothing
+                    for i_idx in i_indices # Go through all floes (parent + ghost)
+                        edges_i2 = polygon_edges(floes.coords[i_idx][1])
+                        edge_i = edges_i2[edge_idx]
+                        mid_i = midpoint(edge_i)
+                        for neighbor_idx in neighbor_indices  # Go through all neighbouring floes (parent + ghost)
+                            edges_n = polygon_edges(floes.coords[neighbor_idx][1])
+                            nei_edge_idx = findfirst(x -> x == id, floes.bonds[neighbor_idx])
+                            edge_n = edges_n[nei_edge_idx]
+                            mid_n = midpoint(edge_n)
+                            dx = mid_n[1] - mid_i[1]
+                            dy = mid_n[2] - mid_i[2]
+                            dist = sqrt(dx^2 + dy^2)
+                            if dist < best_dist
+                                best_dist = dist
+                                best_dx, best_dy = dx, dy
+                                best_pair = (i_idx, edge_idx, neighbor_idx, nei_edge_idx, mid_i, mid_n)
+                            end
+                            # best_pair = (index pos of floe, index pos of edge of floe connected to neighbour floe,
+                            #             index pos of neighbour floe, edge of nei floe connected to floe )
+                            # 1 -> Floe10 -> [20,3,4,5] # 2 -> Floe20 -> [5,6,7,10] best_pair:(1,1,2,4)
+                        end
                     end
-                    
-                    v_rel_x, v_rel_y = get_vel_diff(floes, idx, nei_idx, m)
-                    v_rel_n  = v_rel_x * local_nx + v_rel_y * local_ny
-                    v_rel_t  = v_rel_x * local_tx + v_rel_y * local_ty
-                    
-                    # Geometrical properties
-                    r_i = sqrt(floes.area[idx] / π)
-                    r_j = sqrt(floes.area[nei_idx] / π)
-                    r_eff = (2 * r_i * r_j) / (r_i + r_j + eps(FT))
-                    h_eff = min(floes.height[idx], floes.height[nei_idx])
-                    area_b = Lb * h_eff
-                    dxc = floes.centroid[nei_idx][1] - floes.centroid[idx][1]
-                    dyc = floes.centroid[nei_idx][2] - floes.centroid[idx][2]
-                    len_b = sqrt(dxc^2 + dyc^2) + eps(FT)
-                    I_z = (h_eff * Lb^3) / 12.0
-                    
-                    # Stiffness criteria
-                    k_b_val = consts.E * area_b / (len_b + eps(FT))
-                    G_b_val = (consts.E / (2 * (1 + consts.ν))) * area_b / (len_b + eps(FT))
-                    k_theta = consts.E * I_z / (len_b + eps(FT))
 
-                    # 1. Load previous values from historical storage arrays
-                    Fn_old = floes.ind_bond_force_nt[idx][edge_idx][1]
-                    Ft_old = floes.ind_bond_force_nt[idx][edge_idx][2]
-                    nx_old = floes.ind_bond_normal_old[idx][edge_idx][1]
-                    ny_old = floes.ind_bond_normal_old[idx][edge_idx][2]
-                    if nx_old == 0.0 && ny_old == 0.0
-                        nx_old = local_nx
-                        ny_old = local_ny
+                    if best_pair !== nothing
+                        idx2, edge_idx2, nei_idx2, nei_edge_idx2, mid_i2, mid_n2 = best_pair
+                        # Midline averaging calculations
+                        # id -> idx(act of parent) -> idx2 (parent/ghost)
+                        # neighbor_id -> nei_idx2
+                        floei_edge = edges_i[edge_idx2]
+                        edges_j = polygon_edges(floes.coords[nei_idx2][1])
+                        floej_edge = edges_j[nei_edge_idx2]
+                        p1 = (floei_edge.points[1] + floej_edge.points[2]) / 2.0  
+                        p2 = (floei_edge.points[2] + floej_edge.points[1]) / 2.0  
+                        m = (p1 + p2) / 2.0
+                        Lb = norm(p2 - p1)
+      
+                        # Thread-safe local variables for unit vectors
+                        local_tx, local_ty = (p2[1] - p1[1]) / (Lb + eps(FT)), (p2[2] - p1[2]) / (Lb + eps(FT))
+                        local_nx, local_ny = -local_ty, local_tx
+                    
+                        # Outward pointing alignment check via centroid vector 
+                        ci = floes.centroid[idx2]
+                        cj = floes.centroid[nei_idx2]
+                        R_ij = cj - ci
+                        if (local_nx * R_ij[1] + local_ny * R_ij[2]) < 0
+                            local_nx = -local_nx
+                            local_ny = -local_ny
+                        end
+                    
+                        v_rel_x, v_rel_y = get_vel_diff(floes, idx2, nei_idx2, m)
+                        v_rel_n  = v_rel_x * local_nx + v_rel_y * local_ny
+                        v_rel_t  = v_rel_x * local_tx + v_rel_y * local_ty
+                        # Geometrical properties
+                        r_i = sqrt(floes.area[idx2] / π)
+                        r_j = sqrt(floes.area[nei_idx2] / π)
+                        r_eff = (2 * r_i * r_j) / (r_i + r_j + eps(FT))
+                        h_eff = min(floes.height[idx2], floes.height[nei_idx2])
+                        area_b = Lb * h_eff
+                        dxc = cj[1] - ci[1]
+                        dyc = cj[2] - ci[2]
+                        len_b = sqrt(dxc^2 + dyc^2) + eps(FT)
+                        I_z = (h_eff * Lb^3) / 12.0
+                    
+                        # Stiffness criteria
+                        k_b_val = consts.E * area_b / (len_b + eps(FT))
+                        G_b_val = (consts.E / (2 * (1 + consts.ν))) * area_b / (len_b + eps(FT))
+                        k_theta = consts.E * I_z / (len_b + eps(FT))
+
+                        # 1. Load previous values from historical storage arrays
+                        Fn_old = floes.ind_bond_force_nt[idx][edge_idx][1]
+                        Ft_old = floes.ind_bond_force_nt[idx][edge_idx][2]
+                        nx_old = floes.ind_bond_normal_old[idx][edge_idx][1]
+                        ny_old = floes.ind_bond_normal_old[idx][edge_idx][2]
+                        if nx_old == 0.0 && ny_old == 0.0
+                            nx_old = local_nx
+                            ny_old = local_ny
+                        end
+                        cos_dθ = nx_old * local_nx + ny_old * local_ny
+                        sin_dθ = nx_old * local_ny - ny_old * local_nx
+                        Fn_old_rotated =  Fn_old * cos_dθ + Ft_old * sin_dθ
+                        Ft_old_rotated = -Fn_old * sin_dθ + Ft_old * cos_dθ 
+                        m_b = (floes.mass[idx2] * floes.mass[nei_idx2]) /
+                                  (floes.mass[idx2] + floes.mass[nei_idx2] + eps(FT))
+                        c_b = 2 * ζ_b * sqrt(k_b_val * m_b)
+                        Fn_bond = (k_b_val * v_rel_n * Δt) + (Fn_old_rotated * ζ_b)
+                        Ft_bond = (G_b_val * v_rel_t * Δt) + (Ft_old_rotated * ζ_b)
+                        floes.ind_bond_normal_old[idx][edge_idx][1] = local_nx
+                        floes.ind_bond_normal_old[idx][edge_idx][2] = local_ny
+                        # if id < neighbor_id  
+                        #     println(
+                        #         "Time: $curr_time | Bond [$id <-> $neighbor_id] | Edge: $edge_idx\n" *
+                        #         "  -> Normal Vec: Old=[$(round(nx_old, digits=4)), $(round(ny_old, digits=4))] " *
+                        #         "--> New=[$(round(local_nx, digits=4)), $(round(local_ny, digits=4))]\n" *
+                        #         "  -> Rotation  : cos(dθ)=$(round(cos_dθ, digits=4)), sin(dθ)=$(round(sin_dθ, digits=4))\n" *
+                        #         "  -> Forces    : Fn_old=$(round(Fn_old, digits=2)) -> Fn_rot=$(round(Fn_old_rotated, digits=2)) -> Fn_new=$(round(Fn_bond, digits=2))"
+                        #     )
+                        # end
+                        # Convert accumulated local states back to global x-y frames
+                        Fx_bond = (Fn_bond * local_nx) + (Ft_bond * local_tx)
+                        Fy_bond = (Fn_bond * local_ny) + (Ft_bond * local_ty)
+                    
+                       # Store current accumulated states back onto Floe-i
+                        floes.ind_bond_force_nt[idx][edge_idx][1] = Fn_bond
+                        floes.ind_bond_force_nt[idx][edge_idx][2] = Ft_bond   
+                        floes.ind_bond_force_xy[idx][edge_idx][1] = Fx_bond
+                        floes.ind_bond_force_xy[idx][edge_idx][2] = Fy_bond 
+                        
+                        # Cache active material stiffnesses for diagnostics
+                        floes.ind_bond_stiff_nt[idx][edge_idx][1] = k_b_val
+                        floes.ind_bond_stiff_nt[idx][edge_idx][2] = G_b_val
+   
+                        # Store bond areas
+                        floes.ind_bond_prop[idx][edge_idx][1] = area_b
+                        floes.ind_bond_prop[idx][edge_idx][2] = I_z
+                        floes.ind_bond_prop[idx][edge_idx][3] = Lb
+                        # Calculating bending moment
+                        Δω_z = floes.ξ[nei_idx2] - floes.ξ[idx2]
+                        M_old = floes.ind_bond_bm[idx][edge_idx]
+                        M_bond = (k_theta * Δω_z * Δt) + (M_old * ζ_b)
+                        floes.ind_bond_bm[idx][edge_idx] = M_bond
+
+                       #if curr_time == 0
+                       #        println("==================================================")
+                       #        println("Bond propertiesat  curr_time = 0")
+                       #        println("Interaction Pair: Floe ID ($id) <-> Neighbor ID ($neighbor_id)")
+                       #        println("--------------------------------------------------")
+                       #        println("  p1         : ", p1)
+                       #        println("  p2         : ", p2)
+                       #        println("  Midpoint   : ", m)
+                       #        println("  Length (Lb): ", Lb)
+                       #        println("  Normal Vec : nx = ", local_nx, ", ny = ", local_ny)
+                       #        println("  Tangential : tx = ", local_tx, ", ty = ", local_ty)
+                       #end
+                       #println("Time: $curr_time | All local bond forces: ", floes.ind_bond_force_nt)
                     end
-                    cos_dθ = nx_old * local_nx + ny_old * local_ny
-                    sin_dθ = nx_old * local_ny - ny_old * local_nx
-                    Fn_old_rotated =  Fn_old * cos_dθ + Ft_old * sin_dθ
-                    Ft_old_rotated = -Fn_old * sin_dθ + Ft_old * cos_dθ 
-                    m_b = (floes.mass[idx] * floes.mass[nei_idx]) /
-                              (floes.mass[idx] + floes.mass[nei_idx] + eps(FT))
-                    c_b = 2 * ζ_b * sqrt(k_b_val * m_b)
-                    Fn_bond = (k_b_val * v_rel_n * Δt) + (Fn_old_rotated * ζ_b)
-                    Ft_bond = (G_b_val * v_rel_t * Δt) + (Ft_old_rotated * ζ_b)
-                    floes.ind_bond_normal_old[idx][edge_idx][1] = local_nx
-                    floes.ind_bond_normal_old[idx][edge_idx][2] = local_ny
-                    #if id < neighbor_id  
-                    #    println(
-                    #        "Time: $curr_time | Bond [$id <-> $neighbor_id] | Edge: $edge_idx\n" *
-                    #        "  -> Normal Vec: Old=[$(round(nx_old, digits=4)), $(round(ny_old, digits=4))] " *
-                    #        "--> New=[$(round(local_nx, digits=4)), $(round(local_ny, digits=4))]\n" *
-                    #        "  -> Rotation  : cos(dθ)=$(round(cos_dθ, digits=4)), sin(dθ)=$(round(sin_dθ, digits=4))\n" *
-                    #        "  -> Forces    : Fn_old=$(round(Fn_old, digits=2)) -> Fn_rot=$(round(Fn_old_rotated, digits=2)) -> Fn_new=$(round(Fn_bond, digits=2))"
-                    #    )
-                    #end
-                    # Convert accumulated local states back to global x-y frames
-                    Fx_bond = (Fn_bond * local_nx) + (Ft_bond * local_tx)
-                    Fy_bond = (Fn_bond * local_ny) + (Ft_bond * local_ty)
-                    
-                    # Store current accumulated states back onto Floe I
-                    floes.ind_bond_force_nt[idx][edge_idx][1] = Fn_bond
-                    floes.ind_bond_force_nt[idx][edge_idx][2] = Ft_bond   
-                    floes.ind_bond_force_xy[idx][edge_idx][1] = Fx_bond
-                    floes.ind_bond_force_xy[idx][edge_idx][2] = Fy_bond 
-                    
-                    # Cache active material stiffnesses for diagnostics
-                    floes.ind_bond_stiff_nt[idx][edge_idx][1] = k_b_val
-                    floes.ind_bond_stiff_nt[idx][edge_idx][2] = G_b_val
-
-                    # Calculating bending moment
-                    Δω_z = floes.ξ[nei_idx] - floes.ξ[idx]
-                    M_old = floes.ind_bond_bm[idx][edge_idx]
-                    M_bond = (k_theta * Δω_z * Δt) + (M_old * ζ_b)
-                    floes.ind_bond_bm[idx][edge_idx] = M_bond
-
-                   #if curr_time == 0
-                   #        println("==================================================")
-                   #        println("BOND DIAGNOSTICS AT curr_time = 0")
-                   #        println("Interaction Pair: Floe ID ($id) <-> Neighbor ID ($neighbor_id)")
-                   #        println("--------------------------------------------------")
-                   #        println("  p1         : ", p1)
-                   #        println("  p2         : ", p2)
-                   #        println("  Midpoint   : ", m)
-                   #        println("  Length (Lb): ", Lb)
-                   #        println("  Normal Vec : nx = ", local_nx, ", ny = ", local_ny)
-                   #        println("  Tangential : tx = ", local_tx, ", ty = ", local_ty)
-                   #end
-                   #println("Time: $curr_time | All local bond forces: ", floes.ind_bond_force_nt)
                 end
             end
         end
@@ -247,6 +249,9 @@ function timestep_bonds!(
                      floes.ind_bond_stiff_nt[idx][edge_idx][1] = floes.ind_bond_stiff_nt[nei_idx_act][nei_edge_idx][1]
                      floes.ind_bond_stiff_nt[idx][edge_idx][2] = floes.ind_bond_stiff_nt[nei_idx_act][nei_edge_idx][2]
                      floes.ind_bond_bm[idx][edge_idx] = -floes.ind_bond_bm[nei_idx_act][nei_edge_idx]
+                     floes.ind_bond_prop[idx][edge_idx][1] = floes.ind_bond_prop[nei_idx_act][nei_edge_idx][1]
+                     floes.ind_bond_prop[idx][edge_idx][2] = floes.ind_bond_prop[nei_idx_act][nei_edge_idx][2]
+                     floes.ind_bond_prop[idx][edge_idx][3] = floes.ind_bond_prop[nei_idx_act][nei_edge_idx][3]
                end
             end
         end

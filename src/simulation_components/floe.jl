@@ -35,7 +35,7 @@ Singular sea ice floe with fields describing current state.
     moment::FT              # mass moment of intertia
     angles::Vector{FT}      # interior angles of floe in degrees
     # Bonds (Adjacenct floes information) ----------------------------------------
-    bonds::Vector{Int}  # Indices of neighboring floes
+    bonds::Vector{Int}      # Indices of neighboring floes
     bond_break_mode :: Vector{Int}
     # Monte Carlo Points ---------------------------------------------------
     x_subfloe_points::Vector{FT}        # x-coordinates for monte carlo integration centered
@@ -81,6 +81,7 @@ Singular sea ice floe with fields describing current state.
     ind_bond_stiff_nt::Vector{Vector{FT}} = Vector{Vector{FT}}()
     ind_bond_normal_old::Vector{Vector{FT}} = Vector{Vector{FT}}()
     ind_bond_bm::Vector{FT} = Vector{FT}() 
+    ind_bond_prop::Vector{Vector{FT}} = Vector{Vector{FT}}()
     stress_bond::Matrix{FT} = zeros(2, 2) # stress in a floe due to bonds
     interactions::Matrix{FT} = zeros(0, 7)
     num_inters::Int = 0
@@ -336,7 +337,6 @@ function poly_to_floes!(
     return 0
 end
 
-
 """
     initialize_floe_field(args...)
 
@@ -425,6 +425,7 @@ function _initialize_floe_field(
         floe.ind_bond_stiff_nt = [zeros(FT, 2) for _ in 1:nedges]
         floe.ind_bond_normal_old = [zeros(FT, 2) for _ in 1:nedges]
         floe.ind_bond_bm = zeros(FT, nedges)
+        floe.ind_bond_prop = [zeros(FT, 3) for _ in 1:nedges]
         floe_arr[i_idx] = floe
     end
     # Warn about floes with area less than minimum floe size
@@ -447,6 +448,17 @@ function _initialize_floe_field(
     end
     # Initialize floe IDs
     floe_arr.id .= range(1, length(floe_arr))
+    ensure_ccw!(floe_arr.coords)
+    # Calculate bonds for floe
+    num_floes = length(floe_arr.coords)
+    bboxes = [compute_bbox(floe_arr.coords[i][1]) for i in 1:num_floes]
+    bonds = Vector{Vector{Int}}(undef, num_floes)
+    for i_idx in eachindex(floe_arr)
+        edges_i = polygon_edges(floe_arr.coords[i_idx][1])
+        num_edges = length(edges_i)
+        bonds[i_idx] = zeros(Int, num_edges - 1)
+    end
+    calculate_bonds!(floe_arr, bboxes, bonds, num_floes)
     return floe_arr
 end
 
@@ -698,11 +710,23 @@ function _initialize_floe_field(
         floe.ind_bond_stiff_nt = [zeros(FT, 2) for _ in 1:nedges]
         floe.ind_bond_normal_old = [zeros(FT, 2) for _ in 1:nedges]
         floe.ind_bond_bm = zeros(FT, nedges)
+        floe.ind_bond_prop = [zeros(FT, 3) for _ in 1:nedges]
         floe_arr[i_idx] = floe
     end
 
     # Initialize floe IDs
     floe_arr.id .= range(1, length(floe_arr))
+    ensure_ccw!(floe_arr.coords)
+    # Calculate bonds for floe
+    num_floes = length(floe_arr.coords)
+    bboxes = [compute_bbox(floe_arr.coords[i][1]) for i in 1:num_floes]
+    bonds = Vector{Vector{Int}}(undef, num_floes)
+    for i_idx in eachindex(floe_arr)
+        edges_i = polygon_edges(floe_arr.coords[i_idx][1])
+        num_edges = length(edges_i)
+        bonds[i_idx] = zeros(Int, num_edges - 1)
+    end
+    calculate_bonds!(floe_arr, bboxes, bonds, num_floes)
     return floe_arr
 end
 
