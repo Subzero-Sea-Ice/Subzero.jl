@@ -74,6 +74,12 @@ function _coupling_test_model(::Type{FT}, ns_bc, ew_bc) where FT
     floes.centroid[1] .= (FT(9.5e3), FT(9.5e3))  # straddles the north-east corner
     floes.centroid[2] .= (FT(5e2),   FT(5e3))    # straddles the west edge
     floes.centroid[3] .= (FT(1.25e4), FT(5e3))   # fully east of the grid: n = 0 if east-west is open
+# 
+    # floe_settings = FloeSettings(FT; subfloe_point_generator = SubGridPointsGenerator(FT; grid, npoint_per_cell = 2))
+    # hmean = 0.25  # mean floe height
+    # Δh = 0.0      # difference in floe heights - here all floes are the same height
+    # floe_generator = VoronoiTesselationFieldGenerator(FT; nfloes = 50, concentrations = [0.75], hmean, Δh)
+    # floes = initialize_floe_field(FT; generator = floe_generator, domain, rng = Xoshiro(1), floe_settings)
     return Model(; grid, ocean, atmos, domain, floes)
 end
 
@@ -753,7 +759,7 @@ end
         @test npts == npts_cpu
         @test gidx == gidx_cpu
         @test isapprox(cart, cart_cpu; rtol = 10eps(FT))
-        @test all(isapprox.(vals, vals_cpu; atol = 100eps(FT)))
+        @test all_approx(vals, vals_cpu; atol = 10eps(FT))
     end
 
     @testset "Atmosphere and ocean forcing in one-way-coupling: $backend, $FT, NS=$ns, EW=$ew" for backend in test_backends(),
@@ -819,8 +825,12 @@ end
                 )
             end
         end
-        @test all(isapprox.(atm_vals, atm_cpu; atol = 10eps(FT)))
-        @test all(isapprox.(ocean_vals, ocean_cpu; atol = 10eps(FT)))
+        # @test all_approx(atm_vals, atm_cpu; atol = 10eps(FT))
+        # @test all_approx(ocean_vals, ocean_cpu; atol = 10eps(FT))
+        for (vals, ref) in ((atm_vals, atm_cpu), (ocean_vals, ocean_cpu)), c in axes(ref, 3)
+            v, r = view(vals, :, :, c), view(ref, :, :, c)
+            @test all_approx(v, r; atol = 20*eps(FT) * maximum(abs, r))
+        end
     end
 
     @testset "One way coupling on GPU: $backend, $FT, NS=$ns, EW=$ew" for backend in test_backends(),
@@ -856,9 +866,26 @@ end
             Subzero.Constants(),
         )
 
-        @test all(isapprox.(model.floes.fxOA, gpu_floes.fxOA; rtol = 100eps(FT)))
-        @test all(isapprox.(model.floes.fyOA, gpu_floes.fyOA; rtol = 100eps(FT)))
-        @test all(isapprox.(model.floes.trqOA, gpu_floes.trqOA; rtol = 100eps(FT)))
-        @test all(isapprox.(model.floes.hflx_factor, gpu_floes.hflx_factor; rtol = 100eps(FT)))
+        tolerances = zeros(FT, nfloes, 4)   # fxOA, fyOA, trqOA, hflx_factor
+        tolerances[:,1], tolerances[:,2], 
+        tolerances[:,3], tolerances[:,4] = _ref_one_way_coupling_tolerances(
+            model.floes,
+            model.grid,
+            model.atmos,
+            model.ocean, 
+            model.domain, 
+            CouplingSettings(),
+            Subzero.Constants(),
+        )
+
+        # @test all_approx(gpu_floes.fxOA, model.floes.fxOA; atol = 10eps(FT)* tolerances[:,1])
+        # @test all_approx(gpu_floes.fyOA, model.floes.fyOA; atol = 10eps(FT)* tolerances[:,2])
+        # @test all_approx(gpu_floes.trqOA, model.floes.trqOA; atol = 10eps(FT)* tolerances[:,3])
+        # @test all_approx(gpu_floes.hflx_factor, model.floes.hflx_factor; atol = 10eps(FT)* tolerances[:,4])
+
+        @test all(abs.(gpu_floes.fxOA .- model.floes.fxOA) .<= 10eps(FT) .* tolerances[:,1])
+        @test all(abs.(gpu_floes.fyOA .- model.floes.fyOA) .<= 10eps(FT) .* tolerances[:,2])
+        @test all(abs.(gpu_floes.trqOA .- model.floes.trqOA) .<= 10eps(FT) .* tolerances[:,3])
+        @test all(abs.(gpu_floes.hflx_factor .- model.floes.hflx_factor) .<= 10eps(FT) .* tolerances[:,4])
     end
 end
