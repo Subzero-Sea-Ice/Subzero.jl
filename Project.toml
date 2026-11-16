@@ -36,7 +36,9 @@ SubzeroMakieExt = ["CairoMakie", "GeoInterfaceMakie"]
 SubzeroMatExt = ["MAT", "GeoInterface"]
 
 [compat]
-AMDGPU = "2.8"
+# AMDGPU 2.12 can't be installed: its dependency ROCm_Runtime 10.1.0 uses TOML without
+# depending on it. Allow it again once that is fixed.
+AMDGPU = "2.8 - 2.11"
 AcceleratedKernels = "0.5.12"
 Adapt = "4.7.0"
 CUDA = "6.3.1"
