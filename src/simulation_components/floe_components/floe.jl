@@ -146,16 +146,10 @@ function FixedWidthFloes(
     centroid = zeros(FT, capacity, 2)
     collision_force = zeros(FT, capacity, 2)
     num_inters = padded(Int32.(floes.num_inters))
-    poly = zeros(FT, nfloes, max_points, 2)
-
-    n_subfloe_points = Int32[length(x) for x in floes.x_subfloe_points]
+    n_subfloe_points = padded(Int32[length(x) for x in floes.x_subfloe_points])
     max_mc_points = isempty(floes) ? 0 : Int(maximum(n_subfloe_points))
-    x_subfloe_points = zeros(FT, nfloes, max_mc_points)
-    y_subfloe_points = zeros(FT, nfloes, max_mc_points)
-
-    centroid = Matrix{FT}(undef, nfloes, 2)
-    collision_force = Matrix{FT}(undef, nfloes, 2)
-    num_inters = Int32.(floes.num_inters)
+    x_subfloe_points = zeros(FT, capacity, max_mc_points)
+    y_subfloe_points = zeros(FT, capacity, max_mc_points)
     max_inters = isempty(floes) ? 0 : Int(maximum(num_inters))
     interactions = zeros(FT, capacity, max_inters, 7)
     stress_accum = zeros(FT, capacity, 2, 2)
@@ -187,6 +181,9 @@ function FixedWidthFloes(
         padded(floes.height),
         padded(floes.mass),
         padded(floes.moment),
+        n_subfloe_points,
+        x_subfloe_points,
+        y_subfloe_points,
         padded(floes.α),
         padded(floes.u),
         padded(floes.v),
@@ -195,21 +192,6 @@ function FixedWidthFloes(
         padded(floes.fyOA),
         padded(floes.trqOA),
         padded(floes.hflx_factor),
-        copy(floes.area),
-        copy(floes.height),
-        copy(floes.mass),
-        copy(floes.moment),
-        n_subfloe_points,
-        x_subfloe_points,
-        y_subfloe_points,
-        copy(floes.α),
-        copy(floes.u),
-        copy(floes.v),
-        copy(floes.ξ),
-        copy(floes.fxOA),
-        copy(floes.fyOA),
-        copy(floes.trqOA),
-        copy(floes.hflx_factor),
         collision_force,
         padded(floes.collision_trq),
         num_inters,
@@ -225,8 +207,8 @@ function FixedWidthFloes(
         padded(floes.p_dξdt),
         padded(floes.p_dαdt),
         zeros(UInt8, capacity),
-        zeros(UInt8, nfloes),
-        StatusTag[s.tag for s in floes.status],
+        # StatusTag has no zero value, so spare rows are `active`
+        copyto!(fill(active, capacity), StatusTag[s.tag for s in floes.status]),
     )
 end
 
@@ -277,6 +259,10 @@ function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedW
         floes.u .= fwf.u[1:n]
         floes.v .= fwf.v[1:n]
         floes.ξ .= fwf.ξ[1:n]
+        floes.fxOA .= fwf.fxOA[1:n]
+        floes.fyOA .= fwf.fyOA[1:n]
+        floes.trqOA .= fwf.trqOA[1:n]
+        floes.hflx_factor .= fwf.hflx_factor[1:n]
         floes.p_dxdt .= fwf.p_dxdt[1:n]
         floes.p_dydt .= fwf.p_dydt[1:n]
         floes.p_dudt .= fwf.p_dudt[1:n]
@@ -284,23 +270,6 @@ function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedW
         floes.p_dξdt .= fwf.p_dξdt[1:n]
         floes.p_dαdt .= fwf.p_dαdt[1:n]
     end
-    floes.height .= fwf.height
-    floes.mass .= fwf.mass
-    floes.moment .= fwf.moment
-    floes.α .= fwf.α
-    floes.u .= fwf.u
-    floes.v .= fwf.v
-    floes.ξ .= fwf.ξ
-    floes.fxOA .= fwf.fxOA
-    floes.fyOA .= fwf.fyOA
-    floes.trqOA .= fwf.trqOA
-    floes.hflx_factor .= fwf.hflx_factor
-    floes.p_dxdt .= fwf.p_dxdt
-    floes.p_dydt .= fwf.p_dydt
-    floes.p_dudt .= fwf.p_dudt
-    floes.p_dvdt .= fwf.p_dvdt
-    floes.p_dξdt .= fwf.p_dξdt
-    floes.p_dαdt .= fwf.p_dαdt
     return
 end
 

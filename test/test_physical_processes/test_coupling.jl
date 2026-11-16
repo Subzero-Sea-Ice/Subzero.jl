@@ -729,7 +729,7 @@ end
         dm = Subzero.adapt_model(model, backend)
         fwf = Subzero.FixedWidthFloes(model.floes)
 
-        nfloes, maxp = size(fwf.x_subfloe_points)
+        nfloes, maxp = fwf.n_floes, size(fwf.x_subfloe_points, 2)
         cart = Subzero.adapt(backend, zeros(FT, nfloes, maxp, 2))
         gidx = Subzero.adapt(backend, zeros(Int, nfloes, maxp, 2))
         npts = Subzero.adapt(backend, zeros(Int, nfloes))
@@ -768,7 +768,7 @@ end
         dm = Subzero.adapt_model(model, backend)
         fwf = Subzero.FixedWidthFloes(model.floes)
 
-        nfloes, maxp = size(fwf.x_subfloe_points)
+        nfloes, maxp = fwf.n_floes, size(fwf.x_subfloe_points, 2)
         cart = Subzero.adapt(backend, zeros(FT, nfloes, maxp, 2))
         gidx = Subzero.adapt(backend, zeros(Int, nfloes, maxp, 2))
         npts = Subzero.adapt(backend, zeros(Int, nfloes))
@@ -841,7 +841,7 @@ end
         fwf = Subzero.FixedWidthFloes(model.floes)
         dev_floes = Subzero.adapt(backend, fwf)
 
-        nfloes, _ = size(fwf.x_subfloe_points)
+        nfloes = fwf.n_floes
 
         Subzero.calc_one_way_coupling!(
             dev_floes,
@@ -883,9 +883,11 @@ end
         # @test all_approx(gpu_floes.trqOA, model.floes.trqOA; atol = 10eps(FT)* tolerances[:,3])
         # @test all_approx(gpu_floes.hflx_factor, model.floes.hflx_factor; atol = 10eps(FT)* tolerances[:,4])
 
-        @test all(abs.(gpu_floes.fxOA .- model.floes.fxOA) .<= 10eps(FT) .* tolerances[:,1])
-        @test all(abs.(gpu_floes.fyOA .- model.floes.fyOA) .<= 10eps(FT) .* tolerances[:,2])
-        @test all(abs.(gpu_floes.trqOA .- model.floes.trqOA) .<= 10eps(FT) .* tolerances[:,3])
-        @test all(abs.(gpu_floes.hflx_factor .- model.floes.hflx_factor) .<= 10eps(FT) .* tolerances[:,4])
+        # Only the first nfloes rows are floes in use; the rest is spare capacity
+        in_use = 1:nfloes
+        @test all(abs.(gpu_floes.fxOA[in_use] .- model.floes.fxOA) .<= 10eps(FT) .* tolerances[:,1])
+        @test all(abs.(gpu_floes.fyOA[in_use] .- model.floes.fyOA) .<= 10eps(FT) .* tolerances[:,2])
+        @test all(abs.(gpu_floes.trqOA[in_use] .- model.floes.trqOA) .<= 10eps(FT) .* tolerances[:,3])
+        @test all(abs.(gpu_floes.hflx_factor[in_use] .- model.floes.hflx_factor) .<= 10eps(FT) .* tolerances[:,4])
     end
 end
