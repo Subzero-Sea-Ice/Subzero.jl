@@ -18,7 +18,7 @@ heatmap and colorbar.
 ## Arguments:
 - `floe_fn::String`: $(Subzero.FLOE_FN_DEF)
 - `initial_state_fn::String`: $(Subzero.INITIAL_STATE_FN_DEF)
-- `Δt::Int`: $(Subzero.ΔT_DEF)
+- $(Subzero.ΔT_DEF)
 - `output_fn::String`: $(Subzero.MP4_OUTPUT_FN)
 """
 function plot_sim(
@@ -36,12 +36,10 @@ function plot_sim(
     xmax, xmin = domain.east.val, domain.west.val
     ymax, ymin = domain.north.val, domain.south.val
     Δx, Δy = xmax - xmin, ymax - ymin
-
     # Floe Information
     file = jldopen(floe_fn)
     sim_polys = file["poly"]
     timesteps = keys(sim_polys)
-
     # Set up observables for recording (updated whenever `time[]` is set to a new value)
     time = Observable(timesteps[1])  # note these are strings as we index into a JLD2 file
     time_polys = @lift(sim_polys[$time])
