@@ -235,8 +235,8 @@ function FixedWidthFloes(
         num_ghosts,
         ghosts,
         zeros(UInt8, capacity),
-        zeros(UInt8, nfloes),
-        StatusTag[s.tag for s in floes.status],
+        # StatusTag has no zero value, so spare rows are `active`
+        copyto!(fill(active, capacity), StatusTag[s.tag for s in floes.status]),
     )
 end
 
