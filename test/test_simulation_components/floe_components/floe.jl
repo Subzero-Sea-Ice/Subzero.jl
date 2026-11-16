@@ -242,12 +242,13 @@
         FT = Float64
         floes = _make_timestep_test_floes(FT, FloeSettings())
         fwf = Subzero.FixedWidthFloes(floes)
+        n = length(floes)
         # Ragged fields are padded to the longest floe
         n_points = [GI.npoint(p) for p in floes.poly]
-        @test fwf.n_points == n_points
-        @test size(fwf.poly) == (length(floes), maximum(n_points), 2)
-        @test fwf.num_inters == floes.num_inters
-        @test size(fwf.interactions) == (length(floes), maximum(floes.num_inters), 7)
+        @test fwf.n_points[1:n] == n_points
+        @test size(fwf.poly) == (Subzero.capacity(fwf), maximum(n_points), 2)
+        @test fwf.num_inters[1:n] == floes.num_inters
+        @test size(fwf.interactions) == (Subzero.capacity(fwf), maximum(floes.num_inters), 7)
         for i in eachindex(floes)
             @test all(fwf.poly[i, (n_points[i] + 1):end, :] .== 0)
             @test [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:n_points[i]] ==
@@ -285,5 +286,66 @@
         @test floes.strain[3][1, 2] == 42
         @test floes.u[3] == 42
         @test floes.poly[3] isa Subzero.Polys{FT}
+    end
+
+    @testset "FixedWidthFloes with spare capacity" begin
+        FT = Float64
+        floes = _make_timestep_test_floes(FT, FloeSettings())
+        n = length(floes)
+        # By default 25% more room than floes, rounded up
+        @test Subzero.FixedWidthFloes(floes).n_floes == n
+        @test Subzero.capacity(Subzero.FixedWidthFloes(floes)) == ceil(Int, 1.25n)
+        @test Subzero.capacity(Subzero.FixedWidthFloes(floes[1:0])) == 0
+        @test Subzero.capacity(Subzero.FixedWidthFloes(floes[1:1])) == 2
+        fwf = Subzero.FixedWidthFloes(floes; capacity = n)
+        @test fwf.n_floes == Subzero.capacity(fwf) == n
+        spare = Subzero.FixedWidthFloes(floes; capacity = n + 3)
+        @test spare.n_floes == n
+        @test Subzero.capacity(spare) == n + 3
+        # The floes in use are the same as without spare capacity, the spare rows are zero
+        for field in fieldnames(Subzero.FixedWidthFloes)
+            field == :n_floes && continue
+            a, b = getfield(spare, field), getfield(fwf, field)
+            @test size(a) == (n + 3, size(b)[2:end]...)
+            @test selectdim(a, 1, 1:n) == b
+            @test all(iszero, selectdim(a, 1, (n + 1):(n + 3)))
+        end
+        @test_throws ArgumentError Subzero.FixedWidthFloes(floes; capacity = n - 1)
+        # Round trip with spare capacity leaves floes unchanged
+        expected = deepcopy(floes)
+        Subzero.update_floes!(floes, spare)
+        @test floes.centroid == expected.centroid
+        @test floes.u == expected.u
+        @test floes.poly == expected.poly
+        # Changing the number of floes in use shares the arrays
+        fewer = Subzero.set_n_floes(spare, n - 2)
+        @test fewer.n_floes == n - 2
+        @test Subzero.capacity(fewer) == n + 3
+        @test fewer.poly === spare.poly && fewer.flags === spare.flags
+        @test Subzero.set_n_floes(spare, 0).n_floes == 0
+        @test Subzero.set_n_floes(spare, n + 3).n_floes == n + 3
+        @test_throws ArgumentError Subzero.set_n_floes(spare, n + 4)
+        @test_throws ArgumentError Subzero.set_n_floes(spare, -1)
+        @test_throws ArgumentError Subzero.update_floes!(floes, fewer)
+        #= Kernels only run on the floes in use: mark! writes `floe_ran` into the flags of
+        every floe it runs on, and the other floes keep the `floe_did_not_run` flags they
+        start with. These are test markers, not FLAG_* event bits. =#
+        floe_ran = 0x01
+        floe_did_not_run = 0x00
+        mark!(floes, i, value) = (floes.flags[i] = value; nothing)
+        @testset "launch_per_floe! on $backend" for backend in test_backends()
+            for m in (0, n - 2, n + 3)
+                # A new copy each time: adapt to the CPU backend shares the arrays
+                fresh = Subzero.FixedWidthFloes(floes; capacity = n + 3)
+                dev_floes = Subzero.adapt(backend, Subzero.set_n_floes(fresh, m))
+                @test dev_floes.n_floes == m
+                Subzero.launch_per_floe!(mark!, backend, dev_floes, floe_ran)
+                Subzero.KernelAbstractions.synchronize(backend)
+                host_floes = Subzero.adapt(Array, dev_floes)
+                @test host_floes.n_floes == m
+                @test host_floes.flags ==
+                    [i <= m ? floe_ran : floe_did_not_run for i in 1:(n + 3)]
+            end
+        end
     end
 end

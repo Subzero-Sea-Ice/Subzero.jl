@@ -40,6 +40,12 @@ Only keyword arguments are used!
 
 !!! note
     If a `FloeSettings` object is required since it is also an input to the [`_initialize_floe_field!`](@ref) functions.
+
+!!! note
+    The floes are copied to the `backend` and back on every timestep. With AMDGPU.jl 2.11 or later
+    on Linux, allocating GPU memory for them is slow by default: AMDGPU then uses a memory pool
+    that other processes can share with GPU-aware MPI. If you don't use GPU-aware MPI, run
+    `AMDGPU.memory_pool_handle_type!("none")` once in your environment and restart Julia.
 """
 @kwdef struct Simulation{
     FT<:AbstractFloat,
@@ -237,7 +243,8 @@ function timestep_sim!(sim, dev_model, tstep, start_tstep = 0)
         KernelAbstractions.synchronize(sim.backend)
         host_floes = adapt(Array, dev_floes)
         update_floes!(sim.model.floes, host_floes)
-        _log_flags(host_floes.flags, tstep, sim.floe_settings)
+        # Only the floes in use: spare rows may hold flags of floes that were removed
+        _log_flags(@view(host_floes.flags[1:host_floes.n_floes]), tstep, sim.floe_settings)
         # Fracture floes
         if sim.fracture_settings.fractures_on && mod(tstep, sim.fracture_settings.Δt) == 0
             max_floe_id =

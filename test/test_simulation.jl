@@ -31,7 +31,9 @@ end
     make_simulation = _shear_flow_simulation_factory()
     @test make_simulation(Subzero.KernelAbstractions.CPU()).backend isa
         Subzero.KernelAbstractions.CPU
-    gpu_backends = filter(b -> b isa Subzero.KernelAbstractions.GPU, test_backends())
+    # Not `isa KernelAbstractions.GPU`: since KernelAbstractions 0.10, `GPU` is a deprecated
+    # alias of `Backend`, so the CPU backend would be compared with itself
+    gpu_backends = filter(b -> !(b isa Subzero.KernelAbstractions.CPU), test_backends())
     @testset "CPU and $backend give the same result" for backend in gpu_backends
         sims = [make_simulation(Subzero.KernelAbstractions.CPU()), make_simulation(backend)]
         with_logger(NullLogger()) do

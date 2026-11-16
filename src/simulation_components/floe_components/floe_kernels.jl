@@ -25,7 +25,8 @@ end
 """
     launch_per_floe!(f, backend, floes, args...; workgroup_size = 512)
 
-Calls `f(floes, i, args...)` for every floe `i` of `floes`, as a kernel on `backend`. `f`
+Calls `f(floes, i, args...)` for every floe `i` in use (`1:floes.n_floes`), as a kernel on
+`backend`; the spare rows of `floes` are left alone. `f`
 is a plain function, so it can also be called and unit-tested on the CPU without
 KernelAbstractions. Functions are isbits, so `f` can be passed to the kernel like any other
 argument, and the kernel is compiled once for each `f`.
@@ -47,6 +48,8 @@ The kernel runs asynchronously: call `KernelAbstractions.synchronize(backend)` b
 - Nothing. `f` updates `floes` in-place.
 """
 function launch_per_floe!(f, backend, floes, args...; workgroup_size = 512)
-    per_floe_kernel!(backend, workgroup_size)(f, floes, args, ndrange = length(floes.height))
+    # Some GPU backends can't launch a kernel without threads
+    floes.n_floes == 0 && return
+    per_floe_kernel!(backend, workgroup_size)(f, floes, args, ndrange = floes.n_floes)
     return
 end

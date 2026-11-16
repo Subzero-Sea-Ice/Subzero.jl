@@ -1,3 +1,5 @@
+# Before loading any package, as adding a GPU package can change their versions
+include("gpu_packages.jl")
 using JLD2, Logging, NCDatasets, Random, SplitApplyCombine,
     Statistics, StructArrays, Subzero
 import GeometryOps as GO

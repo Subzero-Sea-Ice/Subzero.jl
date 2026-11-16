@@ -42,11 +42,17 @@ function device_name(name)
     end
 end
 
+# AMDGPU's memory pool: "exportable" (the default since AMDGPU 2.11, where allocating is much
+# slower; see README.md), "not exportable", or "unknown" for versions that don't say.
+amdgpu_memory_pool() = !isdefined(AMDGPU, :memory_pool_exportable) ? "unknown" :
+    AMDGPU.memory_pool_exportable() ? "exportable" : "not exportable"
+
 function print_device(name)
     if name == "CUDA"
         println(device_name(name), ", CUDA runtime ", CUDA.runtime_version())
     elseif name == "AMDGPU"
-        println(device_name(name), ", HIP runtime ", AMDGPU.HIP.runtime_version())
+        println(device_name(name), ", HIP runtime ", AMDGPU.HIP.runtime_version(),
+            ", memory pool ", amdgpu_memory_pool())
     end
 end
 
@@ -81,7 +87,10 @@ to_float(::Type{Float32}, fwf::FixedWidthFloes) = to_float32(fwf)
 # Copy all fields of src into dst, to reset dst between samples. This is much faster than
 # making a new copy, and doesn't leave garbage that fills up the memory.
 function reset!(dst::FixedWidthFloes, src::FixedWidthFloes, backend)
-    foreach(f -> copyto!(getfield(dst, f), getfield(src, f)), fieldnames(FixedWidthFloes))
+    dst.n_floes == src.n_floes || error("dst and src have different numbers of floes in use")
+    foreach(fieldnames(FixedWidthFloes)) do f
+        f == :n_floes || copyto!(getfield(dst, f), getfield(src, f))
+    end
     KernelAbstractions.synchronize(backend)
 end
 
