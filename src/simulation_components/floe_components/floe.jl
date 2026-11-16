@@ -225,6 +225,8 @@ function FixedWidthFloes(
         padded(floes.p_dξdt),
         padded(floes.p_dαdt),
         zeros(UInt8, capacity),
+        zeros(UInt8, nfloes),
+        StatusTag[s.tag for s in floes.status],
     )
 end
 
@@ -244,17 +246,6 @@ function set_n_floes(floes::FixedWidthFloes, n)
         fieldname(typeof(floes), k) === :n_floes ? Int(n) : getfield(floes, k)
     end
     return FixedWidthFloes(fields...)
-end
-        copy(floes.damage),
-        copy(floes.p_dxdt),
-        copy(floes.p_dydt),
-        copy(floes.p_dudt),
-        copy(floes.p_dvdt),
-        copy(floes.p_dξdt),
-        copy(floes.p_dαdt),
-        zeros(UInt8, nfloes),
-        StatusTag[s.tag for s in floes.status],
-    )
 end
 
 #=
