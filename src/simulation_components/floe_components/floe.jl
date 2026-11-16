@@ -235,6 +235,8 @@ function FixedWidthFloes(
         num_ghosts,
         ghosts,
         zeros(UInt8, capacity),
+        zeros(UInt8, nfloes),
+        StatusTag[s.tag for s in floes.status],
     )
 end
 
