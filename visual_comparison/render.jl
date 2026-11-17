@@ -11,8 +11,8 @@ both runs. Fracture and ridging make new floes with new ids, and once they diffe
 the runs, floes with the same new id aren't the same floe. So the distance is only taken
 over the initial floes that are still in both runs, and the line says from when the runs
 have different floes. Through periodic boundaries, the distance is the shortest one.
-Below the panels, a graph of the largest and the median of these distances against time,
-which draws itself up to the current frame.
+Below the panels, two graphs of the largest and the median of these distances against time,
+on a log and on a linear scale, which draw themselves up to the current frame.
 =#
 using Subzero, CairoMakie, JLD2, Random, Statistics, StructArrays, Printf
 const GI = Subzero.GI
@@ -115,30 +115,41 @@ function render(name)
             poly!(ax, wall_bands; color = WALL_COLOR)
         end
     end
-    #= Graph of the differences against time (hours), on a log scale. Distances of zero (the
-    first frame, where both runs start from the same floes) can't be shown on it, so the line
-    starts at the first nonzero distance. The axes are fixed for the whole video. =#
+    #= Two graphs of the differences against time (hours), side by side: on a log scale, which
+    shows the early growth from tiny differences, and on a linear scale, which shows how many
+    metres the later growth adds. Distances of zero (the first frame, where both runs start
+    from the same floes) can't be shown on the log scale, so its lines start at the first
+    nonzero distance. The axes are fixed for the whole video. =#
     hours = tsteps .* Δt ./ 3600
-    positive = filter(>(0), [d for s in stats for d in (s.max_dist, s.median_dist)])
+    distances = [d for s in stats for d in (s.max_dist, s.median_dist)]
+    positive = filter(>(0), distances)
     lo, hi = isempty(positive) ? (1e-12, 1.0) : (minimum(positive) / 3, 3maximum(positive))
-    ax_graph = Axis(fig[4, 1:3]; xlabel = "time [hours]", ylabel = "centroid difference [m]",
+    graphs = GridLayout(fig[4, 1:3])
+    title = "Differences in position of the initial floes in both runs"
+    ax_log = Axis(graphs[1, 1]; xlabel = "time [hours]", ylabel = "centroid difference [m]",
         yscale = log10, limits = (hours[1], hours[end], lo, hi), height = 200,
-        title = "Differences in position of the initial floes in both runs")
-    line_points(f) = @lift([Point2d(hours[i], f(stats[i])) for i in 1:$k if f(stats[i]) > 0])
-    largest = line_points(s -> s.max_dist)
-    middle = line_points(s -> s.median_dist)
-    lines!(ax_graph, largest; color = :firebrick, linewidth = 2, label = "largest")
-    lines!(ax_graph, middle; color = :steelblue, linewidth = 2, label = "median")
-    scatter!(ax_graph, @lift(isempty($largest) ? Point2d[] : [last($largest)]);
-        color = :firebrick, markersize = 10)
-    scatter!(ax_graph, @lift(isempty($middle) ? Point2d[] : [last($middle)]);
-        color = :steelblue, markersize = 10)
-    if !isnothing(first_different)
-        # appears when the runs start to have different floes
-        vlines!(ax_graph, hours[first_different]; color = :gray40, linestyle = :dash,
-            visible = @lift($k >= first_different), label = "floes start to differ")
+        title = "$title (log scale)")
+    ax_lin = Axis(graphs[1, 2]; xlabel = "time [hours]", ylabel = "centroid difference [m]",
+        limits = (hours[1], hours[end], 0, max(1.05maximum(distances), 1e-12)),
+        height = 200, title = "$title (linear scale)")
+    # the points up to the current frame, and the last one, which is drawn as a dot
+    line_points(f, keep) =
+        @lift([Point2d(hours[i], f(stats[i])) for i in 1:$k if keep(f(stats[i]))])
+    end_point(points) = @lift(isempty($points) ? Point2d[] : [last($points)])
+    for (ax, keep) in ((ax_log, >(0)), (ax_lin, _ -> true))
+        largest = line_points(s -> s.max_dist, keep)
+        middle = line_points(s -> s.median_dist, keep)
+        lines!(ax, largest; color = :firebrick, linewidth = 2, label = "largest")
+        lines!(ax, middle; color = :steelblue, linewidth = 2, label = "median")
+        scatter!(ax, end_point(largest); color = :firebrick, markersize = 10)
+        scatter!(ax, end_point(middle); color = :steelblue, markersize = 10)
+        if !isnothing(first_different)
+            # appears when the runs start to have different floes
+            vlines!(ax, hours[first_different]; color = :gray40, linestyle = :dash,
+                visible = @lift($k >= first_different), label = "floes start to differ")
+        end
     end
-    axislegend(ax_graph; position = :rb)
+    axislegend(ax_log; position = :rb)
     Label(fig[5, 1:3],
         "Both runs start from the same floes. With collisions, round-off differences grow " *
         "over time, so floes can drift apart late in a run without anything being wrong. " *
