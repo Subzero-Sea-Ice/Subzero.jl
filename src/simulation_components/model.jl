@@ -72,7 +72,7 @@ struct dev_Model
     ocean::dev_Ocean
     atmos::dev_Atmos
     domain::dev_Domain
-    #Floes are not implemented for testing purposes
+    #Floes are not implemented while porting the code to GPU
     # floes::FixedWidthFloes
 end
 
