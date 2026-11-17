@@ -98,7 +98,7 @@ struct Ocean{FT<:AbstractFloat}
     end
 end
 
-struct dev_Ocean{FT<:AbstractFloat, M<:AbstractMatrix{FT}, MI<:AbstractArray{Int, 2}}
+struct dev_Ocean{FT<:AbstractFloat, M<:AbstractArray{FT, 2}, MI<:AbstractArray{Int, 2}}
     u::M
     v::M
     temp::M
