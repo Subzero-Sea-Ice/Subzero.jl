@@ -36,6 +36,66 @@ function _launch_on(f, backend, fwf, args...)
 end
 
 #=
+    all_approx(actual, expected; atol, rtol, nshow = 10)
+
+`all(isapprox.(actual, expected; atol, rtol))` for arrays of numbers, but when it is false
+it prints the entries that fail, so `@test all_approx(gpu, cpu; rtol = 100eps(FT))` shows
+how far apart the numbers are. Prints the worst `nshow` entries (largest absolute
+difference), each with its difference and the largest difference isapprox allows there,
+max(atol, rtol * max(|actual|, |expected|)).
+=#
+function all_approx(actual, expected; nshow = 10, kwargs...)
+    if size(actual) != size(expected)
+        println("all_approx: sizes differ: $(size(actual)) vs $(size(expected))")
+        return false
+    end
+
+    is_close = isapprox.(actual, expected; kwargs...)
+    if all(is_close)
+        return true
+    end
+
+    # Float type for the differences (Float64 when comparing Float32 with Float64)
+    T = float(promote_type(eltype(actual), eltype(expected)))
+
+    # Tolerances passed by the caller, with the same defaults as isapprox
+    atol = get(kwargs, :atol, 0)
+    rtol = get(kwargs, :rtol, atol > 0 ? 0 : sqrt(eps(T)))
+
+    # For one entry `idx` (an index into an array with any number of dimensions):
+    # the difference, and the largest difference isapprox allows for that entry
+    function abs_diff(idx)
+        return abs(T(actual[idx]) - T(expected[idx]))
+    end
+    function allowed_diff(idx)
+        larger_value = max(abs(T(actual[idx])), abs(T(expected[idx])))
+        return max(atol, rtol * larger_value)
+    end
+
+    # Indices of the entries that are not close, largest difference first
+    failing = findall(.!is_close)
+    sort!(failing; by = abs_diff, rev = true)
+    nprint = min(nshow, length(failing))
+
+    max_diff = maximum(abs_diff, CartesianIndices(actual))
+    max_ratio = maximum(idx -> abs_diff(idx) / allowed_diff(idx), failing)
+
+    println("all_approx failed ($(NamedTuple(kwargs))): $(length(failing)) of ",
+            "$(length(is_close)) entries differ, eltype $T")
+    println("  max |actual - expected| over all entries: $max_diff")
+    println("  max |actual - expected| / allowed difference: $max_ratio")
+    println("  worst $nprint failing entries:")
+    for idx in failing[1:nprint]
+        diff = abs_diff(idx)
+        allowed = allowed_diff(idx)
+        ratio = round(diff / allowed; sigdigits = 3)
+        println("    $(Tuple(idx)): actual = $(actual[idx]), expected = $(expected[idx]), ",
+                "|diff| = $diff, allowed = $allowed, |diff| / allowed = $ratio")
+    end
+    return false
+end
+
+#=
     find_poly_coords(poly)
 
 Syntactic sugar for to find a polygon's coordinates

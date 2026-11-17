@@ -302,13 +302,15 @@
         spare = Subzero.FixedWidthFloes(floes; capacity = n + 3)
         @test spare.n_floes == n
         @test Subzero.capacity(spare) == n + 3
-        # The floes in use are the same as without spare capacity, the spare rows are zero
+        #= The floes in use are the same as without spare capacity, the spare rows are zero
+        (`active` for `tag`, since StatusTag has no zero) =#
         for field in fieldnames(Subzero.FixedWidthFloes)
             field == :n_floes && continue
             a, b = getfield(spare, field), getfield(fwf, field)
             @test size(a) == (n + 3, size(b)[2:end]...)
             @test selectdim(a, 1, 1:n) == b
-            @test all(iszero, selectdim(a, 1, (n + 1):(n + 3)))
+            is_padding = field == :tag ? ==(Subzero.active) : iszero
+            @test all(is_padding, selectdim(a, 1, (n + 1):(n + 3)))
         end
         @test_throws ArgumentError Subzero.FixedWidthFloes(floes; capacity = n - 1)
         # Round trip with spare capacity leaves floes unchanged

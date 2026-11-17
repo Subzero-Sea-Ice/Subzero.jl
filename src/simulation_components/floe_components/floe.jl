@@ -77,6 +77,7 @@ struct FixedWidthFloes{
     AT1<:AbstractArray{FT, 1},
     IT1<:AbstractArray{Int32, 1},
     UT1<:AbstractArray{UInt8, 1},
+    UTt<:AbstractArray{StatusTag, 1}
 }
     # Number of floes in use
     n_floes::Int
@@ -88,6 +89,10 @@ struct FixedWidthFloes{
     height::AT1
     mass::AT1
     moment::AT1
+    #Monte Carlo points
+    subfloe_points::IT1
+    x_subfloe_points::AT2
+    y_subfloe_points::AT2
     # Velocity/orientation
     α::AT1
     u::AT1
@@ -115,6 +120,8 @@ struct FixedWidthFloes{
     p_dαdt::AT1
     # Events reported by kernels
     flags::UT1
+    # Flag for each floe
+    tag::UTt
 end
 
 Adapt.@adapt_structure FixedWidthFloes
@@ -139,12 +146,20 @@ function FixedWidthFloes(
     centroid = zeros(FT, capacity, 2)
     collision_force = zeros(FT, capacity, 2)
     num_inters = padded(Int32.(floes.num_inters))
+    n_subfloe_points = padded(Int32[length(x) for x in floes.x_subfloe_points])
+    max_mc_points = isempty(floes) ? 0 : Int(maximum(n_subfloe_points))
+    x_subfloe_points = zeros(FT, capacity, max_mc_points)
+    y_subfloe_points = zeros(FT, capacity, max_mc_points)
     max_inters = isempty(floes) ? 0 : Int(maximum(num_inters))
     interactions = zeros(FT, capacity, max_inters, 7)
     stress_accum = zeros(FT, capacity, 2, 2)
     stress_instant = zeros(FT, capacity, 2, 2)
     strain = zeros(FT, capacity, 2, 2)
     for i in 1:nfloes
+        n = n_subfloe_points[i]
+        x_subfloe_points[i, 1:n] .= floes.x_subfloe_points[i]
+        y_subfloe_points[i, 1:n] .= floes.y_subfloe_points[i]
+
         for (j, point) in enumerate(GI.getpoint(GI.getexterior(floes.poly[i])))
             poly[i, j, 1], poly[i, j, 2] = get_tuple_point(point, FT)
         end
@@ -166,6 +181,9 @@ function FixedWidthFloes(
         padded(floes.height),
         padded(floes.mass),
         padded(floes.moment),
+        n_subfloe_points,
+        x_subfloe_points,
+        y_subfloe_points,
         padded(floes.α),
         padded(floes.u),
         padded(floes.v),
@@ -189,6 +207,8 @@ function FixedWidthFloes(
         padded(floes.p_dξdt),
         padded(floes.p_dαdt),
         zeros(UInt8, capacity),
+        # StatusTag has no zero value, so spare rows are `active`
+        copyto!(fill(active, capacity), StatusTag[s.tag for s in floes.status]),
     )
 end
 
@@ -229,6 +249,7 @@ function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedW
         floes.stress_accum[i] .= @view fwf.stress_accum[i, :, :]
         floes.stress_instant[i] .= @view fwf.stress_instant[i, :, :]
         floes.strain[i] .= @view fwf.strain[i, :, :]
+        floes.status[i].tag = fwf.tag[i]
     end
     @views begin
         floes.height .= fwf.height[1:n]
@@ -238,6 +259,10 @@ function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedW
         floes.u .= fwf.u[1:n]
         floes.v .= fwf.v[1:n]
         floes.ξ .= fwf.ξ[1:n]
+        floes.fxOA .= fwf.fxOA[1:n]
+        floes.fyOA .= fwf.fyOA[1:n]
+        floes.trqOA .= fwf.trqOA[1:n]
+        floes.hflx_factor .= fwf.hflx_factor[1:n]
         floes.p_dxdt .= fwf.p_dxdt[1:n]
         floes.p_dydt .= fwf.p_dydt[1:n]
         floes.p_dudt .= fwf.p_dudt[1:n]

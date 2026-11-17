@@ -98,6 +98,22 @@ struct Ocean{FT<:AbstractFloat}
     end
 end
 
+struct dev_Ocean{FT<:AbstractFloat, M<:AbstractArray{FT, 2}, MI<:AbstractArray{Int, 2}}
+    u::M
+    v::M
+    temp::M
+    hflx_factor::M
+    scells_τx::M
+    scells_τy::M
+    scells_npoints::MI
+    τx::M
+    τy::M
+    si_frac::M
+    dissolved::M
+end
+
+Adapt.@adapt_structure dev_Ocean
+
 const U_DEF = "`u::Union{Real, Matrix{Real}}`: user can either provide a single u-velocity value \
 (a constant field the size of the `grid` will be created) or provide a matrix field of  u-velocity values"
 const V_DEF = "`v::Union{Real, Matrix{Real}}`: user can either provide a single v-velocity value \

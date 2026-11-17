@@ -83,6 +83,91 @@ Only keyword arguments are used!
     writers::OT = OutputWriters()
 end
 
+function adapt_Grid(grid::RegRectilinearGrid, 
+    floes::StructArray{<:Floe{FT}},
+    capacity = length(floes) + cld(length(floes), 4),
+    ) where FT
+    padded(x) = copyto!(zeros(eltype(x), capacity), x)
+    n_subfloe_points = padded(Int32[length(x) for x in floes.x_subfloe_points])
+    max_mc_points = isempty(floes) ? 0 : Int(maximum(n_subfloe_points))
+    floe_loc_n_cells = zeros(Int, capacity)
+    floe_loc_cell_x = zeros(Int, capacity, max_mc_points)
+    floe_loc_cell_y = zeros(Int, capacity, max_mc_points)
+    floe_loc_Δx = zeros(FT, capacity, max_mc_points)
+    floe_loc_Δy = zeros(FT, capacity, max_mc_points)
+
+    return dev_RegRectilinearGrid(
+        copy(grid.Nx),
+        copy(grid.Ny),
+        copy(grid.Δx),
+        copy(grid.Δy),
+        copy(grid.x0),
+        copy(grid.xf),
+        copy(grid.y0),
+        copy(grid.yf),
+        floe_loc_n_cells,
+        floe_loc_cell_x,
+        floe_loc_cell_y,
+        floe_loc_Δx,
+        floe_loc_Δy,
+    )
+end
+
+function adapt_Ocean(ocean::Ocean, 
+    floes::StructArray{<:Floe{FT}},
+    capacity = length(floes) + cld(length(floes), 4),
+    ) where FT
+    
+    padded(x) = copyto!(zeros(eltype(x), capacity), x)
+    n_subfloe_points = padded(Int32[length(x) for x in floes.x_subfloe_points])
+    max_mc_points = isempty(floes) ? 0 : Int(maximum(n_subfloe_points))
+    scells_τx = zeros(FT, capacity, max_mc_points)
+    scells_τy = zeros(FT, capacity, max_mc_points)
+    scells_npoints = zeros(Int, capacity, max_mc_points)
+    return dev_Ocean(
+        copy(ocean.u),
+        copy(ocean.v),
+        copy(ocean.temp),
+        copy(ocean.hflx_factor),
+        scells_τx, 
+        scells_τy,
+        scells_npoints,
+        copy(ocean.τx),
+        copy(ocean.τy),
+        copy(ocean.si_frac),
+        copy(ocean.dissolved)
+    )
+end
+
+function adapt_Atmos(a::Atmos)
+    return dev_Atmos(
+        copy(a.u),
+        copy(a.v),
+        copy(a.temp)
+    )
+end
+
+function adapt_Domain(d::Domain)
+    return dev_Domain(
+        d.north,
+        d.south,
+        d.east,
+        d.west
+    )
+end
+
+#Moves grid, ocean, atmosphere and domain to the device
+function adapt_model(m::Model, backend::KernelAbstractions.Backend)
+    temp_model = dev_Model(
+        adapt_Grid(m.grid, m.floes),
+        adapt_Ocean(m.ocean, m.floes),
+        adapt_Atmos(m.atmos),
+        adapt_Domain(m.domain)
+        )
+    dev_model = adapt(backend, temp_model)
+    return dev_model
+end
+
 """
     timestep_sim!(sim, tstep, start_tstep)
 
@@ -102,7 +187,7 @@ Run one step of the simulation and write output.
 !!! note
     This function must be updated to add any new functionalitites. It might be worth modularizing somehow to smooth that process over and make it easier to add new science functionality.
 """
-function timestep_sim!(sim, tstep, start_tstep = 0)
+function timestep_sim!(sim, dev_model, tstep, start_tstep = 0)
     sim.verbose && mod(tstep, 50) == 0 && println(tstep, " timesteps")
     if !isempty(sim.model.floes)
         max_floe_id = maximum(sim.model.floes.id)
@@ -156,23 +241,29 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
         # Add new pieces to the end of floe list
         append!(sim.model.floes, pieces_buffer)
 
+
+        # Move and update floes based on collisions and ocean/atmosphere forcing
+        dev_floes = adapt(sim.backend, FixedWidthFloes(sim.model.floes))
         # Physical processes without ghost floes
         # Effects of ocean and atmosphere on ice and visa versa
         if (
             sim.coupling_settings.coupling_on &&
             mod(tstep, sim.coupling_settings.Δt) == 0
         )
+            
             timestep_coupling!(
+                dev_floes,
+                dev_model,
                 sim.model,
                 sim.Δt,
                 sim.consts,
                 sim.coupling_settings,
-                sim.floe_settings,
+                sim.floe_settings, #needed only for the two-way coupling
+                sim.backend,
             )
         end
         
-        # Move and update floes based on collisions and ocean/atmosphere forcing
-        dev_floes = adapt(sim.backend, FixedWidthFloes(sim.model.floes))
+        
         timestep_floe_properties!(
             dev_floes,
             sim.Δt,
@@ -278,10 +369,14 @@ function run!(sim; logger = nothing, messages_per_tstep = 1, start_tstep = 0)
     try
         with_logger(logger) do
             startup_sim(sim)
+            
+            #Moves grid, ocean, atmosphere, domain to the device
+            dev_model = adapt_model(sim.model, sim.backend)
+            
             tstep = start_tstep
             while tstep <= (start_tstep + sim.nΔt)
                 # Timestep the simulation forward
-                timestep_sim!(sim, tstep, start_tstep)
+                timestep_sim!(sim, dev_model, tstep, start_tstep)
                 tstep+=1
             end
             teardown_sim(sim)
