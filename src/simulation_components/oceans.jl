@@ -98,16 +98,14 @@ struct Ocean{FT<:AbstractFloat}
     end
 end
 
-struct dev_Ocean{FT<:AbstractFloat, M<:AbstractMatrix{FT}}
+struct dev_Ocean{FT<:AbstractFloat, M<:AbstractMatrix{FT}, MI<:AbstractArray{Int, 2}}
     u::M
     v::M
     temp::M
     hflx_factor::M
-    #TODO scells are only needed for two-way coupling 
-    # (to be implemented) # V<:AbstractVector{FT, 3}
-    # scells_τx::V
-    # scells_τy::V
-    # scells_npoints::V
+    scells_τx::M
+    scells_τy::M
+    scells_npoints::MI
     τx::M
     τy::M
     si_frac::M
