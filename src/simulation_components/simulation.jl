@@ -83,7 +83,19 @@ Only keyword arguments are used!
     writers::OT = OutputWriters()
 end
 
-function adapt_Grid(grid::RegRectilinearGrid)
+function adapt_Grid(grid::RegRectilinearGrid, 
+    floes::StructArray{<:Floe{FT}},
+    capacity = length(floes) + cld(length(floes), 4),
+    ) where FT
+    padded(x) = copyto!(zeros(eltype(x), capacity), x)
+    n_subfloe_points = padded(Int32[length(x) for x in floes.x_subfloe_points])
+    max_mc_points = isempty(floes) ? 0 : Int(maximum(n_subfloe_points))
+    floe_loc_n_cells = zeros(Int, capacity)
+    floe_loc_cell_x = zeros(Int, capacity, max_mc_points)
+    floe_loc_cell_y = zeros(Int, capacity, max_mc_points)
+    floe_loc_Δx = zeros(FT, capacity, max_mc_points)
+    floe_loc_Δy = zeros(FT, capacity, max_mc_points)
+
     return dev_RegRectilinearGrid(
         copy(grid.Nx),
         copy(grid.Ny),
@@ -92,16 +104,34 @@ function adapt_Grid(grid::RegRectilinearGrid)
         copy(grid.x0),
         copy(grid.xf),
         copy(grid.y0),
-        copy(grid.yf)
+        copy(grid.yf),
+        floe_loc_n_cells,
+        floe_loc_cell_x,
+        floe_loc_cell_y,
+        floe_loc_Δx,
+        floe_loc_Δy,
     )
 end
 
-function adapt_Ocean(ocean::Ocean)
+function adapt_Ocean(ocean::Ocean, 
+    floes::StructArray{<:Floe{FT}},
+    capacity = length(floes) + cld(length(floes), 4),
+    ) where FT
+    
+    padded(x) = copyto!(zeros(eltype(x), capacity), x)
+    n_subfloe_points = padded(Int32[length(x) for x in floes.x_subfloe_points])
+    max_mc_points = isempty(floes) ? 0 : Int(maximum(n_subfloe_points))
+    scells_τx = zeros(FT, capacity, max_mc_points)
+    scells_τy = zeros(FT, capacity, max_mc_points)
+    scells_npoints = zeros(Int, capacity, max_mc_points)
     return dev_Ocean(
         copy(ocean.u),
         copy(ocean.v),
         copy(ocean.temp),
         copy(ocean.hflx_factor),
+        scells_τx, 
+        scells_τy,
+        scells_npoints,
         copy(ocean.τx),
         copy(ocean.τy),
         copy(ocean.si_frac),
@@ -129,8 +159,8 @@ end
 #Moves grid, ocean, atmosphere and domain to the device
 function adapt_model(m::Model, backend::KernelAbstractions.Backend)
     temp_model = dev_Model(
-        adapt_Grid(m.grid),
-        adapt_Ocean(m.ocean),
+        adapt_Grid(m.grid, m.floes),
+        adapt_Ocean(m.ocean, m.floes),
         adapt_Atmos(m.atmos),
         adapt_Domain(m.domain)
         )
