@@ -87,41 +87,45 @@ them in a kernel on every backend and compares with the CPU.
         @test count(==(Subzero._POINT_OUT), orientations) > 1000
     end
 
-    @testset "Edge intersections with $FT" for FT in (Float64, Float32)
-        go_intersection(a1, a2, b1, b2) =
-            GO._intersection_point(GO.Planar(), FT, (a1, a2), (b1, b2); exact = GO.True())
-        same_as_go(a1, a2, b1, b2) = (got = Subzero._intersection_point(FT, a1, a2, b1, b2);
-            ref = go_intersection(a1, a2, b1, b2);
-            isequal((Int(got[1]), got[2], got[3]), (Int(ref[1]), ref[2], ref[3])))
-        # All pairs of edges of the test polygons: touching, crossing, and collinear edges
-        polys = _geom_test_polys(FT; n = 60)
-        kinds = Int8[]
-        same = true
-        for p in polys, q in polys, a in eachindex(p), b in eachindex(q)
-            a1, a2, b1, b2 = p[a], p[mod1(a + 1, end)], q[b], q[mod1(b + 1, end)]
-            push!(kinds, Subzero._intersection_point(FT, a1, a2, b1, b2)[1])
-            same &= same_as_go(a1, a2, b1, b2)
-        end
-        @test same
-        @test all(k -> count(==(k), kinds) > 100,
-            (Subzero._LINE_CROSS, Subzero._LINE_HINGE, Subzero._LINE_OVER, Subzero._LINE_OUT))
-        #= Almost parallel edges that cross: rounding can put the computed crossing outside
-        the edges' bounding boxes, and then the end closest to the other edge is used =#
-        rng = Xoshiro(5)
-        same = true
-        n_endpoints = 0
-        for _ in 1:20000
+    # All pairs of edges of the polygons, as (a1, a2, b1, b2): touching, crossing, and
+    # collinear edges
+    _polygon_edge_pairs(polys) = [(p[a], p[mod1(a + 1, end)], q[b], q[mod1(b + 1, end)])
+        for p in polys for q in polys for a in eachindex(p) for b in eachindex(q)]
+    #= Almost parallel edges that cross, as (a1, a2, b1, b2): rounding can put the computed
+    crossing outside the edges' bounding boxes, and then the end closest to the other edge
+    is used =#
+    function _near_parallel_edge_pairs(::Type{FT}; n = 20000, rng = Xoshiro(5)) where FT
+        return map(1:n) do _
             x0, y0 = 1e3 * rand(rng), 1e3 * rand(rng)
             θ, δ, L = 2π * rand(rng), 10.0^(-rand(rng, 4:12)), 1e3
             m = (x0 + L / 2 * cos(θ), y0 + L / 2 * sin(θ))
             a1, a2 = (FT(x0), FT(y0)), (FT(x0 + L * cos(θ)), FT(y0 + L * sin(θ)))
             b1 = (FT(m[1] - L / 3 * cos(θ + δ)), FT(m[2] - L / 3 * sin(θ + δ)))
             b2 = (FT(m[1] + L / 3 * cos(θ + δ)), FT(m[2] + L / 3 * sin(θ + δ)))
-            kind, (pt, _), _ = Subzero._intersection_point(FT, a1, a2, b1, b2)
-            n_endpoints += kind == Subzero._LINE_CROSS && pt in (a1, a2, b1, b2)
-            same &= same_as_go(a1, a2, b1, b2)
+            (a1, a2, b1, b2)
         end
-        @test same
+    end
+    # GeometryOps' intersection of two edges, with its kind as one of our _LINE_* values
+    function _go_intersection_point(::Type{FT}, a1, a2, b1, b2) where FT
+        kind, intr1, intr2 = GO._intersection_point(GO.Planar(), FT, (a1, a2), (b1, b2);
+            exact = GO.True())
+        return Int8(Int(kind)), intr1, intr2
+    end
+
+    @testset "Edge intersections with $FT" for FT in (Float64, Float32)
+        same_as_go(e) =
+            isequal(Subzero._intersection_point(FT, e...), _go_intersection_point(FT, e...))
+        edges = _polygon_edge_pairs(_geom_test_polys(FT; n = 60))
+        @test all(same_as_go, edges)
+        kinds = [Subzero._intersection_point(FT, e...)[1] for e in edges]
+        @test all(k -> count(==(k), kinds) > 100,
+            (Subzero._LINE_CROSS, Subzero._LINE_HINGE, Subzero._LINE_OVER, Subzero._LINE_OUT))
+        edges = _near_parallel_edge_pairs(FT)
+        @test all(same_as_go, edges)
+        n_endpoints = count(edges) do e
+            kind, (pt, _), _ = Subzero._intersection_point(FT, e...)
+            kind == Subzero._LINE_CROSS && pt in e
+        end
         # In Float64, rounding hardly ever puts the crossing outside the bounding boxes
         FT == Float32 && @test n_endpoints > 100
     end
@@ -287,5 +291,46 @@ them in a kernel on every backend and compares with the CPU.
         @test all(isequal.(got, ref))
         # The partners do intersect, so the intersection points are tested
         @test count(>(0), ref[6]) > n ÷ 2
+    end
+
+    #= Kernel test of edge intersections. Its purpose is to make sure that GPUs give the same
+    intersections as GeometryOps on every branch of `_intersection_point`, including the rare
+    ones. A GPU compiler could do floating-point maths differently from the CPU (fuse a
+    multiplication and an addition, use a less exact square root, or reorder operations),
+    which would change the results, and could break the exact orientation test, which
+    relies on IEEE arithmetic. The per-floe kernel test above has too few edge pairs to
+    reach the rare branches, such as the nearest end of almost parallel edges, so this test
+    runs all the edge pairs of the CPU test above (about 150,000) in a kernel and compares
+    them with GeometryOps directly.
+
+    Each thread computes the intersection of one pair: `launch_per_floe!` only needs
+    `n_floes`, so it gets a NamedTuple with the number of pairs instead of floes. =#
+    function _edge_intersection_kernel!(_, i, edges, kinds, intrs)
+        FT = eltype(edges)
+        a1, a2 = (edges[i, 1], edges[i, 2]), (edges[i, 3], edges[i, 4])
+        b1, b2 = (edges[i, 5], edges[i, 6]), (edges[i, 7], edges[i, 8])
+        kind, (p1, (α1, β1)), (p2, (α2, β2)) =
+            Subzero._intersection_point(FT, a1, a2, b1, b2)
+        kinds[i] = kind
+        intrs[i, 1], intrs[i, 2], intrs[i, 3], intrs[i, 4] = p1[1], p1[2], α1, β1
+        intrs[i, 5], intrs[i, 6], intrs[i, 7], intrs[i, 8] = p2[1], p2[2], α2, β2
+        return
+    end
+    @testset "Edge intersections on $backend with $FT" for backend in test_backends(),
+            FT in (Float64, Float32)
+        edges = [_polygon_edge_pairs(_geom_test_polys(FT; n = 60));
+            _near_parallel_edge_pairs(FT)]
+        n = length(edges)
+        edge_array = [e[k][d] for e in edges, k in 1:4, d in 1:2]
+        edge_array = reshape(permutedims(edge_array, (1, 3, 2)), n, 8)
+        dev_kinds = Subzero.KernelAbstractions.zeros(backend, Int8, n)
+        dev_intrs = Subzero.KernelAbstractions.zeros(backend, FT, n, 8)
+        Subzero.launch_per_floe!(_edge_intersection_kernel!, backend, (; n_floes = n),
+            Subzero.adapt(backend, edge_array), dev_kinds, dev_intrs)
+        Subzero.KernelAbstractions.synchronize(backend)
+        kinds, intrs = Array(dev_kinds), Array(dev_intrs)
+        got(i) = (kinds[i], ((intrs[i, 1], intrs[i, 2]), (intrs[i, 3], intrs[i, 4])),
+            ((intrs[i, 5], intrs[i, 6]), (intrs[i, 7], intrs[i, 8])))
+        @test all(i -> isequal(got(i), _go_intersection_point(FT, edges[i]...)), 1:n)
     end
 end
