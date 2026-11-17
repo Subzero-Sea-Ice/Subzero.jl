@@ -131,6 +131,8 @@ struct dev_RegRectilinearGrid{FT<:AbstractFloat, VI<:AbstractArray{Int, 1}, MI<:
     floe_loc_Δy::M
 end
 
+Adapt.@adapt_structure dev_RegRectilinearGrid
+
 
 """
     RegRectilinearGrid{FT} <: AbstractRectilinearGrid{FT}
