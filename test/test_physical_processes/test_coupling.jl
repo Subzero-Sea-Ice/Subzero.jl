@@ -392,7 +392,7 @@ end
             npoints,
         )
             for i in eachindex(xidx)
-                Subzero.floe_to_grid_info!(
+                _ref_floe_to_grid_info!(
                     floeidx,
                     xidx[i],
                     yidx[i],
