@@ -115,7 +115,7 @@ struct RegRectilinearGrid{FT}<:AbstractRectilinearGrid{FT}
     floe_locations::Matrix{CellFloes{FT}}
 end
 
-struct dev_RegRectilinearGrid{FT<:AbstractFloat}
+struct dev_RegRectilinearGrid{FT<:AbstractFloat, VI<:AbstractArray{Int, 1}, MI<:AbstractArray{Int, 2}, M<:AbstractArray{FT, 2}}
     Nx::Int
     Ny::Int
     Δx::FT
@@ -124,8 +124,11 @@ struct dev_RegRectilinearGrid{FT<:AbstractFloat}
     xf::FT
     y0::FT
     yf::FT
-    #TODO floe_locations is needed only for two-way coupling
-    # floe_locations::Matrix{CellFloes{FT}}
+    floe_loc_n_cells::VI
+    floe_loc_cell_x::MI
+    floe_loc_cell_y::MI
+    floe_loc_Δx::M
+    floe_loc_Δy::M
 end
 
 
