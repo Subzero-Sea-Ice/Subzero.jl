@@ -10,13 +10,14 @@ fixed rng. So the floes are made once (make_floes.jl), saved as plain arrays, an
 versions start from the saved floes.
 =#
 
-const EXAMPLES = ("shear_flow", "simple_strait", "forcing_contained_floes")
+const EXAMPLES = ("shear_flow", "simple_strait", "forcing_contained_floes", "moving_bounds")
 
 # The titles of the examples in the documentation
 const EXAMPLE_TITLES = Dict(
     "shear_flow" => "Shear Flow with Periodic Boundaries",
     "simple_strait" => "Simple Strait Simulation",
     "forcing_contained_floes" => "Floes Bounded by Ocean Currents",
+    "moving_bounds" => "Moving Boundaries",
 )
 
 const FT = Float64
@@ -33,8 +34,10 @@ const FLOE_FIELDS = (
 )
 
 #=
-The setup of an example: the model without floes, how its floes are made, and the settings
-of its simulation (a function of the floes, because the fracture criteria depend on them).
+The setup of an example: the model without floes, how its floes are made (`init_floes!`
+changes them after they're made), the keyword arguments of its `Constants` besides `E`, and
+the settings of its simulation (a function of the floes, because the fracture criteria depend
+on them).
 =#
 example_setup(name::AbstractString) = example_setup(Val(Symbol(name)))
 
@@ -57,7 +60,8 @@ function example_setup(::Val{:shear_flow})
     generator = VoronoiTesselationFieldGenerator(; nfloes = 50, concentrations = [0.75],
         hmean = 0.25, Δh = 0.0)
     return (; grid, domain, ocean, atmos, floe_settings, generator, rng_seed = 1,
-        floe_kwargs = (;), settings = floes -> (;))
+        floe_kwargs = (;), init_floes! = floes -> nothing, consts_kwargs = (;),
+        settings = floes -> (;))
 end
 
 # docs/literate/examples/simple_strait.jl
@@ -87,7 +91,7 @@ function example_setup(::Val{:simple_strait})
         ridgeraft_settings = RidgeRaftSettings(; ridge_raft_on = true, Δt = 10),
     )
     return (; grid, domain, ocean, atmos, floe_settings, generator, rng_seed = 3,
-        floe_kwargs = (;), settings)
+        floe_kwargs = (;), init_floes! = floes -> nothing, consts_kwargs = (;), settings)
 end
 
 # docs/literate/examples/forcing_contained_floes.jl
@@ -123,14 +127,43 @@ function example_setup(::Val{:forcing_contained_floes})
     floe_bounds = Subzero.make_polygon([[[0.1Lx, 0.1Ly], [0.1Lx, 0.9Ly], [0.9Lx, 0.9Ly],
         [0.9Lx, 0.1Ly], [0.1Lx, 0.1Ly]]], FT)
     return (; grid, domain, ocean, atmos, floe_settings, generator, rng_seed = 1,
-        floe_kwargs = (; floe_bounds), settings = floes -> (;))
+        floe_kwargs = (; floe_bounds), init_floes! = floes -> nothing, consts_kwargs = (;),
+        settings = floes -> (;))
+end
+
+#= docs/literate/examples/moving_bounds.jl. The example defines weld settings but doesn't pass
+them to its simulation, so there's no welding here either. =#
+function example_setup(::Val{:moving_bounds})
+    grid = grid_100km()
+    domain = Domain(;
+        north = MovingBoundary(North; grid, u = 0.0, v = -0.1),
+        south = MovingBoundary(South; grid, u = 0.0, v = 0.1),
+        east = PeriodicBoundary(East; grid), west = PeriodicBoundary(West; grid),
+    )
+    ocean = Ocean(; grid, u = 0.0, v = 0.0, temp = 0.0)
+    atmos = Atmos(; grid, u = 0.0, v = 0.0, temp = -1.0)
+    floe_settings = FloeSettings()
+    generator = VoronoiTesselationFieldGenerator(; nfloes = 100, concentrations = [1.0],
+        hmean = 0.25, Δh = 0.125)
+    function init_floes!(floes)
+        floes.u .= 0
+        floes.v .= -0.01
+        return
+    end
+    settings(floes) = (; ridgeraft_settings = RidgeRaftSettings(; ridge_raft_on = true,
+        Δt = 150, domain_gain_probability = 0.5))
+    return (; grid, domain, ocean, atmos, floe_settings, generator, rng_seed = 1,
+        floe_kwargs = (;), init_floes!, consts_kwargs = (; Cd_io = 0.0, f = 0.0, turnθ = 0.0),
+        settings)
 end
 
 # The example's floes, made as in the example
 function make_example_floes(name)
     s = example_setup(name)
-    return initialize_floe_field(FT; generator = s.generator, domain = s.domain,
+    floes = initialize_floe_field(FT; generator = s.generator, domain = s.domain,
         rng = Xoshiro(s.rng_seed), floe_settings = s.floe_settings, s.floe_kwargs...)
+    s.init_floes!(floes)
+    return floes
 end
 
 # The floes as a Dict of plain arrays: the exterior ring of each floe as a vector of [x, y],
@@ -158,7 +191,8 @@ doesn't have.
 function example_simulation(name, floes, nsteps; kwargs...)
     s = example_setup(name)
     model = Model(; grid = s.grid, ocean = s.ocean, atmos = s.atmos, domain = s.domain, floes)
-    consts = Constants(; E = 1.5e3 * (mean(sqrt.(floes.area)) + minimum(sqrt.(floes.area))))
+    consts = Constants(; E = 1.5e3 * (mean(sqrt.(floes.area)) + minimum(sqrt.(floes.area))),
+        s.consts_kwargs...)
     return Simulation(; model, consts, Δt, nΔt = nsteps, floe_settings = s.floe_settings,
         rng = Xoshiro(1), s.settings(floes)..., kwargs...)
 end

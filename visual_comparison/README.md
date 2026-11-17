@@ -1,6 +1,6 @@
 # Visual comparison with the original CPU implementation
 
-Side-by-side videos of three documentation examples, run with the original CPU implementation
+Side-by-side videos of four documentation examples, run with the original CPU implementation
 (`main` at ae96ff2, before the GPU work) and with the current implementation (this checkout,
 on a GPU if there is one). They're a quick check by eye that nothing looks broken.
 
@@ -9,6 +9,7 @@ on a GPU if there is one). They're a quick check by eye that nothing looks broke
 | Shear Flow with Periodic Boundaries | `shear_flow.jl` |
 | Simple Strait Simulation | `simple_strait.jl` |
 | Floes Bounded by Ocean Currents | `forcing_contained_floes.jl` |
+| Moving Boundaries | `moving_bounds.jl` |
 
 ## How to run
 
@@ -31,7 +32,7 @@ argument is the original commit (default ae96ff2).
 |---|---|---|
 | `VIS_STEPS` | number of timesteps | `1000` |
 | `VIS_EVERY` | timesteps per frame | `10` |
-| `VIS_EXAMPLES` | examples to run | all three |
+| `VIS_EXAMPLES` | examples to run | all four |
 | `VIS_BACKEND` | `CPU` runs the current version on the CPU backend, even with a GPU | GPU if there is one |
 
 ## How it works
@@ -47,7 +48,8 @@ argument is the original commit (default ae96ff2).
   floes' outlines (with their periodic ghosts, as the documentation's animations show them),
   ids, and centroids, as plain arrays that both versions can read (`runs/`).
 - `render.jl` draws three panels: the original, the current version, and both on top of each
-  other (original outlines orange and wide, current outlines cyan and narrow). Below them, a
+  other (original outlines orange and wide, current outlines cyan and narrow). Moving
+  boundaries are drawn as grey bands where the walls have moved in. Below them, a
   graph of the differences in position against time draws itself as the video plays.
 
 ## How to read the videos

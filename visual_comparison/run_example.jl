@@ -10,7 +10,9 @@ For each frame, before the timestep (as the documentation's FloeOutputWriter):
 - `polys`: the exterior rings of the floes and of their periodic ghosts, so that floes that
   cross a periodic boundary are drawn on both sides, as in the documentation's animations;
 - `ids`, `centroids`: the ids and centroids of the floes without ghosts, to compare the
-  versions floe by floe.
+  versions floe by floe;
+- `walls`: the positions (`val`) of the north, south, east, and west boundaries, which
+  change for moving boundaries.
 Everything is saved as plain arrays, so that the other version of Subzero can read it.
 =#
 using Subzero, JLD2, Logging, Random, Statistics, StructArrays
@@ -40,7 +42,8 @@ floes = floes_from_dict(load(floes_file, "floes"))
 sim = example_simulation(name, floes, nsteps; kwargs...)
 
 frames = (tsteps = Int[], polys = Vector{Vector{NTuple{2, Float64}}}[],
-    ids = Vector{Int}[], centroids = Vector{NTuple{2, Float64}}[])
+    ids = Vector{Int}[], centroids = Vector{NTuple{2, Float64}}[],
+    walls = NTuple{4, Float64}[])
 function record_frame!(frames, sim, tstep)
     floes = sim.model.floes
     with_ghosts = deepcopy(floes)
@@ -49,6 +52,8 @@ function record_frame!(frames, sim, tstep)
     push!(frames.polys, ring_coords(with_ghosts.poly))
     push!(frames.ids, collect(floes.id))
     push!(frames.centroids, [(Float64(c[1]), Float64(c[2])) for c in floes.centroid])
+    d = sim.model.domain
+    push!(frames.walls, Float64.((d.north.val, d.south.val, d.east.val, d.west.val)))
     return
 end
 
@@ -58,7 +63,7 @@ elapsed = @elapsed with_logger(NullLogger()) do
         tstep < nsteps && timestep_sim!(sim, tstep)
     end
 end
-jldsave(out_file; frames.tsteps, frames.polys, frames.ids, frames.centroids,
+jldsave(out_file; frames.tsteps, frames.polys, frames.ids, frames.centroids, frames.walls,
     backend = backend_name, commit = get(ENV, "VIS_COMMIT", "unknown"),
     threads = Threads.nthreads(), elapsed)
 println("$name, $version on $backend_name: $nsteps timesteps in $(round(elapsed, digits = 1)) s, ",

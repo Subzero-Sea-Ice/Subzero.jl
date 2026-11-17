@@ -27,6 +27,7 @@ const FLOE_COLOR = RGBf(217/255, 226/255, 225/255)
 const TOPO_COLOR = RGBf(147/255, 129/255, 102/255)
 const ORIGINAL_COLOR = RGBf(1.0, 0.6, 0.1)
 const CURRENT_COLOR = RGBf(0.3, 0.9, 1.0)
+const WALL_COLOR = RGBAf(0.55, 0.55, 0.55, 0.85)
 
 to_polygons(rings) = [Makie.Polygon(Point2d.(ring)) for ring in rings]
 
@@ -94,6 +95,24 @@ function render(name)
     if !isempty(topography)
         for ax in axes
             poly!(ax, topography; color = TOPO_COLOR)
+        end
+    end
+    #= Moving boundaries: the area between where the wall started and where it is now (in
+    the original run; the walls move the same way in both runs) =#
+    moving(b) = b isa MovingBoundary
+    wall_bands = @lift begin
+        n, s, e, w = orig["walls"][$k]
+        bands = Makie.Polygon[]
+        rect(x1, x2, y1, y2) = Makie.Polygon(Point2d[(x1, y1), (x2, y1), (x2, y2), (x1, y2)])
+        moving(domain.north) && push!(bands, rect(xmin, xmax, n, ymax))
+        moving(domain.south) && push!(bands, rect(xmin, xmax, ymin, s))
+        moving(domain.east) && push!(bands, rect(e, xmax, ymin, ymax))
+        moving(domain.west) && push!(bands, rect(xmin, w, ymin, ymax))
+        bands
+    end
+    if any(moving, (domain.north, domain.south, domain.east, domain.west))
+        for ax in axes
+            poly!(ax, wall_bands; color = WALL_COLOR)
         end
     end
     #= Graph of the differences against time (hours), on a log scale. Distances of zero (the
