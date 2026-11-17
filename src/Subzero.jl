@@ -12,6 +12,7 @@ import Base.show
 import GeometryOps as GO
 import GeometryOps.GeoInterface as GI
 import StaticArrays as SA
+import AdaptivePredicates
 using CoordinateTransformations, Dates, Extents, 
     Interpolations, JLD2, LinearAlgebra, Logging, Measures, NCDatasets,
     Printf, Random, Rotations, SplitApplyCombine, Statistics, StructArrays
@@ -35,6 +36,7 @@ from the centroid to any given vertex"
 
 # Types
 include("tools/geom_utils.jl")
+include("tools/device_geom_utils.jl")
 # Model
 include("simulation_components/grids.jl")
 include("simulation_components/domain_components/abstract_domains.jl")
