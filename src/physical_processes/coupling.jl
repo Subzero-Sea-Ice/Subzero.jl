@@ -386,69 +386,6 @@ function shift_cell_idx(idx, nlines, ::PeriodicBoundary)
 end
 
 #-------------- Ocean and Atmosphere on Ice --------------#
-#=
-Add floe information to grid cell objects (cfloes and scell) that floe sits within. 
-
-This function dispatch is called when two-way coupling is on. Thus, in addition to recording
-which floes are within which grid cell, it also records the stresses from the ice onto the ocean
-within each grid cell. 
-
-Floe information is saved within the CellFloes (cfloes) object, which keeps track of a list of floes within a
-given grid cell. If the booundaries are periodic and a floe's centroid is on the opposite side of
-of the domain part of its shape, then a Δx and Δy are recorded to note that offset. 
-
-The CellStresses (scell) object aggragates the stresses from ice on ocean within a grid cell
-from each floes' sub-floe points. τx and τy are the x-directional and y-directional stress
-from sub-floe points on the ocean. 
-=#
-function add_point!(
-    cfloes::CellFloes,
-    scell::CellStresses,
-    floeidx,
-    τx,
-    τy,
-    Δx,
-    Δy,
-)
-    if isempty(cfloes.floeidx) || cfloes.floeidx[end] != floeidx
-        push!(cfloes.floeidx, floeidx)
-        push!(cfloes.Δx, Δx)
-        push!(cfloes.Δy, Δy)
-        push!(scell.τx, τx)
-        push!(scell.τy, τy)
-        push!(scell.npoints, 1)
-    else
-        scell.τx[end] += τx
-        scell.τy[end] += τy
-        scell.npoints[end] += 1
-    end
-    return
-end
-
-#=
-Add floe information to grid cell objects (cfloes and scell) that floe sits within. 
-
-This function dispatch is called when one-way coupling is on. Thus, informatin on which floes are in which
-grid cells is recorded. 
-
-Floe information is saved within the CellFloes (cfloes) object, which keeps track of a list of floes within a
-given grid cell. If the booundaries are periodic and a floe's centroid is on the opposite side of
-of the domain part of its shape, then a Δx and Δy are recorded to note that offset. 
-=#
-function add_point!(
-    cfloes::CellFloes,
-    floeidx,
-    Δx,
-    Δy,
-)
-    if isempty(cfloes.floeidx) || cfloes.floeidx[end] != floeidx
-        push!(cfloes.floeidx, floeidx)
-        push!(cfloes.Δx, Δx)
-        push!(cfloes.Δy, Δy)
-    end
-    return
-end
-
 """
     floe_to_grid_info!(...)
 
@@ -465,7 +402,7 @@ of sea ice in a given cell. Function is called for each sub-floe point.
 - $GRID_DEF
 - $DOMAIN_DEF
 - `cell_floes::Matrix{CellFloes}`: matrix of `CellFloes`, one for each grid cell
-- `scells::Matrix{CellStresses}`: matrix of `CellStressess`, one for each grid cell
+- `ocean::Ocean`: model's ocean
 - `coupling_settings::CouplingSettings`: simulation's coupling settings
 
 ## _Returns_
@@ -480,24 +417,29 @@ function floe_to_grid_info!(
     grid,
     ns_bound,
     ew_bound,
-    scells,
-    coupling_settings,
+    ocean,
 ) where {FT}
     # Determine grid cell point is in and if floe is shifted by periodic bounds
-    shifted_xidx = shift_cell_idx(xidx, grid.Nx + 1, ew_bound)
-    shifted_yidx = shift_cell_idx(yidx, grid.Ny + 1, ns_bound)
-    Δx = (shifted_xidx - xidx) * (grid.Δx)
-    Δy = (shifted_yidx - yidx) * (grid.Δy)
-    # If two-way coupling, save stress on ocean per cell
-    add_point!(
-        grid.floe_locations[shifted_xidx, shifted_yidx],
-        scells[shifted_xidx, shifted_yidx],
-        floeidx,
-        -τx_ocn,
-        -τy_ocn,
-        Δx,
-        Δy,
-    )
+    cx = shift_cell_idx(xidx, grid.Nx + 1, ew_bound)
+    cy = shift_cell_idx(yidx, grid.Ny + 1, ns_bound)
+    n = grid.floe_loc_n_cells[floeidx]
+    for k in 1:n                                   # search floe i's own cells
+        if grid.floe_loc_cell_x[floeidx, k] == cx && grid.floe_loc_cell_y[floeidx, k] == cy
+            ocean.scells_τx[floeidx, k] -= τx_ocn
+            ocean.scells_τy[floeidx, k] -= τy_ocn
+            ocean.scells_npoints[floeidx, k] += 1
+            return
+        end
+    end
+    n += 1                                         # new cell for this floe
+    grid.floe_loc_n_cells[floeidx] = n
+    grid.floe_loc_cell_x[floeidx, n] = cx
+    grid.floe_loc_cell_y[floeidx, n] = cy
+    grid.floe_loc_Δx[floeidx, n] = (cx - xidx) * grid.Δx
+    grid.floe_loc_Δy[floeidx, n] = (cy - yidx) * grid.Δy
+    ocean.scells_τx[floeidx, n] = -τx_ocn
+    ocean.scells_τy[floeidx, n] = -τy_ocn
+    ocean.scells_npoints[floeidx, n] = 1
     return
 end
 
@@ -561,6 +503,8 @@ function one_way_coupling(
     grid_idx,
 ) where {FT}
 
+    grid.floe_loc_n_cells[i] = 0 # number of ocean cells crossed by each floe
+
     npoints = calc_subfloe_values!(
         floes,
         i,
@@ -620,20 +564,19 @@ function one_way_coupling(
             tot_τtrq += τtrq
             tot_hflx_factor += hflx_factor
             # Save floe info onto the grid
-            # if coupling_settings.two_way_coupling_on 
-            #     floe_to_grid_info!(
-            #         i,
-            #         grid_idx[i, j, 1],
-            #         grid_idx[i, j, 2],
-            #         τx_ocn,
-            #         τy_ocn,
-            #         grid,
-            #         domain.north,
-            #         domain.east,
-            #         ocean.scells,
-            #         coupling_settings,
-            #     )
-            # end
+            if coupling_settings.two_way_coupling_on 
+                floe_to_grid_info!(
+                    i,
+                    grid_idx[i, j, 1],
+                    grid_idx[i, j, 2],
+                    τx_ocn,
+                    τy_ocn,
+                    grid,
+                    domain.north,
+                    domain.east,
+                    ocean,
+                )
+            end
         end
         # Average forces on ice floe
         floes.fxOA[i] = tot_τx/npoints * floes.area[i]
