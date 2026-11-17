@@ -47,7 +47,8 @@ argument is the original commit (default ae96ff2).
   floes' outlines (with their periodic ghosts, as the documentation's animations show them),
   ids, and centroids, as plain arrays that both versions can read (`runs/`).
 - `render.jl` draws three panels: the original, the current version, and both on top of each
-  other (original outlines orange and wide, current outlines cyan and narrow).
+  other (original outlines orange and wide, current outlines cyan and narrow). Below them, a
+  graph of the differences in position against time draws itself as the video plays.
 
 ## How to read the videos
 
@@ -55,6 +56,10 @@ The line above the panels gives the number of floes in each run and the largest 
 between the centroids of the same floe in both runs. That distance is only over the initial
 floes that are still in both runs: fracture and ridging make new floes with new ids, and
 once these events differ between the runs, the same new id isn't the same floe.
+
+The graph below the panels shows the largest and the median of these distances against
+time, on a log scale, so you can see how the difference grows. A dashed line marks when the
+runs start to have different floes.
 
 The runs don't stay identical. The current implementation rounds slightly differently (the
 whole-simulation reference test allows a relative difference of 1e-5 after 100 timesteps), and

@@ -11,6 +11,8 @@ both runs. Fracture and ridging make new floes with new ids, and once they diffe
 the runs, floes with the same new id aren't the same floe. So the distance is only taken
 over the initial floes that are still in both runs, and the line says from when the runs
 have different floes. Through periodic boundaries, the distance is the shortest one.
+Below the panels, a graph of the largest and the median of these distances against time,
+which draws itself up to the current frame.
 =#
 using Subzero, CairoMakie, JLD2, Random, Statistics, StructArrays, Printf
 const GI = Subzero.GI
@@ -31,8 +33,8 @@ to_polygons(rings) = [Makie.Polygon(Point2d.(ring)) for ring in rings]
 # Distance along an axis, the shortest one through the boundaries if they're periodic
 axis_distance(a, b, L, periodic) = periodic ? min(abs(a - b), L - abs(a - b)) : abs(a - b)
 
-#= Number of floes in each run, whether they have the same floes (ids), and the largest
-centroid distance of the initial floes (ids in `initial_ids`) that are in both runs =#
+#= Number of floes in each run, whether they have the same floes (ids), and the largest and
+median centroid distance of the initial floes (ids in `initial_ids`) that are in both runs =#
 function compare_frame(orig, cur, k, initial_ids, domain)
     a = Dict(zip(orig["ids"][k], orig["centroids"][k]))
     b = Dict(zip(cur["ids"][k], cur["centroids"][k]))
@@ -40,9 +42,11 @@ function compare_frame(orig, cur, k, initial_ids, domain)
     px, py = domain.east isa PeriodicBoundary, domain.north isa PeriodicBoundary
     dist(p, q) = hypot(axis_distance(p[1], q[1], Lx, px), axis_distance(p[2], q[2], Ly, py))
     common = intersect(keys(a), keys(b), initial_ids)
-    max_dist = isempty(common) ? 0.0 : maximum(id -> dist(a[id], b[id]), common)
+    dists = [dist(a[id], b[id]) for id in common]
+    max_dist = isempty(dists) ? 0.0 : maximum(dists)
+    median_dist = isempty(dists) ? 0.0 : median(dists)
     return (; n_orig = length(a), n_cur = length(b), same_floes = keys(a) == keys(b),
-        n_initial = length(common), max_dist)
+        n_initial = length(common), max_dist, median_dist)
 end
 
 function render(name)
@@ -70,7 +74,7 @@ function render(name)
             Subzero.prettytime(tsteps[$k] * Δt), floes, s.n_initial, s.max_dist)
     end
 
-    fig = Figure(size = (1500, 620))
+    fig = Figure(size = (1500, 900))
     Label(fig[1, 1:3], EXAMPLE_TITLES[name]; fontsize = 22, font = :bold)
     Label(fig[2, 1:3], status; fontsize = 15)
     panel_titles = (
@@ -92,7 +96,31 @@ function render(name)
             poly!(ax, topography; color = TOPO_COLOR)
         end
     end
-    Label(fig[4, 1:3],
+    #= Graph of the differences against time (hours), on a log scale. Distances of zero (the
+    first frame, where both runs start from the same floes) can't be shown on it, so the line
+    starts at the first nonzero distance. The axes are fixed for the whole video. =#
+    hours = tsteps .* Δt ./ 3600
+    positive = filter(>(0), [d for s in stats for d in (s.max_dist, s.median_dist)])
+    lo, hi = isempty(positive) ? (1e-12, 1.0) : (minimum(positive) / 3, 3maximum(positive))
+    ax_graph = Axis(fig[4, 1:3]; xlabel = "time [hours]", ylabel = "centroid difference [m]",
+        yscale = log10, limits = (hours[1], hours[end], lo, hi), height = 200,
+        title = "Differences in position of the initial floes in both runs")
+    line_points(f) = @lift([Point2d(hours[i], f(stats[i])) for i in 1:$k if f(stats[i]) > 0])
+    largest = line_points(s -> s.max_dist)
+    middle = line_points(s -> s.median_dist)
+    lines!(ax_graph, largest; color = :firebrick, linewidth = 2, label = "largest")
+    lines!(ax_graph, middle; color = :steelblue, linewidth = 2, label = "median")
+    scatter!(ax_graph, @lift(isempty($largest) ? Point2d[] : [last($largest)]);
+        color = :firebrick, markersize = 10)
+    scatter!(ax_graph, @lift(isempty($middle) ? Point2d[] : [last($middle)]);
+        color = :steelblue, markersize = 10)
+    if !isnothing(first_different)
+        # appears when the runs start to have different floes
+        vlines!(ax_graph, hours[first_different]; color = :gray40, linestyle = :dash,
+            visible = @lift($k >= first_different), label = "floes start to differ")
+    end
+    axislegend(ax_graph; position = :rb)
+    Label(fig[5, 1:3],
         "Both runs start from the same floes. With collisions, round-off differences grow " *
         "over time, so floes can drift apart late in a run without anything being wrong. " *
         "Look for floes that jump, vanish, overlap, or stop moving in only one run.";
