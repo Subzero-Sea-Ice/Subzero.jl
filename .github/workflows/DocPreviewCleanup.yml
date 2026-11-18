@@ -1,7 +1,8 @@
 # Removes documentation previews (previews/PR<number>) from the gh-pages branch and
 # squashes its history into a single commit, so the repository doesn't keep growing.
 #
-# - When a pull request is closed, its preview is removed.
+# - When a pull request is closed, its preview and the previews of any other closed
+#   pull requests are removed.
 # - When run manually, the previews of all closed pull requests are removed and the
 #   history is squashed, even if there are no previews to remove.
 #
@@ -38,25 +39,22 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.number }}
         run: |
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            previews="previews/PR${PR_NUMBER}"
-          else
-            open_prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number --jq '.[].number')
-            previews=""
-            for dir in previews/PR*; do
-              [ -d "$dir" ] || continue
-              number="${dir#previews/PR}"
-              if ! grep -qx "$number" <<< "$open_prs"; then
-                previews="$previews $dir"
-              fi
-            done
-          fi
-          existing=""
-          for dir in $previews; do
-            [ -d "$dir" ] && existing="$existing $dir"
+          # Always select the previews of all PRs that are not open, not only the PR that
+          # was just closed. GitHub keeps at most one pending run per concurrency group and
+          # cancels the others, so a later run catches up on previews a cancelled run missed.
+          open_prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number --jq '.[].number')
+          previews=""
+          for dir in previews/PR*; do
+            [ -d "$dir" ] || continue
+            number="${dir#previews/PR}"
+            if [ "$EVENT_NAME" = "pull_request" ] && [ "$number" = "$PR_NUMBER" ]; then
+              previews="$previews $dir"
+            elif ! grep -qx "$number" <<< "$open_prs"; then
+              previews="$previews $dir"
+            fi
           done
-          echo "Previews to delete:${existing:- none}"
-          echo "previews=${existing}" >> "$GITHUB_OUTPUT"
+          echo "Previews to delete:${previews:- none}"
+          echo "previews=${previews}" >> "$GITHUB_OUTPUT"
       - name: Delete previews, squash history and force-push
         if: github.event_name == 'workflow_dispatch' || steps.select.outputs.previews != ''
         env:
