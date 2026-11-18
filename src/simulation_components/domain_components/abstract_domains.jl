@@ -123,14 +123,15 @@ abstract type AbstractBoundary{
 
 # Helper function for boundary pretty printing for boundaries with `poly` and `val` fields
 function show_boundary_poly_val_strings(boundary::AbstractBoundary; digits)
-    points = join(Set(GI.getpoint(boundary.poly))|>collect, ", ")
+    pts = collect(Set(GI.getpoint(boundary.poly)))
+    sort!(pts; by = p -> (GI.x(p), GI.y(p)))   # deterministic order
+    points = join(pts, ", ")
     points_summary = "polygon points are defined by the following set: $points"
-    val_summary = "val is $(round(boundary.val, digits = digits))"
+    val_summary = "val is $(round(boundary.val; digits=digits))"
     return points_summary, val_summary
 end
 
 # Constants used in documentation for sub-type fields and keywords
-const StaticQuadrilateral{FT} =  GI.Polygon{false,false, SA.SVector{1, GI.LinearRing{false, false, SA.SVector{5, Tuple{FT, FT}}, Nothing, Nothing}},Nothing,Nothing} where FT
 
 const D_DEF = "`D::Type{<:AbstractDirection}`: subtype of AbstractDirection used to represent \\
 if a boundary is the North, South, East, or West boundary of a simulation"

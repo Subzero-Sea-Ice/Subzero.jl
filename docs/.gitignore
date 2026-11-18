@@ -5,3 +5,4 @@ package.json
 package-lock.json
 Manifest.toml
 **/*.jld2
+contribute.md

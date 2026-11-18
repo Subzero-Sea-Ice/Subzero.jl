@@ -1,6 +1,8 @@
 # Domain definition (combines 4 boundaries and topography)
 export Domain
 
+const DOMAIN_DEF = "`domain::Domain`: simulation's domain"
+# See documentation below
 struct Domain{FT, NB, SB, EB, WB, TT}
     north::NB
     south::SB   
@@ -54,7 +56,7 @@ able to re-enter the opposite boundary to fulfill its definition of periodic.
 - `south::SB`: Southern boundary where `SB <: AbstractBoundary{South, FT}`
 - `east::EB`: Eastern boundary where `EB <: AbstractBoundary{East, FT}`
 - `west::WB`: Western boundary where `WB <: AbstractBoundary{West, FT}`
-- `topography::tT`: Field of topography elements where `TT <: TopographyField{FT}`
+- `topography::TT`: Field of topography elements where `TT <: TopographyField{FT}`
 
 !!! note
     - All `FT` values above must be the same float type to form a valid domain.

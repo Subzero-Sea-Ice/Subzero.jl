@@ -58,7 +58,7 @@ const DECAY_ARG_WARNING = "λ must be between 0 and 1. Resetting to default valu
 """
     DecayAreaScaledCalculator{FT<:AbstractFloat} <: AbstractStressCalculator{FT}
 
-Type of AbstractStressCalculator that implements stress calculations by accumulating each
+Type of [`AbstractStressCalculator`](@ref) that implements stress calculations by accumulating each
 timestep of stress using a decay equation. The decay aspect increases importance placed on
 new damage. The decay equation is as follows:
 

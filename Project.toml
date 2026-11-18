@@ -1,13 +1,12 @@
 name = "Subzero"
 uuid = "21f28ab0-737f-4f26-8d5f-51b5b12fb6de"
+version = "0.1.1"
 authors = ["Skylar Gering"]
-version = "0.1.0"
 
 [deps]
 CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Extents = "411431e0-e8b7-467b-b5e0-f676ba4f2910"
-GeometryBasics = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
 GeometryOps = "3251bfac-6a57-4b6d-aa61-ac1fef2975ab"
 Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
@@ -22,23 +21,27 @@ SplitApplyCombine = "03a91e81-4c3e-53e1-a0a4-9c0c8f19dd66"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 StructArrays = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
-VoronoiCells = "e3e34ffb-84e9-5012-9490-92c94d0c60a4"
 
 [weakdeps]
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+GeoInterface = "cf35fbd7-0cd7-5166-be24-54bfbe79505f"
 GeoInterfaceMakie = "0edc0954-3250-4c18-859d-ec71c1660c08"
+MAT = "23992714-dd62-5051-b70f-ba57cb901cac"
 
 [extensions]
 SubzeroMakieExt = ["CairoMakie", "GeoInterfaceMakie"]
+SubzeroMatExt = ["MAT", "GeoInterface"]
 
 [compat]
-CairoMakie = "0.12, 0.13"
+CairoMakie = "0.12, 0.13, 0.15"
 CoordinateTransformations = "0.6"
 Extents = "0.1"
+GeoInterface = "1.6.0"
 GeoInterfaceMakie = "0.1"
-GeometryOps = "0.1"
+GeometryOps = "0.1.31 - 0.1"
 Interpolations = "0.14, 0.15, 0.16"
-JLD2 = "0.4, 0.5"
+JLD2 = "0.4, 0.5, 0.6"
+MAT = "0.11.4"
 Measures = "0.3"
 NCDatasets = "0.14"
 Rotations = "1"
@@ -46,8 +49,7 @@ SplitApplyCombine = "1"
 StaticArrays = "1"
 Statistics = "1"
 StructArrays = "0.6, 0.7"
-VoronoiCells = "0.4"
-julia = "1.9"
+julia = "1.10"
 
 [extras]
 LibGEOS = "a90b1aa1-3769-5649-ba7e-abc5a9d163eb"

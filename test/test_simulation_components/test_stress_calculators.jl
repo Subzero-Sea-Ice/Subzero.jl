@@ -2,10 +2,10 @@ using Test, LinearAlgebra
 import GeometryOps.GeoInterface as GI
 # Create test floe
 poly = GI.Polygon([[(0.0, 0.0), (0.0, 100.0), (100.0, 0.0), (0.0, 0.0)]])
-hmean, Δh = 0.5, 0.0
+hmean = 0.5
 stress_accum = [0.3 0.5; 0.7 0.9]
-floe_settings = FloeSettings(min_floe_area = 2.5e3)
-floe = Floe(poly, hmean, Δh; stress_accum, floe_settings)
+floe_settings = FloeSettings(; min_floe_area = 2.5e3)
+floe = Floe(poly, hmean; stress_accum, floe_settings)
 
 # # Test DecayAreaScaledCalculator
 c1 = DecayAreaScaledCalculator()

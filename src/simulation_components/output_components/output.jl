@@ -1,64 +1,80 @@
-"""
-Structs and functions to calculate and write output from the simulation
-"""
+export AbstractOutputWriter, CheckpointOutputWriter, GridOutputWriter,  FloeOutputWriter, InitialStateOutputWriter, OutputWriters
 
-#----------------------- Types of Output Writers -----------------------#
+const TSTEP_DEF = "`tstep::Int`: current simulation timestep"
+
 """
     AbstractOutputWriter
 
 An abstract type for output writers that provide data from simulation runs.
+
+Right now, there are four types of output writers: [`InitialStateOutputWriter`](@ref), [`CheckpointOutputWriter`](@ref), [`FloeOutputWriter`](@ref), and [`GridOutputWriter`](@ref).
+
+They currently don't dispatch off of anything.
 """
 abstract type AbstractOutputWriter end
 
-"""
-    InitialStateOuputWriter<:AbstractOutputWriter
+const FILEPATH_DEF = "`filepath::String`: filepath to the output files"
+const OVERWRITE_DEF = "`overwrite::Bool `: if true, existing files with the same `filepath` will be overwritten (Default = false)"
+const DIR_DEF = "`dir::String`: directory the files should be saved in"
+const FILENAME_DEF = "`filename::String`: name of output file"
+const JLD2_KW_DEF = "`jld2_kw::Dict`: dictionary of keywords for the `jldopen` function"
 
-Basic type of AbstractOutputWriter that records the intial state of the
-simulation. Writes JLD2 file with initial simulation state to the filepath
-specified. If overwrite is true, and there is a file of the given name at the
-filepath, that file will be overwritten.
-"""
+
+# Concrete subtype of AbstractOutputWriter - see documentation below
 struct InitialStateOutputWriter<:AbstractOutputWriter
     filepath::String     # Filename for output file
     overwrite::Bool      # Remove existing files if their filenames conflict
 end
 
 """
-    InitialStateOutputWriter(
-        ;
-        dir = ".",
-        filename = "initial_state.jld2",
-        overwrite = false,
-        jld2_kw = Dict{Symbol, Any}(),
-    )
+    InitialStateOuputWriter <: AbstractOutputWriter
 
-Creates an initial state output writer.
-Inputs:
-    dir         <String> path to directory
-    filename    <String> filename to save file to
-    overwrite   <Bool> if true, exit file of the same name will be deleted, else
-                    an error will be thrown if other file exists
-    jld2_kw     list of JLD2 keywords for the jldopen function
-Outputs:
-    Creates InitialStateOutputWriter that will write simulation's initial
-    state.
+Concrete subtype of AbstractOutputWriter that records the intial state of the
+simulation so that you can re-load it later. Writes JLD2 file with initial simulation
+state to the filepath specified. If overwrite is true, and there is a file of the given
+name at the filepath, that file will be overwritten.
+
+## _Fields_
+- $FILEPATH_DEF
+- $OVERWRITE_DEF
+
+## _Keyword arguments_
+- $DIR_DEF (Default = ".")
+- $FILENAME_DEF (Default = "initial_state.jld2")
+- $OVERWRITE_DEF
+- $JLD2_KW_DEF
+
+Here is how to construct an `InitialStateOutputWriter`:
+
+    InitialStateOutputWriter(; kwargs...)
 """
 function InitialStateOutputWriter(
     ;
     dir = ".",
     filename = "initial_state.jld2",
     overwrite = false,
-    jld2_kw = Dict{Symbol, Any}(),
+    jld2_kw = Dict{Symbol, Any}()
 )
-    filepath = initialize_jld2_file!(dir, filename, overwrite, [], jld2_kw)
+    filepath = _initialize_jld2_file!(dir, filename, overwrite, [], jld2_kw)
     return InitialStateOutputWriter(filepath, overwrite)
 end
 
 """
-    InitialStateOutputWriter(writer::InitialStateOutputWriter; kwargs...)
+    InitialStateOutputWriter <: AbstractOutputWriter
 
-Creates an initial state output writer from an existing writer, copying all fields unless 
-new field values are explicity provided through keyword arguments.
+`InitialStateOutputWriter` can also be created using an existing `InitialStateOutputWriter`,
+copying all fields unless the new field values are explicity provided through keyword arguments.
+
+## _Positional arguments_
+- `writer::InitialStateOutputWriter`: existing `InitialStateOutputWriter`
+
+## _Keyword arguments_
+- $DIR_DEF (Default = ".")
+- $FILENAME_DEF (Default = "initial_state.jld2")
+- $OVERWRITE_DEF
+- kwargs...
+
+
 """
 InitialStateOutputWriter(writer::InitialStateOutputWriter;
     dir = dirname(writer.filepath),
@@ -72,16 +88,7 @@ InitialStateOutputWriter(writer::InitialStateOutputWriter;
     kwargs...,
 )
 
-"""
-    CheckpointOutputWriter(Δtout, fn){ST<:AbstractString}<:AbstractOutputWriter
-
-Checkpoint subtype of AbstractOutputWriter that holds information for outputting
-checkpoint information used for restarting the simulation from a point where the
-writer saved data. Checkpoint data is saved every Δtout timesteps to filepath.
-If the given file doesn't end in ".jld2" the extension will be appended. If
-overwrite is true then if there is already a file of the given name, it will be
-overwriten. Else it will thrown an error. 
-"""
+# Concrete subtype of AbstractOutputWriter - see documentation below
 struct CheckpointOutputWriter<:AbstractOutputWriter
     Δtout::Int              # Number of timesteps between checkpoint outputs
     filepath::String        # Filename for output file
@@ -89,27 +96,32 @@ struct CheckpointOutputWriter<:AbstractOutputWriter
 end
 
 """
-    CheckpointOutputWriter(
-        Δtout;
-        dir = ".",
-        filename = "checkpoint.jld2",
-        overwrite = false,
-        jld2_kw = Dict{Symbol, Any}(),
-    )
+    CheckpointOutputWriter <: AbstractOutputWriter
 
-CheckpointOutputWriter writer that outputs need data to restart simulation at
-given timesteps Δtout.
-Inputs:
-    Δtout       <Int> number of timesteps between output
-    dir         <String> Directory to save output to - default is "." (current
-                    working directory).
-    filename    <String> filename to save file to
-    overwrite   <Bool> if true, exit file of the same name will be deleted, else
-                    an error will be thrown if other file exists
-    jld2_kw     list of JLD2 keywords for the jldopen function
-Outputs:
-CheckpointOutputWriter that outputs floes, ocean, and atmosphere states at
-desired timesteps. 
+Checkpoint subtype of AbstractOutputWriter that holds information for outputting
+checkpoint information used for restarting the simulation from a point where the
+writer saved data. Checkpoint data is saved every `Δtout` timesteps to filepath.
+If the given file doesn't end in ".jld2", the extension will be appended. If
+overwrite is true then if there is already a file of the given name, it will be
+overwriten. Else it will thrown an error. 
+
+## _Fields_
+- `Δtout::Int`: number of timesteps between output
+- $FILEPATH_DEF
+- $OVERWRITE_DEF
+
+## _Positional arguments_
+- `Δtout::Int`: number of timesteps between output
+
+## _Keyword arguments_
+- $DIR_DEF (Default = ".")
+- $FILENAME_DEF (Default = "checkpoint.jld2")
+- $OVERWRITE_DEF
+- $JLD2_KW_DEF
+
+Here is how to construct an `CheckpointOutputWriter`:
+
+    CheckpointOutputWriter(Δtout; kwargs...)
 """
 function CheckpointOutputWriter(
     Δtout;
@@ -118,7 +130,7 @@ function CheckpointOutputWriter(
     overwrite = false,
     jld2_kw = Dict{Symbol, Any}(),
 )
-    filepath = initialize_jld2_file!(
+    filepath = _initialize_jld2_file!(
         dir,
         filename,
         overwrite,
@@ -129,11 +141,26 @@ function CheckpointOutputWriter(
 end
 
 """
-    CheckpointOutputWriter(writer::CheckpointOutputWriter, [Δtout]; kwargs...)
+    CheckpointOutputWriter <: AbstractOutputWriter
 
-Creates an checkpoint writer from an existing writer, copying all fields unless new field
+A `CheckpointOutputWriter` can also be created from an existing `CheckpointOutputWriter`, copying all fields unless new field
 values are explicity provided either as the optional argument Δtout or through keyword
 arguments.
+
+## _Positional arguments_
+- `writer::InitialStateOutputWriter`: OPTIONAL argument - if present, the `dir`, `filename`, and `overwrite` of the provided
+    writer will be used for the new writer, rather than the above argument
+- `Δtout::Int`: number of timesteps between output
+
+## _Keyword arguments_
+- $DIR_DEF (Default = ".")
+- $FILENAME_DEF (Default = "checkpoint.jld2")
+- $OVERWRITE_DEF
+- kwargs...
+
+Here is how to construct a new `CheckpointOutputWriter` using an existing `CheckpointOutputWriter`:
+
+    CheckpointOutputWriter(existing_checkpointer, Δtout; kwargs...)
 """
 CheckpointOutputWriter(writer::CheckpointOutputWriter, Δtout = writer.Δtout;
     dir = dirname(writer.filepath),
@@ -147,17 +174,7 @@ CheckpointOutputWriter(writer::CheckpointOutputWriter, Δtout = writer.Δtout;
     kwargs...,
 )
 
-"""
-    FloeOutputWriter{ST<:AbstractString}<:AbstractOutputWriter
-
-Floe subtype of AbstractOutputWriter that holds information for outputting floe
-information from model throughout simulation. Output will be saved to the file
-defined by fn every Δtout timesteps. Only outputs within the outputs list will
-be saved. File will be saved as a JLD2 file to filepath. If the given file
-doesn't end in ".jld2" the extension will be appended. If overwrite is true then
-if there is already a file of the given name, it will be overwriten. Else it
-will thrown an error. 
-"""
+# Concrete subtype of AbstractOutputWriter - see documentation below
 struct FloeOutputWriter<:AbstractOutputWriter
     Δtout::Int                  # Number of timesteps between floe outputs
     outputs::Vector{Symbol}     # Floe fields to output
@@ -166,30 +183,45 @@ struct FloeOutputWriter<:AbstractOutputWriter
 end
 
 """
-    function FloeOutputWriter(
-        Δtout;
-        outputs = collect(fieldnames(Floe)),
-        dir = ".",
-        filename = "floes.jld2",
-        overwrite = false,
-        jld2_kw = Dict{Symbol, Any}(),
-    )
+    FloeOutputWriter <: AbstractOutputWriter
 
-FloeOutput writer that outputs provided Floe fields at given timesteps Δtout and
-saves the information in a file of the provided name.
-Inputs:
-    Δtout       <Int> number of timesteps between output
-    outputs     <Vector{Symbols}> list of floe fields to output
-    dir         <String> Directory to save output to - default is "." (current
-                    working directory)
-    filename    <String> filename to save file to
-    overwrite   <Bool> if true, exit file of the same name will be deleted, else
-                    an error will be thrown if other file exists
-    jld2_kw     list of JLD2 keywords for the jldopen function
-Outputs:
-    FloeOutputWriter that outputs provided Floe fields every Δtout timesteps to
-    filename
-Note: If floe field's are not specified using `outputs`, all Floe fields will be saved
+Floe subtype of AbstractOutputWriter that holds information for outputting floe
+information from model throughout simulation. Output will be saved to the file
+defined by `filename` every `Δtout` timesteps. Only outputs within the outputs list will
+be saved. The `outputs` field takes in a list of symbols corresponding to floe fields.
+For example, if you want the floe output writer to output the floes centroid and polygons
+then `outputs = [:centroid, :poly]`. If you want all floe fields then you can simply omit
+the outputs field all together and all floe fields will be output.
+
+File will be saved as a JLD2 file to filepath. If the given file
+doesn't end in ".jld2", the extension will be appended. If `overwrite` is true then
+if there is already a file of the given name, it will be overwriten. Else it
+will thrown an error. 
+
+## _Fields_
+- `Δtout::Int`: number of timesteps between output
+- `outputs::Vector{Symbol}`: list of Floe field names (as symbols) to output
+- $FILEPATH_DEF
+- $OVERWRITE_DEF
+
+## _Positional arguments_
+- `Δtout::Int`: number of timesteps between output
+
+## _Keyword arguments_
+- `outputs::Vector{Symbol}`: list of Floe field names (as symbols) to output (Default outputs all `Floe` fields)
+- $DIR_DEF (Default = ".")
+- $FILENAME_DEF (Default = "floes.jld2")
+- $OVERWRITE_DEF
+- $JLD2_KW_DEF
+
+!!! note
+    If you have Periodic walls, and thus ghost floes in your simulation, these will also be saved by the `FloeOutputWriter`.
+    If you want to exclude these floes from your analysis or when otherwise using the `FloeOutputWriter` output, you can do
+    so by only including floes with a `ghost_id = 0` when post-processing. 
+
+Here is how to construct an `FloeOutputWriter`:
+
+    FloeOutputWriter(Δtout; kwargs...)
 """
 function FloeOutputWriter(
     Δtout;
@@ -199,16 +231,30 @@ function FloeOutputWriter(
     overwrite = false,
     jld2_kw = Dict{Symbol, Any}(),
 )
-    filepath = initialize_jld2_file!(dir, filename, overwrite, outputs, jld2_kw)
+    filepath = _initialize_jld2_file!(dir, filename, overwrite, outputs, jld2_kw)
     return FloeOutputWriter(Δtout, outputs, filepath, overwrite)
 end
 
 """
-    FloeOutputWriter(writer::FloeOutputWriter, [Δtout]; kwargs...)
+    FloeOutputWriter <: AbstractOutputWriter
 
-Creates an floe output writer from an existing writer, copying all fields unless new field
-values are explicity provided either as the optional argument Δtout or through keyword
-arguments.
+A `FloeOutputWriter` can also be created using an existing `FloeOutputWriter`, copying all fields unless the new field values are explicity provided through keyword arguments.
+
+## _Positional arguments_
+- `writer::InitialStateOutputWriter`: OPTIONAL argument - if present, the `dir`, `filename`, and `overwrite` of the provided 
+    writer will be used for the new writer, rather than the above argument
+- `Δtout::Int`: number of timesteps between output
+
+## _Keyword arguments_
+- `outputs::Vector{Symbol}`: list of Floe field names (as symbols) to output
+- $DIR_DEF (Default = ".")
+- $FILENAME_DEF (Default = "floes.jld2")
+- $OVERWRITE_DEF
+- kwargs...
+
+Here is how to construct a new `FloeOutputWriter` using an existing `FloeOutputWriter`:
+
+    FloeOutputWriter(existing_floewriter, Δtout; kwargs...)
 """
 FloeOutputWriter(writer::FloeOutputWriter, Δtout = writer.Δtout;
     outputs = writer.outputs,
@@ -224,18 +270,7 @@ FloeOutputWriter(writer::FloeOutputWriter, Δtout = writer.Δtout;
     kwargs...,
 )
 
-"""
-    GridOutputWriter{FT<:AbstractFloat}<:AbstractOutputWriter
-
-Grid subtype of AbstractOutputWriter that holds information for outputting floe
-data on the grid. This output does not need to be the grid defined for the
-model. This grid can be coarser, or more fine, as defined by the xg and yg
-fields. Output on this scale will be saved to the file defined by filepath every
-Δtout timesteps. Data will be collected in the data field during calculation for
-easier writing to the NetCDF file. Only outputs within the outputs list will be
-saved. There is a limited number of floe outputs that can be calculated by the
-GridOutputWriter.
-"""
+# Concrete subtype of AbstractOutputWriter - see documentation below
 struct GridOutputWriter{FT<:AbstractFloat}<:AbstractOutputWriter
     outputs::Vector{Symbol}
     Δtout::Int                # Number of timesteps between grid outputs
@@ -247,31 +282,8 @@ struct GridOutputWriter{FT<:AbstractFloat}<:AbstractOutputWriter
     average::Bool
 end
 
-"""
-    GridOutputWriter(::Type{FT}, args...; kwargs...)
 
-A float type FT can be provided as the first argument of any GridOutputWriter
-constructor. A GridOutputWriter of type FT will be created by passing all
-other arguments to the correct constructor. 
-"""
-GridOutputWriter(::Type{FT}, args...; kwargs...) where {FT <: AbstractFloat} =
-    GridOutputWriter{FT}(args...; kwargs...)
-
-"""
-    GridOutputWriter(args...; kwargs...)
-
-If a type isn't specified, GridOutputWriter will be of type Float64 and the
-correct constructor will be called with all other arguments.
-"""
-GridOutputWriter(args...; kwargs...) =
-    GridOutputWriter{Float64}(args...; kwargs...)
-
-"""
-    get_known_grid_outputs()
-
-Returns list of symbols that represent calculations available in
-calc_eularian_grid to average floe data.
-"""
+# Returns list of symbols that represent calculations available in `calc_eularian_grid` to average floe data.
 function get_known_grid_outputs()
     return Set([
         :u_grid,
@@ -301,35 +313,42 @@ function get_known_grid_outputs()
 end
 
 """
-GridOutputWriter{FT}(
-    outputs::Vector{Symbol},
-    Δtout,
-    grid::AbstractRectilinearGrid,
-    dims;
-    dir = ".",
-    filename = "gridded_data.nc",
-    overwrite = false,
-    average = false,
+    GridOutputWriter{FT} <: AbstractOutputWriter
 
-Create GridOutputWriter for grid of given dimensions to output floe data
-averaged on this re-gridded gird at given frequency of timesteps. Only outputs
-provided outputs.
-Inputs:
-    outputs     <Vector{Symbols}> list of grid outputs desired
-    Δtout       <Int> number of timesteps between output
-    grid        <Grid> original grid, which we are re-gridding
-    dims        <(Int, Int)> output new grid dimensions for these calculations -
-                rows -> ny, cols -> nx
-    dir         <String> Directory to save output to - default is "." (current
-                    working directory)
-    filename    <String> filename to save file to
-    overwrite   <Bool> if true, exit file of the same name will be deleted, else
-                    an error will be thrown if other file exist
-    average     <Bool> if true, average gridded data over timesteps between
-                    outputs, else just calculate at output timestep
-Output:
-    GridOutputWriter that re-grids grid to given dimensions, and saves floe
-    information averaged on this new grid.
+Grid subtype of AbstractOutputWriter that holds information for outputting floe
+data on the grid. This output does not need to be on the grid defined for the
+model. This grid can be coarser, or more fine, as defined by the xg and yg
+fields. Output on this scale will be saved to the file defined by filepath every
+Δtout timesteps. Data will be collected in the data field during calculation for
+easier writing to the NetCDF file. Only outputs within the outputs list will be
+saved. There is a limited number of floe outputs that can be calculated by the
+`GridOutputWriter`.
+
+## _Fields_
+- `outputs::Vector{Symbol}`: list of field names (as symbols) to output - call `get_known_grid_outputs()` to see options
+- `Δtout::Int`: number of timesteps between output
+- $FILEPATH_DEF
+- $OVERWRITE_DEF
+- `xg::Vector{FT}`: x-grid points on output grid
+- `yg::Vector{FT}`: y-grid points on output grid
+-  `data::Array{FT, 3}`: 3D output grid of size `nx`, `ny`, and `nt` where nt is the number of timesteps saved
+- `average::Bool`: if true, average gridded data over timesteps between outputs, else just calculate at output timestep
+
+## _Positional arguments_
+- `Δtout::Int`: number of timesteps between output
+- $GRID_DEF
+- `dims::Tuple{Int, Int}`: output new grid dimensions for these calculations (rows -> ny, cols -> nx)
+
+## _Keyword arguments_
+- `outputs::Vector{Symbol}`: list of field names (as symbols) to output - call `get_known_grid_outputs()` to see options
+- $DIR_DEF (Default = ".")
+- $FILENAME_DEF (Default = "gridded_data.nc")
+- $OVERWRITE_DEF
+- `average::Bool`: if true, average gridded data over timesteps between outputs, else just calculate at output timestep
+
+Here is how to construct an `GridOutputWriter`:
+
+    GridOutputWriter(Δtout, grid, dims; kwargs...)
 """
 function GridOutputWriter{FT}(
     Δtout,
@@ -358,38 +377,49 @@ function GridOutputWriter{FT}(
     yg = collect(grid.y0:(grid.yf-grid.y0)/dims[2]:grid.yf)
 
     # Create file path
-    filepath = initialize_netcdf_file!(
-        FT,
-        dir,
-        filename,
-        overwrite,
-        outputs,
-        xg,
-        yg,
-    )
+    filepath = _initialize_netcdf_file!(FT, dir, filename, overwrite, outputs, xg, yg)
 
     # Data output container
     data = zeros(FT, length(xg) - 1, length(yg) - 1, length(outputs))
-    return GridOutputWriter{FT}(
-        outputs,
-        Δtout,
-        filepath,
-        overwrite,
-        xg,
-        yg,
-        data,
-        average,
-    )
+    return GridOutputWriter{FT}(outputs, Δtout, filepath, overwrite, xg, yg, data, average)
 end
 
-"""
-    GridOutputWriter(writer::GridOutputWriter, [Δtout]; kwargs...)
+# syntactic sugar for GridOutputWriter
+GridOutputWriter(::Type{FT}, args...; kwargs...) where {FT <: AbstractFloat} =
+    GridOutputWriter{FT}(args...; kwargs...)
 
-Creates an grid output writer from an existing writer, copying all fields unless new field
-values are explicity provided through keyword arguments.
+# syntactic sugar for GridOutputWriter - default to Float64
+GridOutputWriter(args...; kwargs...) =
+    GridOutputWriter{Float64}(args...; kwargs...)
+
 """
-GridOutputWriter(writer::GridOutputWriter;
-    Δtout = writer.Δtout,
+    GridOutputWriter <: AbstractOutputWriter
+
+`GridOutputWriter` can also be created using existing `GridOutputWriter`, copying all fields unless the new field values are explicity provided through keyword arguments.
+
+## _Positional arguments_
+- `writer::InitialStateOutputWriter`: OPTIONAL argument - if present, the `dir`, `filename`, and `overwrite` of the provided 
+    writer will be used for the new writer, rather than the above argument
+- `Δtout::Int`: number of timesteps between output
+
+## _Keyword arguments_
+- $GRID_DEF
+- `dims::Tuple{Int, Int}`: output new grid dimensions for these calculations (rows -> ny, cols -> nx)
+- `outputs::Vector{Symbol}`: list of field names (as symbols) to output - call `get_known_grid_outputs()` to see options
+- $DIR_DEF (Default = ".")
+- $FILENAME_DEF (Default = "gridded_data.nc")
+- $OVERWRITE_DEF
+- `average::Bool`: if true, average gridded data over timesteps between outputs, else just calculate at output timestep
+
+!!! note
+    The argument/field `average` currently doesn't do anything! Only instantaneous values can be saved. The argument was added
+    so that this would be an easy change in the future. 
+
+Here is how to construct a new `GridOutputWriter` using an existing `GridOutputWriter`:
+
+    GridOutputWriter(existing_gridwriter, Δtout; kwargs...)
+"""
+GridOutputWriter(writer::GridOutputWriter, Δtout = writer.Δtout;
     grid = writer.grid,
     dims = writer.dims,
     outputs = writer.outputs,
@@ -408,15 +438,7 @@ GridOutputWriter(writer::GridOutputWriter;
     average = average,
 )
 
-"""
-    OutputWriters{FT<:AbstractFloat}
-
-Structure to hold all types of output writers a user might want. All fields are
-vectors so that more than one of each type of output writer can be defined, and
-so that a default OutputWriter object doesn't create default output writer
-fields, which would create files, but rather empty lists of output writers.
-If any of the fields is not provided, the default is just an empty list. 
-"""
+# Struct to hold lists of output writer types - see documentation below
 struct OutputWriters{
     IW<:StructVector{<:InitialStateOutputWriter},
     FW<:StructVector{<:FloeOutputWriter},
@@ -427,22 +449,26 @@ struct OutputWriters{
     floewriters::FW
     gridwriters::GW
     checkpointwriters::CW
-
-    function OutputWriters(
-        iw::IW,
-        fw::FW,
-        gw::GW,
-        cw::CW,
-    ) where {
-        IW<:StructVector{<:InitialStateOutputWriter},
-        FW<:StructVector{<:FloeOutputWriter},
-        GW<:StructVector{<:GridOutputWriter},
-        CW<:StructVector{<:CheckpointOutputWriter},
-    }
-    new{IW, FW, GW, CW}(iw, fw, gw, cw)
-    end
 end
 
+"""
+    OutputWriters{FT}
+
+Structure to hold all types of output writers a user might want. Fields are
+vectors so that more than one of each type of output writer can be defined, and
+so that a default OutputWriter object doesn't create default output writer
+fields, which would create files, but rather empty lists of output writers.
+If any of the fields is not provided, the default is just an empty list. 
+
+## _Fields_
+-  `initialwriters::StructVector{<:InitialStateOutputWriter}`: vector of `InitialStateOutputWriter`s
+- `floewriters::StructVector{<:FloeOutputWriter}`: vector of `FloeOutputWriter`s
+- `gridwriters::StructVector{<:GridOutputWriter}`: vector of `GridOutputWriter`s
+- `checkpointwriters::StructVector{<:CheckpointOutputWriter}`: vector of `CheckpointOutputWriter`s
+
+## _Positional arguments_
+- All output writers (one per argument) - they will be aggregated and put into lists by type
+"""
 function OutputWriters(args...)
     initialwriters = Vector{InitialStateOutputWriter}()
     floewriters = Vector{FloeOutputWriter}()
@@ -467,18 +493,32 @@ function OutputWriters(args...)
         StructVector(checkpointwriters)
     )
 end
+
+# Pretty printing for OutputWriters showing key dimensions
+function Base.show(io::IO, writers::OutputWriters)
+    overall_summary = "OutputWriters"
+    init_writer_summary = "$(length(writers.initialwriters)) InitialStateOuputWriter(s)"
+    checkpoint_writer_summary = "$(length(writers.checkpointwriters)) CheckpointOutputWriter(s)"
+    floe_writer_summary = "$(length(writers.floewriters)) FloeOutputWriter(s)"
+    grid_writer_summary = "$(length(writers.gridwriters)) GridOutputWriter(s)"
+    print(io, overall_summary, "\n",
+        "  ⊢", init_writer_summary, "\n",
+        "  ⊢", checkpoint_writer_summary, "\n",
+        "  ⊢", floe_writer_summary, "\n",
+        "  ∟", grid_writer_summary)
+end
+
 #----------------------- Write Data -----------------------#
 
 """
     write_data!(sim, tstep, start_tstep)
 
 Writes data for the simulation's writers that are due to write at given tstep.
-Inputs:
-    sim         <Simulation> simulation to run
-    tstep       <Int> simulation timestep
-    start_tstep <Int> starting timestep of the simulation
-Output:
-    Saves writer requested data to files specified in each writer. 
+
+## _Positional arguments_
+- $SIM_DEF
+- $TSTEP_DEF
+- `start_tstep::Int`: starting timestep of the simulation
 """
 function write_data!(sim, tstep, start_tstep)
     # write initial state on first timestep
@@ -507,11 +547,10 @@ end
     write_init_state_data!(sim, tstep)
 
 Save initial simulation state.
-Inputs:
-    sim     <Simulation> simulation to run
-    tstep   <Int> timestep - not used
-Outputs:
-    Saves simulation state to file. 
+
+## _Positional arguments_
+- $SIM_DEF
+- $TSTEP_DEF
 """
 function write_init_state_data!(sim)
     for filepath in sim.writers.initialwriters.filepath
@@ -526,13 +565,12 @@ end
     write_checkpoint_data!(sim, tstep)
 
 Writes model's floe, ocean, and atmosphere data to JLD2 file. Data can be used
-to restart simulation run.
-Inputs:
-    sim     <Simulation> simulation to run
-    tstep       <Int> simulation timestep
-Output:
-    Writes floes, ocean, and atmosphere to JLD2 file with name writer.fn for
-    current timestep, which will be the group in the JLD2 file. 
+to restart simulation run. Writes floes, ocean, and atmosphere to JLD2 file with name writer.fn for
+current timestep, which will be the group in the JLD2 file. 
+
+## _Positional arguments_
+- $SIM_DEF
+- $TSTEP_DEF
 """
 function write_checkpoint_data!(sim, tstep)
     for filepath in sim.writers.checkpointwriters.filepath[
@@ -550,15 +588,13 @@ end
 """
     write_floe_data!(sim, tstep)
 
-Writes desired FloeOutputWriter data to JLD2 file.
+Writes desired `FloeOutputWriter` data to JLD2 file. Writes desired fields writer.outputs
+to JLD2 file with name writer.fn for current timestep, which will be the group in the JLD2 file. 
 
-Inputs:
-    writers     <StructArray{FloeWriter}> list of floe writers 
-    floes       <StructArray{Floe}> list of floes
-    tstep       <Int> simulation timestep
-Output:
-    Writes desired fields writer.outputs to JLD2 file with name writer.fn for
-    current timestep, which will be the group in the JLD2 file. 
+## _Positional arguments_
+- `writers::StructArray{FloeWriter}`: list of floe writers 
+- $FLOES_DEF
+- $TSTEP_DEF
 """
 function write_floe_data!(writers, floes, tstep)
     for w in writers[
@@ -577,18 +613,18 @@ function write_floe_data!(writers, floes, tstep)
 end
 
 write_field(file, group, vals) = write(file, group, vals)
+
 """
     write_grid_data!(sim, tstep)
 
-Writes desired GridOutputWriter data to NetCDF file.
-Inputs:
-    writers     <StructArray{GridWriter}> list of grid writers
-    floes       <StructArray{Floe}> list of floes
-    topography  <StructArray{TopographyElement}> list of topography elements
-    tstep       <Int> simulation timestep
-Output:
-    Writes desired fields writer.outputs to file with name writer.fn for current
-    timestep.
+Writes desired GridOutputWriter data to NetCDF file. Writes desired fields writer.outputs
+to file with name writer.fn for current timestep.
+
+## _Positional arguments_
+- `writers::StructArray{GridWriter}`: list of grid writers 
+- $FLOES_DEF
+- $TOPO_FIELD
+- $TSTEP_DEF
 """
 function write_grid_data!(writers, floes, topography, tstep)
     w_idx = mod.(tstep, writers.Δtout) .== 0
@@ -610,23 +646,12 @@ function write_grid_data!(writers, floes, topography, tstep)
 end
 
 #----------------------- File Setup -----------------------#
-"""
-    initialize_jld2_file!(dir, filename, overwrite, outputs, jld2_kw)
 
+#=
 Initializes a JLD2 file in the given directory with the given filename. Setup
-file to write given outputs.
-Inputs:
-    dir         <String> path to directory
-    filename    <String> filename to save file to
-    overwrite   <Bool> if true, exit file of the same name will be deleted, else
-                    an error will be thrown if other file exists
-    outputs     <Vector{Symbol}> list of symbols to save as a group within the
-                    file
-    jld2_kw     list of JLD2 keywords for the jldopen function
-Outputs:
-    Create JLD2 file dir/filename where each output is a group within the file
-"""
-function initialize_jld2_file!(dir, filename, overwrite, outputs, jld2_kw)
+file to write given outputs. Each output is a group within the file.
+=#
+function _initialize_jld2_file!(dir, filename, overwrite, outputs, jld2_kw)
     # create path to file
     mkpath(dir)
     filename = auto_extension(filename, ".jld2")
@@ -655,35 +680,12 @@ function initialize_jld2_file!(dir, filename, overwrite, outputs, jld2_kw)
     return filepath
 end
 
-"""
-    function initialize_netcdf_file!(
-        ::Type{FT},
-        dir,
-        filename,
-        overwrite,
-        outputs,
-        xg,
-        yg,
-    )
-
+#=
 Initializes a NetCDF file in the given directory with the given filename. Setup
-file to write given outputs.
-Inputs:
-    Type{FT}    <Type{AbstractFloat}> type of float to run simulation
-                    calculations using
-    dir         <String> path to directory
-    filename    <String> filename to save file to
-    overwrite   <Bool> if true, exit file of the same name will be deleted, else
-                    an error will be thrown if other file exists
-    outputs     <Vector{Symbol}> list of symbols to save as a group within the
-                    file
-    xg          <Vector{AbstractFloat}> list of x grid lines
-    yg          <Vector{AbstractFloat}> list of y grid lines
-Outputs:
-    Create NetCDF file dir/filename with each output added as a variable and
-    with the dimensions time, x, and y. 
- """
-function initialize_netcdf_file!(
+file to write given outputs. Create NetCDF file dir/filename with each output
+added as a variable and with the dimensions time, x, and y. 
+=#
+function _initialize_netcdf_file!(
     ::Type{FT},
     dir,
     filename,
@@ -706,7 +708,7 @@ function initialize_netcdf_file!(
         dataset.attrib["type"] = "Floe data averaged on the grid. The grid is \
             broken down into user provided dimensions."
 
-        # Define dimensions
+        # Define dimensions time, x, and y
         defDim(dataset, "time", Inf)
         defVar(
             dataset,
@@ -757,26 +759,20 @@ function initialize_netcdf_file!(
 end
 
 #----------------------- Utils -----------------------#
-"""
-    auto_extension(filename, ext) 
 
-If `filename` ends in `ext`, return `filename`. Otherwise return
-`filename * ext`.
-"""
+# If `filename` ends in `ext`, return `filename`. Otherwise return `filename * ext`.
 function auto_extension(filename, ext) 
     Next = length(ext)
     filename[end-Next+1:end] == ext || (filename *= ext)
     return filename
 end
 
-"""
-grids_from_lines(xlines, ylines)
-
+#=
 Creates x-grid and y-grid. Assume xlines has length n and ylines has length m.
 xgrid is the grid's xline vector repeated m times as rows in a mxn array and
 ygrid is the yline vector repeated n times as columns in a mxn vector. xlines
 and ylines are typically either xg and yg or xc and yc.
-"""
+=#
 function grids_from_lines(xlines, ylines)
     xgrid = repeat(reshape(xlines, 1, :), inner=(length(ylines),1))
     ygrid = repeat(ylines, outer = (1, length(xlines)))
@@ -786,15 +782,13 @@ end
 """
     calc_eulerian_data!(floes, topography, writer, istep)
 
-Calculate floe data averaged on grid defined by GridOutputWriter for current
-timestep (istep).
-Inputs:
-    floes       <StructArray{Floe}> array of model's floes
-    topography  <StructArray{Topography} array of  model's topography
-    writer      <GridOutputWriter> 
-    istep       <Int> current simulation timestep
-Output:
-    Floe data averaged on eularian grid provided and saved in writer.data field 
+Calculate floe data averaged on grid defined by `GridOutputWriter` for current
+timestep (istep). Saved in writer.data field 
+
+## _Positional arguments_
+- $FLOES_DEF
+- $TOPO_FIELD
+- `writer::GridWriter`: grid output writer
 """
 function calc_eulerian_data!(floes::FLT, topography, writer) where {FT <: AbstractFloat, FLT <: StructArray{<:Floe{FT}}}
     # Calculate/collect needed values
@@ -810,7 +804,7 @@ function calc_eulerian_data!(floes::FLT, topography, writer) where {FT <: Abstra
     floe_rmax = floes.rmax
 
     # Identify floes that potentially overlap each grid square and create mask
-    potential_interactions = zeros(dims[1], dims[2], length(floes))
+    _potential_interactions = zeros(dims[1], dims[2], length(floes))
     for i in eachindex(floes)
         pint = sqrt.(
             (xgrid .- floe_centroids[i][1]).^2 .+
@@ -819,13 +813,13 @@ function calc_eulerian_data!(floes::FLT, topography, writer) where {FT <: Abstra
         pint = pint .- (floe_rmax[i] + cell_rmax)
         pint[pint .> 0] .= 0
         pint[pint .< 0] .= 1
-        potential_interactions[:,:,i] = pint
+        _potential_interactions[:,:,i] = pint
     end
-    
+    FT_area_poly(p) = area_poly(p, FT)
     # Loop over each grid square
     for j in 1:dims[2]
         for i in 1:dims[1]
-            pint = potential_interactions[i,j,:]
+            pint = _potential_interactions[i,j,:]
             # If there are any potential interactions
             if sum(pint) > 0
                 cell_poly_list = [_make_bounding_box_polygon(FT, writer.xg[j], writer.xg[j+1], writer.yg[i], writer.yg[i+1])]
@@ -847,7 +841,7 @@ function calc_eulerian_data!(floes::FLT, topography, writer) where {FT <: Abstra
                 pic_area = zeros(length(floeidx))
                 for (i, idx) in enumerate(floeidx)
                     floe_poly = floes.poly[idx]
-                    pic_area[i] = mapreduce(x -> sum(GO.area, Subzero.intersect_polys(floe_poly, x, FT); init = 0.0), +, cell_poly_list; init = 0.0)
+                    pic_area[i] = mapreduce(x -> sum(FT_area_poly, Subzero.intersect_polys(floe_poly, x, FT); init = 0.0), +, cell_poly_list; init = 0.0)
                 end
                 
                 floeidx = floeidx[pic_area .> 0]
@@ -874,7 +868,7 @@ function calc_eulerian_data!(floes::FLT, topography, writer) where {FT <: Abstra
                         elseif outputs[k] == :dvdt_grid
                             sum(floes.p_dvdt[floeidx] .* ma_ratios)
                         elseif outputs[k] == :si_frac_grid
-                            area_tot/sum(GO.area, cell_poly_list; init = 0.0)
+                            area_tot/sum(FT_area_poly, cell_poly_list; init = 0.0)
                         elseif outputs[k] == :overarea_grid
                             sum(floes.overarea[floeidx])/length(floeidx)
                         elseif outputs[k] == :mass_grid
@@ -935,17 +929,11 @@ function calc_eulerian_data!(floes::FLT, topography, writer) where {FT <: Abstra
 end
 
 #----------------------- Metadata -----------------------#
-"""
-    getattrs(output::FloeOutput)
 
+#=
 Returns unit and comment attributes for each output type to be saved within
 output NetCDF file
-Input:
-    output<FloeOutput>
-Output:
-    <Tuple(String, String)> tuple of string units and comments to be saved to
-    output NetCDF file
-"""
+=#
 function getattrs(output::Symbol)
     unit, comment =
         output == :sim ? ("Struct", "Starting state of simulation after initialization") :
@@ -955,7 +943,6 @@ function getattrs(output::Symbol)
         output == :floes ? ("StructArray", "Model's array of floe structs at given simulation timesteps") :
         # Floe fields
         output == :centroid ? ("location", "Coordinates of centorid as [x y]") :
-        output == :coords ? ("location", "Floe coordinates - either x or y") :
         output == :height ? ("m", "Floe height (uniform over floe)") :
         output == :area ? ("m^2", "Floe area") :
         output == :mass ? ("kg", "Floe mass") :

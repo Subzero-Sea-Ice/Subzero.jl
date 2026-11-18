@@ -38,9 +38,9 @@ Here is how to construct a `CellFloes` object:
 ## _Keyword arguments_
 - `floeidx::Vector{Int}`: vector of floe indicies in the list of model floes for floes with area in the grid
 - `Δx::Vector{FT}`: vector of x-translations for a floe at the corresponding index of the
-`floeidx` vector to be in the cell represented with the `CellFloes` object.
+    `floeidx` vector to be in the cell represented with the `CellFloes` object.
 - `Δy::Vector{FT}`: vector of y-translations for a floe at the corresponding index of the
-`floeidx` vector to be in the cell represented with the `CellFloes` object.
+    `floeidx` vector to be in the cell represented with the `CellFloes` object.
 
 !!! note
     If no keyword arguments are provide by the user, an `CellFloes` object with empty

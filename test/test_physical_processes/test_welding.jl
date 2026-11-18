@@ -31,6 +31,7 @@
         [[[4e4, -2e4], [4e4, 1e4], [6e4, 1e4], [6e4, -2e4], [4e4, -2e4]]] # Out
     ]
     logger = Logging.SimpleLogger(Logging.Error)
+    floe_settings = FloeSettings()
     floes = Logging.with_logger(logger) do  # suppress warning for floe outside domain
         initialize_floe_field(
             Float64,
@@ -38,6 +39,7 @@
             periodic_domain,
             1.0,
             0.0;
+            floe_settings,
         )
     end
 
@@ -151,6 +153,7 @@ end
         periodic_domain,
         1.0,
         0.0;
+        floe_settings,
     )
     a1, a2, a3 = floe_base.area
     h1, h2, h3 = floe_base.height

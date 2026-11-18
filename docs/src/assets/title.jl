@@ -32,10 +32,11 @@ wboundary = PeriodicBoundary(West; grid)
 domain = Domain(; north = nboundary, south = sboundary, east = eboundary, west = wboundary)
 
 # Floe creation
-floe_arr = initialize_floe_field(FT, 400, [0.85], domain, hmean, Δh; rng = Xoshiro(1))
+floe_settings = FloeSettings()
+floe_arr = initialize_floe_field(FT, 400, [0.85], domain, hmean, Δh; rng = Xoshiro(1), floe_settings)
 
 # Model creation
-model = Model(grid, ocean, atmos, domain, floe_arr)
+model = Model(; grid, ocean, atmos, domain, floes = floe_arr)
 
 # Simulation setup
 modulus = 1.5e3*(mean(sqrt.(floe_arr.area)) + minimum(sqrt.(floe_arr.area)))
@@ -48,7 +49,7 @@ dir = "output/title/"
 floewriter = FloeOutputWriter(50, dir = dir, overwrite = true)
 writers = OutputWriters(floewriter)
 
-simulation = Simulation(; model, consts, Δt, nΔt, writers, verbose = true, rng = Xoshiro(1))
+simulation = Simulation(; model, consts, Δt, nΔt, writers, floe_settings, verbose = true, rng = Xoshiro(1))
 run!(simulation)
 
 function plot_logo(floe_fn, Lx, Ly, dir)

@@ -1,6 +1,8 @@
 export TopographyElement  # Topographic element within domain
 export initialize_topography_field  # Function to create topography field for user
 
+const TOPO_FIELD = "`topography::StructArray{TopographyElement}`: simulation's list of topography elements"
+
 # Concrete subtype of AbstractDomainElement - see documentation below
 struct TopographyElement{FT}<:AbstractDomainElement{FT}
     poly::Polys{FT}
@@ -67,8 +69,8 @@ function TopographyElement(::Type{FT} = Float64; poly::Polys) where FT
     # Clean up polygon and calculate centroid and maximum radius
     poly = GO.ClosedRing()(poly)
     rmholes!(poly)
-    centroid = collect(GO.centroid(poly, FT)) # TODO: Remove collect once type is changed
-    rmax = calc_max_radius(poly, centroid, FT)
+    centroid = collect(centroid_poly(poly, FT))
+    rmax = _calc_max_radius(poly, centroid, FT)
     return TopographyElement{FT}(poly, centroid, rmax)
 end
 
@@ -81,8 +83,8 @@ _normal_direction_correct!(_, _, ::TopographyElement) = return
 # Pretty printing for TopographyElement showing key types and fields
 function Base.show(io::IO, topo_element::TopographyElement{FT}; digits = 5) where FT
     overall_summary = "TopographyElement{$FT}"
-    centroid_summary = "centroid is ($(round(GI.x(topo_element.centroid), digits = digits)), $(round(GI.y(topo_element.centroid); digits = digits))) in meters"
-    rmax_summary = "maximum radius is $(round(topo_element.rmax, digits = digits)) meters"
+    centroid_summary = "centroid is ($(round(GI.x(topo_element.centroid); digits)), $(round(GI.y(topo_element.centroid); digits = digits))) in meters"
+    rmax_summary = "maximum radius is $(round(topo_element.rmax; digits)) meters"
     print(io, overall_summary, "\n",
         "  ⊢", centroid_summary, "\n",
         "  ∟", rmax_summary)
@@ -148,13 +150,13 @@ julia> initialize_topography_field(Float32; polys)
 - Creating an empty topography field without polys or coords
 ```jldoctest
 julia> initialize_topography_field(Float64)
-0-element TopographyField{Float64} list
+TopographyElement{Float64}[]
 ```
 """
 function initialize_topography_field(::Type{FT} = Float64; polys = nothing, coords = nothing) where FT
     # Make sure input given (if given) is turned into a list of polygons
     if isnothing(polys) && !isnothing(coords)
-        polys = [make_polygon(c) for c in coords]
+        polys = [make_polygon(c, FT) for c in coords]
     elseif isnothing(polys)  # & isnothing(coords)
         return StructArray{TopographyElement{FT}}(undef, 0)
     end

@@ -233,10 +233,10 @@ _get_val_field(t, v, g) = throw(ArgumentError("Incorrect inputs to Ocean or Atmo
 function Base.show(io::IO, ocean::Ocean{FT}; digits = 5) where FT
     overall_summary = "Ocean{$FT}"
     vector_summary = "Vector fields of dimension $(size(ocean.u))"
-    avg_ocean_u = "Average u-velocity of: $(round(mean(ocean.u), digits = digits)) m/s"
-    avg_ocean_v = "Average v-velocity of: $(round(mean(ocean.v), digits = digits)) m/s"
+    avg_ocean_u = "Average u-velocity of: $(round(mean(ocean.u); digits)) m/s"
+    avg_ocean_v = "Average v-velocity of: $(round(mean(ocean.v); digits)) m/s"
     tracer_summary = "Tracer fields of dimension $(size(ocean.temp))"
-    avg_ocean_temp = "Average temperature of: $(round(mean(ocean.temp), digits = digits)) C"
+    avg_ocean_temp = "Average temperature of: $(round(mean(ocean.temp); digits)) C"
     print(io, overall_summary, "\n",
         "  ⊢", vector_summary, "\n",
         "  ⊢", tracer_summary, "\n",

@@ -4,9 +4,6 @@
 # buidling a discrete-element model (DEM) with Subzero.jl as well as running and plotting your
 # simulatuion.
 
-
-# ## Tutorial - copy-pasteable version
-
 # ## Core ideas behind Subzero.jl simulations
 
 
@@ -14,6 +11,7 @@
 using Subzero  # bring Subzero into scope
 using CairoMakie, GeoInterfaceMakie # bring plotting packages into scope
 import GeoInterface as GI
+using Random, Logging
 
 
 # ## Creating a Grid
@@ -174,7 +172,7 @@ function shear_flow_velocities(Nx, Ny, min_u, max_u)
     return u_vals
 end
 
-u_vals = shear_flow_velocities(grid.Nx + 1, grid.Ny + 1, 0.0, 0.25)
+u_vals = shear_flow_velocities(grid.Nx + 1, grid.Ny + 1, 0.0, 0.35)
 ocean = Ocean(; u = u_vals, v = 0.0, temp = -1.0, grid)
 
 # We can now plot our ocean velocity values on an axis below our `grid` and `domain` setup.
@@ -209,7 +207,196 @@ fig
 # `v`-velocities and 0 C for the `temp`erature. If you are intersted in providing non-constant
 # fields, see the `Ocean` example above.
 
-atmos = Atmos(; grid, u = 5.0, v = 0.0, temp = 0.0)
+atmos = Atmos(; grid, u = 5.0, v = 0.0, temp = -2.0)
 
 # Again since all of the fields are constant, we won't plot them, but you can, using the `heatmap`
 # function as shown above. 
+
+# ## Creating the Floes
+
+# Within the simulation, there is a floe field, which is a list of [`Floe`](@ref) structs. For more information on these structs, see [`Floe`](@ref) documentation.
+# However, it is **not** recommended for users to create individual floes. Rather, users should use the `initialize_floe_field` function to create a field of floes
+# to start the simulation. Individual floes should only be created by developers when adding new simulation functionality.
+
+# ### Creating a `AbstractFloeFieldGenerator`
+# To use [`initialize_floe_field`](@ref), you first need to create a concrete subtype of [`AbstractFloeFieldGenerator`](@ref). Right now, there are two implemented.
+# The first is the [`CoordinateListFieldGenerator`](@ref). This generator takes in a list of floe coordinates (along with other arguments) to create a list of floes.
+# The second is the [`VoronoiTesselationFieldGenerator`](@ref). This generator tesselates the domain with floes and then randomly keeps various floes to match the
+# user-provided floe concentration. 
+
+# Here we will use the `VoronoiTesselationFieldGenerator` to generate a floe field. This generator object requires an input of the number of floes to be created (`nfloes`),
+# a vector/matrix of concentrations to split the field into (`concentrations`), a mean height for the generated floe field (`hmean`), and a maximum range of heights (`Δh`) such that
+# all floes have a height between `hmean - Δh` and `hmean + Δh`.
+
+nfloes = 30
+concentrations = [0.5 0.0]  # the left half of the domain is 85% packed and the right has no floes
+hmean, Δh = 1.0, 0.25
+generator = VoronoiTesselationFieldGenerator(; nfloes, concentrations, hmean, Δh)
+
+# ### Creating `FloeSettings`
+
+# [`FloeSettings`](@ref) can be used to set things like the minimum allowed floe area, the maximum hieght, the density of ice, and the
+# `subfloe_point_generator`, which determines how to couple between the ice and ocean/atmosphere. There are also other fields within the
+# [`FloeSettings`](@ref)!! It is important to understand all of its fields.
+
+# !!! note
+#       For consistency, `FloeSettings` also must be passed into the [`Simulation`](@ref) struct. 
+
+# Here we will just create a `FloeSettings` struct with just a few of the keyword options.
+
+floe_settings = FloeSettings(;
+  min_floe_area = 1e5,
+  max_floe_height = 5,
+  subfloe_point_generator = SubGridPointsGenerator(; grid, npoint_per_cell = 2),
+)
+
+# ### Calling `initialize_floe_field`
+
+# This generator is then the first keyword argument to the [`initialize_floe_field`](@ref) function. The other required keyword
+# is the simulation domain. After that, we have optional keywords, including but not limited to `supress_warnings`, `rng`, and `floe_settings`.
+# `supress_warnings` is a boolean that can turn off checks to ensure that all floe's have at least the minimum set area (see [`FloeSettings`](@ref) below)
+# and that all floe centroids are within the `domain`. `rng` is a random number generator, possibly seeded for reproducability, used to generate floe heights
+# and other random choices, like which floes to keep/remove to meet the requested concentrations.
+
+floes = initialize_floe_field(; generator, domain, floe_settings, rng = Xoshiro(2))
+
+# We can add the floes to the domain above.
+
+floe_color = RGBf(217/255, 226/255, 225/255)  # blue color for floes
+poly!(ax1, floes.poly; color = floe_color) # plot the topography
+ax1.title = "Grid, Domain, and Floe Setup"
+fig  # display the figure
+
+# ## Creating a Model
+
+# A `Model` combines all of the above components into the `Struct` that defines the physical aspects
+# of a Subzero simulation. There are a few constraints: the domain must fall within the grid, the ocean
+# and atmosphere must share the same grid (which can always be updated when the infrastructure for different
+# grids is in place), and all fields must share the same Float type (i.e. `Float64` or `Float32`). This Float
+# type will then be the Float type of the model, so it cannot be directly specified like it can when creating 
+# the `Model` fields.
+
+# A model can be made as follows:
+
+model = Model(; grid, domain, ocean, atmos, floes)
+
+# ## Constants
+
+# We can then set a group of [`Constants`](@ref), which are a set of important physical parameters, like the ocean coriolis frequency and
+# the air density. All constants have a default value, so you only need to change the ones that specifically affect your simulation. All
+# constants and default values are listed in the [`Constants`](@ref) documentation.
+
+# Here, I will just use the default values:
+
+consts = Constants()
+
+# ## Settings
+
+# In addition to the [`FloeSettings`](@ref) discussed above, there are also settings for all of the other physical processes that can happen
+# during a Subzero run. Here, I will just use all default settings except for the `FractureSettings`, but each of the following settings have documentation
+# detailing how to turn features on/off and tune their behavior.
+
+# The list of existing settings is:
+# - [`FloeSettings`](@ref)
+# - [`CouplingSettings`](@ref)
+# - [`CollisionSettings`](@ref)
+# - [`FractureSettings`](@ref)
+# - [`SimplificationSettings`](@ref)
+# - [`RidgeRaftSettings`](@ref)
+# - [`WeldSettings`](@ref)
+
+fracture_settings = FractureSettings(
+        fractures_on = true,
+        criteria = HiblerYieldCurve(floes),
+        Δt = 500,
+        npieces = 3,
+        deform_on = false,
+)
+
+# ## Output Writers
+
+# You also need to create a set of output writers to record the data from your simulation. You can add four types of output writers, and as many of each
+# type as you would like. The four types are as follows: [`InitialStateOutputWriter`](@ref), [`CheckpointOutputWriter`](@ref),[ `FloeOutputWriter`](@ref), and
+# [`GridOutputWriter`](@ref). When any of these objects are created, the file that they will write to is also created automatically. You can read more about each
+# of these types of output writers within the API guide. You must then combine all of your output writers into an [`OutputWriters`](@ref) struct. You can simply
+# pass each output writer created as an argument to the `OutputWriters` constructor. 
+
+# Here, we will create an [`InitialStateOutputWriter`](@ref), a [`CheckpointOutputWriter`](@ref) (that outputs every 1000 timesteos), and a
+# [ `FloeOutputWriter`](@ref) (that outputs every 100 timesteps) and then combine them into a [`OutputWriter`](@ref).
+
+dir = "tutorial"
+init_fn, checkpoint_fn, floe_fn = "tutorial_init_state.jld2", "tutorial_checkpoint.jld2", "tutorial_floes.jld2"
+
+# We first make the [`InitialStateOutputWriter`](@ref):
+initwriter = InitialStateOutputWriter(; dir = dir, filename = init_fn, overwrite = true)
+
+# We then make the [`CheckpointOutputWriter`](@ref):
+checkpointer = CheckpointOutputWriter(1000; dir = dir, filename = checkpoint_fn, overwrite = true)
+
+# Finally, we make a [`FloeOutputWriter`](@ref):
+floewriter = FloeOutputWriter(100; dir = dir, filename = floe_fn, overwrite = true)
+
+# We can then combine these into an `OutputWriters` object:
+writers = OutputWriters(initwriter, checkpointer, floewriter)
+
+# ## Create a Simulation
+
+# At this point, you are ready to make a `Simulation`. A `Simulation` has quite a few fields, all of which are talked about above in more detail.
+# Since there are so many fields, they are keyword defined, so you must provide a keyword when creating the struct. The only necessary arguments
+# are the `model` (to specify the simulation physical setup) and `floe_settings` (to ensure they match the argument used when creatting the `floes`).
+# See the [`Simulation`](@ref) documentation for a full list of keyword arguments and their default values.
+
+# In this tutorial, we create a simulation using all of the structs we created above. We will also need to set the simulation timestep `Δt` and the
+# total number of timesteps to run for `nΔt`.
+
+sim = Simulation(;
+    model = model,
+    consts = consts,
+    Δt = 10, # timestep of 5 seconds
+    nΔt = 20000, # run for 20,000 timesteps
+    floe_settings = floe_settings,
+    fracture_settings = fracture_settings,
+    writers = writers,
+)
+
+# !!! note
+#       Subzero also has a custom logger, [`SubzeroLogger`](@ref), which logs all of the info and warning messages that Subzero throws over
+#       the course of a simularion into a log file. It will only output each unique message `messages_per_tstep` times, which can be passed
+#       to the `run!` function. You can also create your own `SubzeroLogger`. However, here, for simplicity of the tutorial, I will turn off
+#       all logging at or below `Info`.
+Logging.disable_logging(Logging.Info)
+
+# ## Running the Simulation
+# You can now use the [`run!`](@ref) function to run the simulation.
+
+run!(sim)
+
+# !!! note
+#       If you wish to couple to Oceananigans, you will need to run each model timestep by timestep
+#       and pass the needed fields back and forth. You can run a single timestep of the simulation
+#       using the [`timestep_sim!`](@ref) function.
+
+# If you run your simulation in multiple parts and need to re-start your simulation from files,
+# the [`restart!`](@ref) function will be a good place to start. However, note that it is quite simple
+# and users may need to write their own restart function if they want more complex behavior. 
+
+# ## Plotting the Simulation
+
+# If your simulation has both a [`FloeOutputWriter`](@ref) and an [`InitialStateOutputWriter`](@ref),
+# you can use the built in plotting function to make an MP4 file with each frame as a timestep saved
+# by the `FloeOutputWriter`. This plotting function `plot_sim` is quite simple and just meant to get you started.
+# You may need to add more complex plotting code to suit your needs.
+
+plot_sim(joinpath(dir, floe_fn), joinpath(dir, init_fn), sim.Δt, joinpath(dir, "tutorial.mp4"))
+
+# ```@raw html
+# <video width="auto" controls autoplay loop>
+# <source src="../tutorial/tutorial.mp4" type="video/mp4">
+# </video>
+# ```
+
+# ## Reproducibility
+
+# The simulations are currently completly reproducible when run single-threaded. The simulation takes a `rng` argument, and if it is provided with a seeded random number generator,
+# then two simulations with the same set of starting floes will produce the exact same results. Note that the same set of floes can be reproduced by providing a seeded random number
+# generator to the floe creation functions. Simulation reproducability has not been achieved for multi-threaded runs.

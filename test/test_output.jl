@@ -11,12 +11,15 @@ function test_basic_outputwriters()
     )
     floe_coords = [[[7.5e4, 7.5e4], [7.5e4, 9.5e4], [9.5e4, 9.5e4], 
                     [9.5e4, 7.5e4], [7.5e4, 7.5e4]]]
-    model = Model(
+    floe_settings = FloeSettings()
+    floe_generator = CoordinateListFieldGenerator(; coords = [floe_coords], hmean = 1, Δh = 0)
+    floes = initialize_floe_field(; generator = floe_generator, domain, floe_settings)
+    model = Model(;
         grid,
         ocean,
         atmos,
         domain,
-        StructArray([Floe(floe_coords, 0.5, 0.0)]),
+        floes,
     )
 
     dir = "output/sim"
@@ -35,7 +38,7 @@ function test_basic_outputwriters()
     )
     floewriter = FloeOutputWriter(
         50;
-        outputs = [:status, :coords, :area, :mass, :u, :v],
+        outputs = [:status, :poly, :area, :mass, :u, :v],
         dir = dir,
         filename = "floe.jld2",
         overwrite = true,
@@ -54,8 +57,11 @@ function test_basic_outputwriters()
     simulation = Simulation(
         model = model,
         consts = Constants(),
+        Δt = 1,
         nΔt = 500,
-        writers = writers)
+        writers = writers,
+        floe_settings = floe_settings,
+        )
 
     run!(simulation)
 
@@ -82,7 +88,7 @@ function test_basic_outputwriters()
     fn = joinpath(dir, "floe.jld2")
     file = jldopen(fn, "r")
     @test Set(keys(file)) ==
-        Set(["status", "coords", "area", "mass", "u", "v", "metadata"])
+        Set(["status", "poly", "area", "mass", "u", "v", "metadata"])
     @test length(keys(file["status"])) == 11
     close(file)
     rm(fn)

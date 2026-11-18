@@ -6,7 +6,7 @@
         floes.mass[i] = floes.area[i] * floes.height[i] * floe_settings.ρi
         floes.moment[i] = Subzero._calc_moment_inertia(
             Float64,
-            Subzero.make_polygon(floes.coords[i]),
+            floes.poly[i],
             floes.centroid[i],
             floes.height[i],
             ρi = floe_settings.ρi,
@@ -34,17 +34,17 @@
             domain,
             1.0,
             0.0;
+            floe_settings = FloeSettings(),
         )
         if !isnothing(Δx)
             for i in eachindex(Δx)
-                Subzero.translate!(floes.coords[i], Δx[i], Δy[i])
                 floes.centroid[i][1] += Δx[i]
                 floes.centroid[i][2] += Δy[i]
                 floes.poly[i] = Subzero._translate_poly(FT, floes.poly[i], Δx[i], Δy[i])
             end
         end
         assign_random_velocities!(floes)
-        add_ghosts!(floes, domain)
+        Subzero.add_ghosts!(floes, domain)
         Subzero.timestep_collisions!(  # Add interactions
             floes,
             length(floes),
@@ -126,7 +126,7 @@
             p_x_momentum_init, p_y_momentum_init,
         )
         if floe1_subsume || floe2_subsume
-            inter_polys =  Subzero.intersect_polys(Subzero.make_polygon(floes.coords[1]), Subzero.make_polygon(floes.coords[2]))
+            inter_polys =  Subzero.intersect_polys(floes.poly[1], floes.poly[2])
             @test sum(GO.area, inter_polys; init = 0.0) == 0  # floes DO NOT overlap anymore!
             @test floe1_subsume ?
                 (mass1 < floes.mass[1] && mass2 > floes.mass[2]) :
@@ -184,9 +184,9 @@
             @test area1 - bounds_overlap_area == floes.area[1]
             @test area2 - topo_overlap_area == floes.area[2]
             @test cent1 != floes.centroid[1] && cent2 != floes.centroid[2]
-            inter_polys = Subzero.intersect_polys(Subzero.make_polygon(floes.coords[1]), boundary_poly)
+            inter_polys = Subzero.intersect_polys(floes.poly[1], boundary_poly)
             @test sum(GO.area, inter_polys; init = 0.0) == 0
-            inter_polys = Subzero.intersect_polys(Subzero.make_polygon(floes.coords[2]), topo_poly)
+            inter_polys = Subzero.intersect_polys(floes.poly[2], topo_poly)
             @test sum(GO.area, inter_polys; init = 0.0) == 0
         else
             @test total_mass == sum(floes.mass)
@@ -410,9 +410,9 @@
         floes_base = setup_floes_with_inters(coords, collision_domain, consts,
             collision_settings, lock, FT, [0.0, 0.5e4], [0.0, 0.5e4],
         )
-        bounds_polys = Subzero.intersect_polys(Subzero.make_polygon(floes_base.coords[1]), boundary_poly)
+        bounds_polys = Subzero.intersect_polys(floes_base.poly[1], boundary_poly)
         bounds_overlap_area = sum(GO.area, bounds_polys; init = 0.0)
-        topos_polys = Subzero.intersect_polys(Subzero.make_polygon(floes_base.coords[2]), topo_poly)
+        topos_polys = Subzero.intersect_polys(floes_base.poly[2], topo_poly)
         topo_overlap_area = sum(GO.area, topos_polys; init = 0.0)
  
         # Ridging with domain

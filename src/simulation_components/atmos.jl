@@ -117,10 +117,10 @@ end
 function Base.show(io::IO, atmos::Atmos{FT}; digits = 5) where FT
     overall_summary = "Atmos{$FT}"
     vector_summary = "Vector fields of dimension $(size(atmos.u))"
-    avg_atmos_u = "Average u-velocity of: $(round(mean(atmos.u), digits = digits)) m/s"
-    avg_atmos_v = "Average v-velocity of: $(round(mean(atmos.v), digits = digits)) m/s"
+    avg_atmos_u = "Average u-velocity of: $(round(mean(atmos.u); digits)) m/s"
+    avg_atmos_v = "Average v-velocity of: $(round(mean(atmos.v); digits)) m/s"
     tracer_summary = "Tracer fields of dimension $(size(atmos.temp))"
-    avg_atmos_temp = "Average temperature of: $(round(mean(atmos.temp), digits = digits)) C"
+    avg_atmos_temp = "Average temperature of: $(round(mean(atmos.temp); digits)) C"
     print(io, overall_summary, "\n",
         "  ⊢", vector_summary, "\n",
         "  ⊢", tracer_summary, "\n",

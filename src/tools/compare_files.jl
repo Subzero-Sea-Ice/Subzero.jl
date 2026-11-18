@@ -1,17 +1,18 @@
 using JLD2, NCDatasets
 
-"""
-    compare_floe_data(filename1, filename2)
-
+#=
 Compare two files output by the floe output writer. Prints out first instances
 of not matching per timestep and field. 
+
 Inputs:
     filename1   <String> filename and path of first file
     filename2   <String> filename and path of second file
 Outputs:
     If there are instances of differences, function will print time and index of
     floes that don't match
-"""
+
+NOTE: HASN'T BEEN USED IN A WHILE - MIGHT NOT WORK
+=#
 function compare_floe_data(filename1, filename2)
     file1 = jldopen(filename1, "r")
     file2 = jldopen(filename2, "r")
@@ -48,7 +49,7 @@ function compare_floe_data(filename1, filename2)
     return
 end
 
-"""
+#=
     compare_grid_data(filename1, filename2)
 Compare two files output by the grid output writer. Prints out first instances
 of not matching per field. All timesteps are compared at once. 
@@ -58,7 +59,9 @@ Inputs:
 Outputs:
     If there are instances of differences, function will print the field that
     has discrepancies. 
-"""
+
+NOTE: HASN'T BEEN USED IN A WHILE - MIGHT NOT WORK
+=#
 function compare_grid_data(filename1, filename2)
     file1 = Dataset(filename1, "r")
     file2 = Dataset(filename2, "r")
@@ -80,7 +83,7 @@ function compare_grid_data(filename1, filename2)
     close(file2)
 end
 
-"""
+#=
     compare_checkpointer_data(filename1, filename2)
 Compare two files output by the checkpointer output writer. Compares ocean and
 atmosphere. If there are discrepancies between the files, it will
@@ -91,7 +94,9 @@ Inputs:
 Outputs:
     If there are instances of differences, function will print the field and
     timesteps that have discrepancies. 
-"""
+
+NOTE: HASN'T BEEN USED IN A WHILE - MIGHT NOT WORK
+=#
 function compare_oa_checkpointer_data(filename1, filename2)
     file1 = jldopen(filename1, "r")
     file2 = jldopen(filename2, "r")
@@ -129,5 +134,3 @@ function compare_oa_checkpointer_data(filename1, filename2)
     close(file1)
     close(file2)
 end
-
-
