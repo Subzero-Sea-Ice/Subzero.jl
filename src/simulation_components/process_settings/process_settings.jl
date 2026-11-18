@@ -33,16 +33,16 @@ CouplingSettings(true, 10, 2, true)
 """
 @kwdef struct CouplingSettings
     coupling_on::Bool = true
-    Δt::Int = 10
+    Δt::FT = 10
     Δd::Int = 1
     two_way_coupling_on::Bool = false
 
-    function CouplingSettings(
+    function CouplingSettings{FT}(
         coupling_on,
         Δt,
         Δd,
         two_way_coupling_on,
-    )
+    )where {FT<:AbstractFloat}
         if coupling_on && Δt < 0
             @warn "Coupling can't occur on a multiple of negative timesteps. \
                 Turning coupling off."
@@ -58,13 +58,15 @@ CouplingSettings(true, 10, 2, true)
                 with a buffer of less than 0 grid cells. Setting Δd = 0."
             Δd = 0
         end
-        new(
+        new{FT}(
             coupling_on,
             Δt,
             Δd,
             two_way_coupling_on,
         )
     end
+    CouplingSettings(coupling_on,Δt,Δd,two_way_coupling_on,) = 
+    CouplingSettings{Float64}(coupling_on,Δt,Δd,two_way_coupling_on,)
 end
 
 # See below for docs
@@ -151,6 +153,107 @@ CollisionSettings{Float32}(true, 0.65f0, 0.75f0)
 CollisionSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
     CollisionSettings{FT}(;kwargs...)
 
+"""
+    BondSettings{FT<:AbstractFloat}
+
+Defines settings related to bonds within the model.
+
+If `bonds_on` is `true`, the model includes fracture through bonds.
+If `bonds_on` is `false`, the simulation will not include bond mechanics.
+
+References:
+- Herman et al. (2016)
+- Damsgaard et al. (2021)
+- West et al. (2022)
+"""
+@kwdef struct BondSettings{FT<:AbstractFloat}
+    bonds_on :: Bool = false          # Enable or disable bonds in the model
+    k_b      :: FT   = 1e6            # Elastic stiffness of bond (function of E, A, L)
+    c_b      :: FT   = 1e8            # Damping coefficient of bond (function of ζ_b, k_b, m)
+    λ_Rb     :: FT   = 1.0            # Bond radius coefficient (Herman et al., 2016)
+    λ_lb     :: FT   = 0.8            # Bond length coefficient (Herman et al., 2016)
+    SF_b     :: FT   = 0.07           # Safety factor for stability (Damsgaard et al., 2021)
+    ζ_b      :: FT   = 0.7            # Damping ratio of bond (West et al., 2022)
+
+    function BondSettings{FT}(bonds_on, k_b, c_b, λ_Rb, λ_lb, SF_b, ζ_b) where {FT<:AbstractFloat}
+        if bonds_on
+            if k_b <= 0
+                @warn "Bond stiffness (k_b) must be positive when bonds are enabled. Setting k_b = 0.0."
+                k_b = FT(0)
+            end
+            if c_b < 0
+                @warn "Damping coefficient (c_b) must be non-negative. Setting c_b = 0.0."
+                c_b = FT(0)
+            end
+        end
+        new{FT}(bonds_on, k_b, c_b, λ_Rb, λ_lb, SF_b, ζ_b)
+    end
+
+    BondSettings(bonds_on, k_b, c_b, λ_Rb, λ_lb, SF_b, ζ_b) =
+        BondSettings{Float64}(bonds_on, k_b, c_b, λ_Rb, λ_lb, SF_b, ζ_b)
+
+end
+
+
+"""
+    BondSettings(::Type{FT}, kwargs...)
+
+A float type FT can be provided as the first argument of any BondSettings
+constructor. A BondSettings of type FT will be created by passing all
+other arguments to the correct constructor. 
+"""
+BondSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
+BondSettings{FT}(;kwargs...)
+
+
+"""
+    Bond_FractureSettings{FT<:AbstractFloat}
+
+Defines the fracture strength parameters for bonds in the model.
+These parameters determine when a bond fails under tension, compression, or shear.
+Reference:
+- Herman et al. (2016)
+# Parameters
+- `σt_max_bond` : Maximum tensile strength of the bond (Pa)
+- `σc_max_bond` : Maximum compressive strength of the bond (Pa)
+- `τ_max_bond`  : Maximum shear strength of the bond (Pa)
+"""
+@kwdef struct Bond_FractureSettings{FT<:AbstractFloat}
+    σt_max_bond :: FT = 1e5     # Tensile strength limit
+    σc_max_bond :: FT = 1e6     # Compressive strength limit
+    τ_max_bond  :: FT = 1e6     # Shear strength limit
+    cohesion    :: FT = 1e3     # Mohr-Coulomb cohesion
+    mu_bond     :: FT = 0.6     # friction coefficient
+    h_mean       :: FT = 1.0
+    r_mean       :: FT = 1.0
+
+    function Bond_FractureSettings{FT}( σt_max_bond,σc_max_bond,τ_max_bond,cohesion,mu_bond,h_mean,r_mean) where {FT<:AbstractFloat}
+
+        σt_max_bond = max(FT(0), σt_max_bond)
+        σc_max_bond = max(FT(0), σc_max_bond)
+        τ_max_bond  = max(FT(0), τ_max_bond)
+        cohesion    = max(FT(0), cohesion)
+        mu_bond     = max(FT(0), mu_bond)
+
+        new{FT}( σt_max_bond, σc_max_bond, τ_max_bond, cohesion, mu_bond, h_mean,r_mean)
+    end
+
+    # outer constructor (Float64 default)
+    Bond_FractureSettings(σt_max_bond, σc_max_bond, τ_max_bond, cohesion, mu_bond, h_mean, r_mean) = 
+        Bond_FractureSettings{Float64}( σt_max_bond, σc_max_bond, τ_max_bond, cohesion, mu_bond, h_mean,r_mean)
+
+end
+
+"""
+    Bond_FractureSettings(::Type{FT}, kwargs...)
+
+A float type FT can be provided as the first argument of any Bond_FractureSettings
+constructor. A Bond_FractureSettings of type FT will be created by passing all
+other arguments to the correct constructor. 
+"""
+Bond_FractureSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
+Bond_FractureSettings{FT}(;kwargs...)
+
 # See below of documentation
 @kwdef struct SimplificationSettings{FT<:AbstractFloat}
     smooth_vertices_on::Bool = true
@@ -227,7 +330,7 @@ SimplificationSettings(::Type{FT}; kwargs...) where {FT <: AbstractFloat} =
 # See documentation below
 @kwdef struct RidgeRaftSettings{FT<:AbstractFloat}
     ridge_raft_on::Bool = false
-    Δt::Int = 0
+    Δt::FT = 0
     ridge_probability::FT = 0.95
     raft_probability::FT = 0.95
     min_overlap_frac::FT = 0.01

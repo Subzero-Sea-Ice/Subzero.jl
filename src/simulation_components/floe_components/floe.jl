@@ -14,6 +14,8 @@ const FLOE_DEF = "`floe::Floe`: singular floe within the simulation"
     rmax::FT                # distance of vertix farthest from centroid (m)
     moment::FT              # mass moment of intertia
     angles::Vector{FT}      # interior angles of floe in degrees
+    bonds::Vector{Int}      # Indices of neighboring floes
+    bond_break_mode :: Vector{Int}
     # Monte Carlo Points ---------------------------------------------------
     x_subfloe_points::Vector{FT}        # x-coordinates for integration with ocean/atmos centered at origin
     y_subfloe_points::Vector{FT}        # y-coordinates for integration with ocean/atmos centered at origin
@@ -35,12 +37,29 @@ const FLOE_DEF = "`floe::Floe`: singular floe within the simulation"
     # Forces/Collisions ----------------------------------------------------
     fxOA::FT = 0.0          # force from ocean and atmos in x direction
     fyOA::FT = 0.0          # force from ocean and atmos in y direction
+    fxA::FT = 0.0           # force from atmos in x direction
+    fyA::FT = 0.0           # force from atmos in y direction
+    fxO::FT = 0.0           # force from ocean in x direction
+    fyO::FT = 0.0           # force from ocean in y direction
+    fxP::FT = 0.0           # force from ocean pressure gradient in x direction
+    fyP::FT = 0.0           # force from ocean pressure gradient in y direction
+    fxC::FT = 0.0           # force from coriolis in x direction
+    fyC::FT = 0.0           # force from coriolis in y direction
     trqOA::FT = 0.0         # torque from ocean and Atmos
     hflx_factor::FT = 0.0   # heat flux factor can be multiplied by floe height
                             #   to get the heatflux
     overarea::FT = 0.0      # total overlap with other floe
     collision_force::Matrix{FT} = zeros(1, 2)
     collision_trq::FT = 0.0
+    bond_force::Matrix{FT} = zeros(1, 2)  # bond force aggregate
+    bond_trq::FT = 0.0                    # bond torque aggregate
+    ind_bond_force_xy::Vector{Vector{FT}} = Vector{Vector{FT}}()
+    ind_bond_force_nt::Vector{Vector{FT}} = Vector{Vector{FT}}() 
+    ind_bond_stiff_nt::Vector{Vector{FT}} = Vector{Vector{FT}}()
+    ind_bond_normal_old::Vector{Vector{FT}} = Vector{Vector{FT}}()
+    ind_bond_bm::Vector{FT} = Vector{FT}() 
+    ind_bond_prop::Vector{Vector{FT}} = Vector{Vector{FT}}()
+    stress_bond::Matrix{FT} = zeros(2, 2) # stress in a floe due to bonds
     interactions::Matrix{FT} = zeros(0, 7)
     num_inters::Int = 0
     stress_accum::Matrix{FT} = zeros(2, 2)

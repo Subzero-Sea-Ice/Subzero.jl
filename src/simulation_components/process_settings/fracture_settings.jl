@@ -347,20 +347,20 @@ FractureSettings{MohrsCone{Float32}}
   ⊢ npieces = 3
 ```
 """
-@kwdef struct FractureSettings{CT<:AbstractFractureCriteria}
+@kwdef struct FractureSettings{FT<:AbstractFloat,CT<:AbstractFractureCriteria}
     fractures_on::Bool = false
     criteria::CT = NoFracture()
-    Δt::Int = 0
+    Δt::FT = 0
     deform_on::Bool = false
     npieces::Int = 3
 
-    function FractureSettings{CT}(
+    function FractureSettings{FT,CT}(
         fractures_on,
         criteria::CT,
         Δt,
         deform_on,
         npieces,
-    ) where {CT <: AbstractFractureCriteria}
+    ) where {FT<:AbstractFloat,CT <: AbstractFractureCriteria}
         if fractures_on
             if Δt < 0
                 @warn "Fracturing can't occur with negative timesteps. Turning \
@@ -381,7 +381,7 @@ FractureSettings{MohrsCone{Float32}}
                 deformation off."
             deform_on = false
         end
-        new{CT}(fractures_on, criteria, Δt, deform_on, npieces)
+        new{FT,CT}(fractures_on, criteria, Δt, deform_on, npieces)
     end
     FractureSettings(
         fractures_on,
@@ -390,7 +390,7 @@ FractureSettings{MohrsCone{Float32}}
         deform_on,
         npieces,
     ) where {CT <: AbstractFractureCriteria} = 
-        FractureSettings{CT}(
+        FractureSettings{Float64,CT}(
             fractures_on,
             criteria,
             Δt,

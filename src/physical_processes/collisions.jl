@@ -156,15 +156,28 @@ function calc_elastic_forces(p1, p2, regions, region_areas, force_factor::FT) wh
     return force, fpoint, overlap, Δl_lst
 end
 
-# Get velocity of a point, assumed to be on given floe. Includes the rotational velocity
-# broken down into x- and y-directions.
-function _get_velocity(
-    floe::FloeType{FT},
-    x::FT,
-    y::FT,
-) where {FT}
-    u = floe.u + floe.ξ * (x - floe.centroid[1])
-    v = floe.v + floe.ξ * (y - floe.centroid[2])
+"""
+    _get_velocity(
+        floe,
+        x,
+        y,
+    )
+
+Get velocity of a point, assumed to be on given floe.
+Inputs:
+    floe <Union{LazyRow{Floe}, Floe}> floe
+    x    <AbstractFloat> x-coordinate of point to find velocity at
+    y    <AbstractFloat> y-coordinate of point to find velocity at
+Outputs:
+    u   <AbstractFloat> u velocity at point (x, y) assuming it is on given floe
+    v   <AbstractFloat> v velocity at point (x, y) assuming it is on given floe
+"""
+function _get_velocity(floe::FloeType{FT}, x::FT, y::FT) where {FT}
+    dx = x - floe.centroid[1]
+    dy = y - floe.centroid[2]
+
+    u = floe.u - floe.ξ * dy
+    v = floe.v + floe.ξ * dx
     return u, v
 end
 

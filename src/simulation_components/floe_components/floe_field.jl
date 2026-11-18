@@ -194,6 +194,31 @@ function _initialize_floe_field!(
             floe_settings, rng,
         )
     end
+    for i_idx in eachindex(floe_arr)
+        floe = floe_arr[i_idx]
+        coords_array = floe.coords[1]
+        nedges = length(coords_array) - 1
+        floe.bonds = zeros(Int, nedges)
+        floe.bond_break_mode = zeros(Int, nedges)
+        floe.ind_bond_force_xy = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_force_nt = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_stiff_nt = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_normal_old = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_bm = zeros(FT, nedges)
+        floe.ind_bond_prop = [zeros(FT, 3) for _ in 1:nedges]
+        floe_arr[i_idx] = floe
+    end
+    ensure_ccw!(floe_arr.coords)
+    # Calculate bonds for floe
+    num_floes = length(floe_arr.coords)
+    bboxes = [compute_bbox(floe_arr.coords[i][1]) for i in 1:num_floes]
+    bonds = Vector{Vector{Int}}(undef, num_floes)
+    for i_idx in eachindex(floe_arr)
+        edges_i = polygon_edges(floe_arr.coords[i_idx][1])
+        num_edges = length(edges_i)
+        bonds[i_idx] = zeros(Int, num_edges - 1)
+    end
+    calculate_bonds!(floe_arr, bboxes, bonds, num_floes)
 end
 
 const FLOE_CONC_STR = "Concentrations per cell in a VoronoiTesselationFieldGenerator must be between 0 and 1. Values less than zero will be set to 0 and those greater than 1 will be set to 1."
@@ -380,6 +405,35 @@ function _initialize_floe_field!(
             end
         end
     end
+    # Resize ind_bond_force based on polygon edges
+    for i_idx in eachindex(floe_arr)
+        floe = floe_arr[i_idx]
+        coords_array = floe.coords[1]
+        nedges = length(coords_array) - 1
+        floe.bonds = zeros(Int, nedges)
+        floe.bond_break_mode = zeros(Int, nedges)
+        floe.ind_bond_force_xy = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_force_nt = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_stiff_nt = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_normal_old = [zeros(FT, 2) for _ in 1:nedges]
+        floe.ind_bond_bm = zeros(FT, nedges)
+        floe.ind_bond_prop = [zeros(FT, 3) for _ in 1:nedges]
+        floe_arr[i_idx] = floe
+    end
+
+    # Initialize floe IDs
+    floe_arr.id .= range(1, length(floe_arr))
+    ensure_ccw!(floe_arr.coords)
+    # Calculate bonds for floe
+    num_floes = length(floe_arr.coords)
+    bboxes = [compute_bbox(floe_arr.coords[i][1]) for i in 1:num_floes]
+    bonds = Vector{Vector{Int}}(undef, num_floes)
+    for i_idx in eachindex(floe_arr)
+        edges_i = polygon_edges(floe_arr.coords[i_idx][1])
+        num_edges = length(edges_i)
+        bonds[i_idx] = zeros(Int, num_edges - 1)
+    end
+    calculate_bonds!(floe_arr, bboxes, bonds, num_floes)
 end
 
 function Base.show(io::IO, floes::StructArray{Floe{FT}}; digits = 5) where FT

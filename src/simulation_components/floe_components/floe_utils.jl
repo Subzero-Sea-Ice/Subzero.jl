@@ -85,6 +85,8 @@ function deepcopy_floe(floe::LazyRow{Floe{FT}}) where {FT}
         rmax = floe.rmax,
         moment = floe.moment,
         angles = copy(floe.angles),
+        bonds = copy(floe.bonds),
+        bond_break_mode = copy(floe.bond_break_mode),
         x_subfloe_points = copy(floe.x_subfloe_points),
         y_subfloe_points = copy(floe.y_subfloe_points),
         α = floe.α,
@@ -98,11 +100,28 @@ function deepcopy_floe(floe::LazyRow{Floe{FT}}) where {FT}
         ghosts = copy(floe.ghosts),
         fxOA= floe.fxOA,
         fyOA = floe.fyOA,
+        fxA = floe.fxA,
+        fyA = floe.fyA,
+        fxO = floe.fxO,
+        fyO = floe.fyO,
+        fxP = floe.fxP,
+        fyP = floe.fyP,
+        fxC = floe.fxC,
+        fyC = floe.fyC,
         trqOA = floe.trqOA,
         hflx_factor = floe.hflx_factor,
         overarea = floe.overarea,
         collision_force = copy(floe.collision_force),
         collision_trq = floe.collision_trq,
+        bond_force = copy(floe.bond_force),
+        bond_trq = floe.bond_trq,
+        stress_bond = copy(floe.stress_bond),
+        ind_bond_force_nt = deepcopy(floe.ind_bond_force_nt),
+        ind_bond_force_xy = deepcopy(floe.ind_bond_force_xy),
+        ind_bond_stiff_nt = deepcopy(floe.ind_bond_stiff_nt),
+        ind_bond_normal_old = deepcopy(floe.ind_bond_normal_old),
+        ind_bond_bm = copy(floe.ind_bond_bm),
+        ind_bond_prop = deepcopy(floe.ind_bond_prop),
         stress_accum = copy(floe.stress_accum),
         stress_instant = copy(floe.stress_instant),
         strain = copy(floe.strain),
@@ -165,4 +184,106 @@ function _correct_floe_poly(::Type{FT}, poly::Polys) where FT
     poly = get_tuple_poly(poly, FT)
     rmholes!(poly)
     return poly
+end
+
+# To ensure all coordinates are stored in ccw 
+function ensure_ccw!(coords::Vector{Vector{Float64}})
+    if length(coords) < 3
+        return coords
+    end
+    signed_area = 0.0
+    n = length(coords)
+    for i in 1:n
+        p1 = coords[i]
+        p2 = coords[mod1(i + 1, n)]
+        signed_area += (p1[1] * p2[2]) - (p2[1] * p1[2])
+    end
+    if signed_area < 0.0
+        if coords[1] == coords[end]
+            reverse!(@view coords[2:end-1])
+        else
+            reverse!(coords)
+        end
+    end
+    return coords
+end
+    
+function ensure_ccw!(all_coords::Vector{Vector{Vector{Vector{Float64}}}})
+    for floe_coords in all_coords
+        for polygon in floe_coords
+            ensure_ccw!(polygon)
+        end
+    end
+    return all_coords
+end
+
+# Floe utilities for bonds
+function polygon_edges(poly_coords::Vector{Vector{Float64}})
+    n = length(poly_coords)
+    pts = [GB.Point2(c[1], c[2]) for c in poly_coords]
+    [GB.Line(pts[i], pts[mod1(i+1, n)]) for i in 1:n]
+end
+
+function edges_equal(e1::GB.Line, e2::GB.Line; rtol=1e-3)
+    scale = 0.5 * (norm(e1.points[2] - e1.points[1]) + norm(e2.points[2] - e2.points[1]))
+    atol = rtol * scale  
+
+    (isapprox(e1.points[1], e2.points[1]; atol=atol, rtol=rtol) &&
+     isapprox(e1.points[2], e2.points[2]; atol=atol, rtol=rtol)) ||
+    (isapprox(e1.points[1], e2.points[2]; atol=atol, rtol=rtol) &&
+     isapprox(e1.points[2], e2.points[1]; atol=atol, rtol=rtol))
+end
+
+struct BoundingBox
+    xmin::Float64
+    xmax::Float64
+    ymin::Float64
+    ymax::Float64
+end
+
+function compute_bbox(poly_coords::Vector{Vector{Float64}})
+    xs = [c[1] for c in poly_coords]
+    ys = [c[2] for c in poly_coords]
+    BoundingBox(minimum(xs), maximum(xs), minimum(ys), maximum(ys))
+end
+
+function bbox_intersect(b1::BoundingBox, b2::BoundingBox; atol=1e-8)
+    return !(
+        (b1.xmax <= b2.xmin - atol) ||  (b1.xmin >= b2.xmax + atol) ||
+        (b1.ymax <= b2.ymin - atol) ||  (b1.ymin >= b2.ymax + atol))
+end
+
+
+function calculate_bonds!(floe_arr, bboxes, bonds, num_floes)
+    for i_idx in eachindex(floe_arr)
+        floe = floe_arr[i_idx]
+        coords_rearr = [c for c in floe_arr.coords]
+        edges_i = polygon_edges(coords_rearr[i_idx][1])
+        num_edges_i = length(edges_i) - 1
+        for j_idx in i_idx+1:num_floes
+            if !bbox_intersect(bboxes[i_idx], bboxes[j_idx])
+                continue
+            end
+            edges_j = polygon_edges(coords_rearr[j_idx][1])
+            num_edges_j = length(edges_j) - 1
+            for (e_idx_i, e_i) in enumerate(edges_i[1:num_edges_i])
+                if bonds[i_idx][e_idx_i] != 0
+                    continue
+                end
+                for (e_idx_j, e_j) in enumerate(edges_j[1:num_edges_j])
+                    if bonds[j_idx][e_idx_j] != 0
+                        continue
+                    end
+                    if edges_equal(e_i, e_j)
+                        bonds[i_idx][e_idx_i] = floe_arr.id[j_idx]
+                        bonds[j_idx][e_idx_j] = floe_arr.id[i_idx]
+                        break
+                    end
+                end
+            end
+        end
+        floe.bonds = bonds[i_idx]
+        floe_arr[i_idx] = floe
+    end
+    return floe_arr
 end
