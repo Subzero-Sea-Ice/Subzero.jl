@@ -77,8 +77,10 @@ makedocs(;
     warnonly = Documenter.except(:doctest),
 )
 
+# Keep simulation output (written by the tutorial and examples) out of the gh-pages branch.
+# A pattern without a slash matches at every level, so this covers tutorial/ and examples/.
 println("Adding .gitignore file...")
-write("docs/build/.gitignore", "examples/**/*.jld2");
+write("docs/build/.gitignore", "*.jld2\n");
 
 println("Deploying docs...")
 deploydocs(;

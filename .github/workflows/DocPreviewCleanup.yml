@@ -1,0 +1,71 @@
+# Removes documentation previews (previews/PR<number>) from the gh-pages branch.
+#
+# - When a pull request is closed, its preview is removed.
+# - When run manually, the previews of all closed pull requests are removed.
+#
+# Based on https://documenter.juliadocs.org/stable/man/hosting/#Cleaning-up-gh-pages
+# but without squashing the gh-pages history, so this never force-pushes.
+
+name: Doc Preview Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+
+concurrency:
+  group: doc-preview-cleanup
+  cancel-in-progress: false
+
+jobs:
+  doc-preview-cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+      - name: Select previews to delete
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            previews="previews/PR${PR_NUMBER}"
+          else
+            open_prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number --jq '.[].number')
+            previews=""
+            for dir in previews/PR*; do
+              [ -d "$dir" ] || continue
+              number="${dir#previews/PR}"
+              if ! grep -qx "$number" <<< "$open_prs"; then
+                previews="$previews $dir"
+              fi
+            done
+          fi
+          existing=""
+          for dir in $previews; do
+            [ -d "$dir" ] && existing="$existing $dir"
+          done
+          echo "Previews to delete:${existing:- none}"
+          echo "previews=${existing}" >> "$GITHUB_OUTPUT"
+      - name: Delete previews and push changes
+        if: steps.select.outputs.previews != ''
+        env:
+          PREVIEWS: ${{ steps.select.outputs.previews }}
+        run: |
+          git config user.name "Documenter.jl"
+          git config user.email "documenter@juliadocs.github.io"
+          git rm -rf --quiet $PREVIEWS
+          git commit -m "Delete documentation previews:$PREVIEWS"
+          # A docs deployment may push to gh-pages at the same time, so retry on conflicts.
+          for attempt in 1 2 3 4 5; do
+            git pull --rebase origin gh-pages && git push origin HEAD:gh-pages && exit 0
+            sleep $((attempt * 10))
+          done
+          exit 1
