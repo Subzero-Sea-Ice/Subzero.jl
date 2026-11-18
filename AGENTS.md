@@ -141,7 +141,9 @@ over if/else flags.
   `get_intersection_points!`, ...) as methods for polygons stored in arrays (`_ArrayPoly`,
   `_floe_poly`), with helpers named after the GeometryOps functions they follow. They match
   GeometryOps bit for bit; keep it that way, and test new ones against GeometryOps in
-  `test/test_device_geom_utils.jl`.
+  `test/test_device_geom_utils.jl`. `src/tools/device_clipping.jl` has `intersect_polys!`,
+  which writes the overlap regions of two polygons to `_PolyRegions`, using node lists in
+  `_ClipLists`; both are fixed-size buffers with one row per pair of polygons.
 - Don't log. Set a bit in `floes.flags` (the `FLAG_*` constants in
   `update_floe.jl`). The host logs each type of event once per timestep after copying
   back (`_log_flags`).
