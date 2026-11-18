@@ -48,3 +48,44 @@ jobs:
           GKSwstype: "100" # for Plots.jl plots (if you have them)
           JULIA_DEBUG: "Documenter"
           DATADEPS_ALWAYS_ACCEPT: true
+
+  # Keep the gh-pages branch small: remove the previews of closed PRs and the simulation
+  # output, then squash the history into a single commit. This is part of this workflow
+  # so the "pages" concurrency group above makes it wait for any docs deployment, and no
+  # deployment can push to gh-pages while it runs.
+  # Based on https://documenter.juliadocs.org/stable/man/hosting/#Cleaning-up-gh-pages
+  cleanup:
+    needs: build
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+      - name: Delete old previews and simulation output, squash history and force-push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          base=$(git rev-parse HEAD)
+          for dir in previews/PR*; do
+            if [ -d "$dir" ]; then
+              number="${dir#previews/PR}"
+              # If this request fails, the step stops before anything is pushed.
+              state=$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json state --jq .state)
+              if [ "$state" != "OPEN" ]; then
+                echo "Deleting $dir (PR is $state)"
+                git rm -r --quiet "$dir"
+              fi
+            fi
+          done
+          # Simulation output written by the tutorial and examples is not part of the website.
+          git ls-files -z '*.jld2' | xargs -0 --no-run-if-empty git rm --quiet
+          git config user.name "Documenter.jl"
+          git config user.email "documenter@juliadocs.github.io"
+          commit=$(git commit-tree "$(git write-tree)" -m "Squash gh-pages history")
+          # Refuse to overwrite gh-pages if anything pushed to it since the checkout.
+          git push --force-with-lease="gh-pages:$base" origin "$commit:refs/heads/gh-pages"
