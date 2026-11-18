@@ -19,7 +19,7 @@ permissions:
   pages: write
   id-token: write
   statuses: write
-        
+
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
@@ -27,8 +27,62 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Keep the gh-pages branch small: remove the previews of closed PRs and the simulation
+  # output, then squash the history into a single commit. This runs before the build so
+  # the docs deployment always pushes on top of the cleaned-up branch, and the "pages"
+  # concurrency group above ensures no other deployment pushes to gh-pages meanwhile.
+  # On pushes to main it only squashes when something was deleted; manual runs always do.
+  # Based on https://documenter.juliadocs.org/stable/man/hosting/#Cleaning-up-gh-pages
+  cleanup:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+      - name: Delete old previews and simulation output, squash history and force-push
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          base=$(git rev-parse HEAD)
+          for dir in previews/*; do
+            [ -d "$dir" ] || continue
+            number="${dir#previews/PR}"
+            if ! [[ "$number" =~ ^[0-9]+$ ]]; then
+              echo "::warning::Keeping $dir: not a PR preview"
+              continue
+            fi
+            if ! state=$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json state --jq .state); then
+              echo "::warning::Keeping $dir: could not look up PR #$number"
+              continue
+            fi
+            if [ "$state" = "MERGED" ] || [ "$state" = "CLOSED" ]; then
+              echo "Deleting $dir (PR is $state)"
+              git rm -r --quiet "$dir"
+            fi
+          done
+          # Simulation output written by the tutorial and examples is not part of the website.
+          git ls-files -z '*.jld2' | xargs -0 --no-run-if-empty git rm --quiet
+          if [ "$EVENT_NAME" != "workflow_dispatch" ] && git diff --cached --quiet; then
+            echo "Nothing to delete, keeping the gh-pages history."
+            exit 0
+          fi
+          git config user.name "Documenter.jl"
+          git config user.email "documenter@juliadocs.github.io"
+          commit=$(git commit-tree "$(git write-tree)" -m "Squash gh-pages history")
+          # Refuse to overwrite gh-pages if anything pushed to it since the checkout.
+          git push --force-with-lease="gh-pages:$base" origin "$commit:refs/heads/gh-pages"
+
   # Build job
   build:
+    needs: cleanup
+    # Also run when the cleanup was skipped (pull requests, tags) or failed.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
