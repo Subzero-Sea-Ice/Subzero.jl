@@ -56,59 +56,51 @@
         for FT in (Float64, Float32)
             floes = _make_timestep_test_floes(FT, FloeSettings(FT))
             fwf = Subzero.FixedWidthFloes(floes)
-            for i in eachindex(floes)
-                Δx, Δy = 100 .* (rand(rng, FT, 2) .- FT(0.5))
-                Δα = FT(π) * (rand(rng, FT) - FT(0.5))
-                cx, cy = floes.centroid[i]
-                expected = Subzero._move_poly(FT, floes.poly[i], Δx, Δy, Δα, cx, cy)
-                Subzero._move_floe!(fwf, i, Δx, Δy, Δα)
-                n = fwf.n_points[i]
-                moved = [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:n]
-                @test isapprox(
-                    reinterpret(FT, moved),
-                    reinterpret(FT, collect(GI.getpoint(expected)));
-                    rtol = 10eps(FT),
-                )
-                @test fwf.centroid[i, :] ≈ [cx + Δx, cy + Δy]
-                @test all(fwf.poly[i, (n + 1):end, :] .== 0)
-            end
-        end
-    end
-    @testset "_move_poly! matches _move_poly around the origin" begin
-        for FT in (Float64, Float32)
-            floes = _make_timestep_test_floes(FT, FloeSettings(FT))
-            fwf = Subzero.FixedWidthFloes(floes)
-            Δx, Δy, Δα = FT(-31.4), FT(27.2), FT(0.7)
-            for i in eachindex(floes)
-                expected = Subzero._move_poly(FT, floes.poly[i], Δx, Δy, Δα)
-                Subzero._move_poly!(fwf, i, Δx, Δy, Δα)
-                moved = [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:fwf.n_points[i]]
-                @test isapprox(
-                    reinterpret(FT, moved),
-                    reinterpret(FT, collect(GI.getpoint(expected)));
-                    rtol = 10eps(FT),
-                )
-            end
+            n = length(floes)
+            # Δx, Δy, Δα per floe
+            moves = [(100 .* (rand(rng, FT, 2) .- FT(0.5))..., FT(π) * (rand(rng, FT) - FT(0.5)))
+                for _ in 1:n]
+            expected = [Subzero._move_poly(FT, floes.poly[i], moves[i]..., floes.centroid[i]...)
+                for i in 1:n]
+            foreach(i -> Subzero._move_floe!(fwf, i, moves[i]...), 1:n)
+            @test isempty(_not_approx(
+                [reinterpret(FT, _fwf_points(fwf, i)) for i in 1:n],
+                [reinterpret(FT, collect(GI.getpoint(p))) for p in expected];
+                rtol = 10eps(FT),
+            ))
+            @test isempty(_not_approx([fwf.centroid[i, :] for i in 1:n],
+                [floes.centroid[i] .+ [moves[i][1], moves[i][2]] for i in 1:n]))
+            @test isempty(_failing(i -> _fwf_padding_is_zero(fwf, i), 1:n))
         end
     end
     @testset "_move_floe! on $backend with $FT" for backend in test_backends(),
             FT in (Float64, Float32)
         floes = _make_timestep_test_floes(FT, FloeSettings(FT))
+        n = length(floes)
         Δx, Δy, Δα = FT(-31.4), FT(27.2), FT(0.7)
         fwf = _launch_on(Subzero._move_floe!, backend, Subzero.FixedWidthFloes(floes), Δx, Δy, Δα)
-        for i in eachindex(floes)
-            cx, cy = floes.centroid[i]
-            expected = Subzero._move_poly(FT, floes.poly[i], Δx, Δy, Δα, cx, cy)
-            n = fwf.n_points[i]
-            moved = [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:n]
-            @test isapprox(
-                reinterpret(FT, moved),
-                reinterpret(FT, collect(GI.getpoint(expected)));
-                rtol = 10eps(FT),
-            )
-            @test fwf.centroid[i, :] ≈ [cx + Δx, cy + Δy]
-            @test all(fwf.poly[i, (n + 1):end, :] .== 0)
-        end
+        expected = [Subzero._move_poly(FT, floes.poly[i], Δx, Δy, Δα, floes.centroid[i]...)
+            for i in 1:n]
+        @test isempty(_not_approx(
+            [reinterpret(FT, _fwf_points(fwf, i)) for i in 1:n],
+            [reinterpret(FT, collect(GI.getpoint(p))) for p in expected];
+            rtol = 10eps(FT),
+        ))
+        @test isempty(_not_approx([fwf.centroid[i, :] for i in 1:n],
+            [floes.centroid[i] .+ [Δx, Δy] for i in 1:n]))
+        @test isempty(_failing(i -> _fwf_padding_is_zero(fwf, i), 1:n))
+    end
+    # Same as the CPU version, exactly: both add Δx and Δy to every coordinate
+    @testset "_translate_floe! on $backend with $FT" for backend in test_backends(),
+            FT in (Float64, Float32)
+        floes = _make_timestep_test_floes(FT, FloeSettings(FT))
+        n = length(floes)
+        Δx, Δy = FT(-2e4), FT(1234.5)  # e.g. a ghost through the eastern boundary
+        fwf = _launch_on(Subzero._translate_floe!, backend, Subzero.FixedWidthFloes(floes), Δx, Δy)
+        foreach(i -> Subzero._translate_floe!(FT, Subzero.get_floe(floes, i), Δx, Δy), 1:n)
+        @test isempty(_failing(i -> _fwf_points(fwf, i) == collect(GI.getpoint(floes.poly[i])), 1:n))
+        @test isempty(_failing(i -> fwf.centroid[i, :] == floes.centroid[i], 1:n))
+        @test isempty(_failing(i -> _fwf_padding_is_zero(fwf, i), 1:n))
     end
     #=
     Floes for testing `_overlaps_rectangle`, and rectangles to test them with. Besides
@@ -177,9 +169,10 @@
         @test east == (FT(1e4), FT(1.5e4), FT(-5e3), FT(1.5e4))
         @test [Subzero._overlaps_rectangle(fwf, i, east...) for i in 1:n_edge_cases] ==
             [false, false, false, true, true, true, true, false, false, true, true, false]
-        for rect in [east; rects], i in eachindex(floes)
-            @test Subzero._overlaps_rectangle(fwf, i, rect...) == overlaps_go(floes, i, rect, FT)
-        end
+        # (rectangle, floe) pairs where the two differ
+        mismatches = [(rect, i) for rect in [east; rects], i in eachindex(floes)
+            if Subzero._overlaps_rectangle(fwf, i, rect...) != overlaps_go(floes, i, rect, FT)]
+        @test isempty(mismatches)
     end
     #= Kernel test: mark_overlap! writes whether each floe overlaps the rectangle into its
     flags. These are test markers, not FLAG_* event bits. =#
@@ -205,10 +198,9 @@
     @testset "_overlaps_rectangle on $backend with $FT" for backend in test_backends(),
             FT in (Float64, Float32)
         floes, _, rects = _overlap_test_floes(FT)
-        for rect in rects
-            fwf = _launch_on(mark_overlap!, backend, Subzero.FixedWidthFloes(floes), rect...)
-            @test fwf.flags[1:length(floes)] ==
-                [overlaps_go(floes, i, rect, FT) ? 0x01 : 0x00 for i in eachindex(floes)]
-        end
+        marks(rect) = _launch_on(mark_overlap!, backend, Subzero.FixedWidthFloes(floes), rect...).flags[1:length(floes)]
+        expected(rect) = [overlaps_go(floes, i, rect, FT) ? 0x01 : 0x00 for i in eachindex(floes)]
+        # rectangles for which the kernel's result differs
+        @test isempty(_failing(rect -> marks(rect) == expected(rect), rects))
     end
 end

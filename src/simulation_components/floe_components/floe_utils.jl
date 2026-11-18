@@ -62,7 +62,7 @@ Rotate the polygon of floe i by Δα around (cx, cy) and then translate it by Δ
 place. Same result as `_move_poly`, but written as scalar operations on the arrays of a
 `FixedWidthFloes`, so it can be called from a GPU kernel.
 =#
-function _move_poly!(floes::FixedWidthFloes{FT}, i, Δx, Δy, Δα, cx = zero(FT), cy = zero(FT)) where FT
+function _move_poly!(floes::FixedWidthFloes{FT}, i, Δx, Δy, Δα, cx, cy) where FT
     sinα, cosα = sincos(FT(Δα))
     for j in 1:floes.n_points[i]
         x = floes.poly[i, j, 1] - cx
@@ -82,6 +82,29 @@ function _move_floe!(floes::FixedWidthFloes, i, Δx, Δy, Δα)
     floes.centroid[i, 2] += Δy
     # move polygon
     _move_poly!(floes, i, Δx, Δy, Δα, cx, cy)
+    return
+end
+
+#=
+Translate floe i by Δx and Δy. Same result as `_translate_floe!` for a `Floe`, but written as
+scalar operations on the arrays of a `FixedWidthFloes`, so it can be called from a GPU
+kernel.
+=#
+function _translate_floe!(floes::FixedWidthFloes, i, Δx, Δy)
+    floes.centroid[i, 1] += Δx
+    floes.centroid[i, 2] += Δy
+    for j in 1:floes.n_points[i]
+        floes.poly[i, j, 1] += Δx
+        floes.poly[i, j, 2] += Δy
+    end
+    return
+end
+
+# Set row i of an array of a FixedWidthFloes to zero
+function _zero_row!(a::AbstractArray{<:Any, 2}, i)
+    for k in axes(a, 2)
+        a[i, k] = zero(eltype(a))
+    end
     return
 end
 

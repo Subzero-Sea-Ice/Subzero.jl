@@ -143,26 +143,15 @@ end
             end,
         )
         rtol = 1e-10
-        @testset "floe $i" for i in eachindex(floes)
-            points = collect(GI.getpoint(floes.poly[i]))
-            expected_points = collect(GI.getpoint(expected.poly[i]))
-            @test length(points) == length(expected_points)
-            if length(points) == length(expected_points)
-                @test isapprox(
-                    reinterpret(FT, points),
-                    reinterpret(FT, expected_points);
-                    rtol,
-                )
-            end
-            @testset "$field" for field in (
-                :centroid, :height, :mass, :moment, :α, :u, :v, :ξ,
-                :p_dxdt, :p_dydt, :p_dαdt, :p_dudt, :p_dvdt, :p_dξdt,
-                :stress_accum, :stress_instant, :strain,
-            )
-                actual_value = getproperty(floes, field)[i]
-                expected_value = getproperty(expected, field)[i]
-                @test isapprox(actual_value, expected_value; rtol)
-            end
+        # the vertices of each floe, as a flat vector of coordinates
+        coords(floes) = [reinterpret(FT, collect(GI.getpoint(p))) for p in floes.poly]
+        @test isempty(_not_approx(coords(floes), coords(expected); rtol))
+        @testset "$field" for field in (
+            :centroid, :height, :mass, :moment, :α, :u, :v, :ξ,
+            :p_dxdt, :p_dydt, :p_dαdt, :p_dudt, :p_dvdt, :p_dξdt,
+            :stress_accum, :stress_instant, :strain,
+        )
+            @test isempty(_not_approx(getproperty(floes, field), getproperty(expected, field); rtol))
         end
     end
     @testset "Stress/Strain" begin
@@ -241,19 +230,17 @@ end
                 Subzero.calc_stress!, backend, Subzero.FixedWidthFloes(floes),
                 floe_settings.stress_calculator,
             )
-            for i in eachindex(floes)
-                Subzero.calc_stress!(Subzero.get_floe(floes, i), floe_settings)
-                @test isapprox(fwf.stress_instant[i, :, :], floes.stress_instant[i]; rtol)
-                @test isapprox(fwf.stress_accum[i, :, :], floes.stress_accum[i]; rtol)
-            end
+            foreach(i -> Subzero.calc_stress!(Subzero.get_floe(floes, i), floe_settings), eachindex(floes))
+            @test isempty(_not_approx(
+                [fwf.stress_instant[i, :, :] for i in eachindex(floes)], floes.stress_instant; rtol))
+            @test isempty(_not_approx(
+                [fwf.stress_accum[i, :, :] for i in eachindex(floes)], floes.stress_accum; rtol))
         end
         @testset "calc_strain!" begin
             floes = _make_timestep_test_floes(FT, floe_settings)
             fwf = _launch_on(Subzero.calc_strain!, backend, Subzero.FixedWidthFloes(floes))
-            for i in eachindex(floes)
-                Subzero.calc_strain!(Subzero.get_floe(floes, i))
-                @test isapprox(fwf.strain[i, :, :], floes.strain[i]; rtol)
-            end
+            foreach(i -> Subzero.calc_strain!(Subzero.get_floe(floes, i)), eachindex(floes))
+            @test isempty(_not_approx([fwf.strain[i, :, :] for i in eachindex(floes)], floes.strain; rtol))
         end
         @testset "limit_height!" begin
             floes = _make_timestep_test_floes(FT, floe_settings)
@@ -271,13 +258,14 @@ end
             fwf = _launch_on(
                 Subzero.limit_collision_force!, backend, Subzero.FixedWidthFloes(floes), Δt,
             )
-            for i in eachindex(floes)
-                cforce, ctrq, reduced = _reference_limit_collision_force(floes, i, Δt)
-                @test reduced == (i == 2)
-                @test is_flagged(fwf, Subzero.FLAG_FORCE_REDUCED)[i] == reduced
-                @test isapprox(fwf.collision_force[i, :], vec(cforce); rtol)
-                @test isapprox(fwf.collision_trq[i], ctrq; rtol)
-            end
+            # (collision force, collision torque, reduced) per floe
+            results = [_reference_limit_collision_force(floes, i, Δt) for i in eachindex(floes)]
+            reduced = [r[3] for r in results]
+            @test reduced == (eachindex(floes) .== 2)
+            @test is_flagged(fwf, Subzero.FLAG_FORCE_REDUCED) == reduced
+            @test isempty(_not_approx(
+                [fwf.collision_force[i, :] for i in eachindex(floes)], [vec(r[1]) for r in results]; rtol))
+            @test isempty(_not_approx(in_use(fwf, :collision_trq), [r[2] for r in results]; rtol))
         end
         @testset "thermodynamic_growth!" begin
             floes = _make_timestep_test_floes(FT, floe_settings)
@@ -296,16 +284,13 @@ end
             fwf = _launch_on(
                 Subzero.update_ice_coordinates!, backend, Subzero.FixedWidthFloes(floes), Δt,
             )
-            for i in eachindex(floes)
-                _reference_update_ice_coordinates!(floes, i, Δt)
-                points = [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:fwf.n_points[i]]
-                @test isapprox(
-                    reinterpret(FT, points),
-                    reinterpret(FT, collect(GI.getpoint(floes.poly[i])));
-                    rtol,
-                )
-                @test isapprox(fwf.centroid[i, :], floes.centroid[i]; rtol)
-            end
+            foreach(i -> _reference_update_ice_coordinates!(floes, i, Δt), eachindex(floes))
+            @test isempty(_not_approx(
+                [reinterpret(FT, _fwf_points(fwf, i)) for i in eachindex(floes)],
+                [reinterpret(FT, collect(GI.getpoint(p))) for p in floes.poly];
+                rtol,
+            ))
+            @test isempty(_not_approx([fwf.centroid[i, :] for i in eachindex(floes)], floes.centroid; rtol))
             @testset "$field" for field in (:α, :p_dxdt, :p_dydt, :p_dαdt)
                 @test isapprox(in_use(fwf, field), getproperty(floes, field); rtol)
             end
