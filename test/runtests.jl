@@ -30,5 +30,6 @@ using Test
     include("test_simulation_components/model.jl")
     include("test_output.jl")
     include("test_simulation.jl")
+    include("test_simulation_reference.jl")
     include("test_conservation.jl")
 end
