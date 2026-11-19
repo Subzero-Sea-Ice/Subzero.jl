@@ -239,9 +239,10 @@ Intersection of the edges (a1, a2) and (b1, b2), whose points are tuples of type
 `GO._intersection_point(T, (a1, a2), (b1, b2); exact = True())`. Returns the kind of
 intersection (`_LINE_OUT`, `_LINE_HINGE`, `_LINE_CROSS` or `_LINE_OVER`) and two
 intersection points with their fractions along each edge, `(point, (α, β))`. The second is
-only used for `_LINE_OVER` (collinear edges that overlap).
+only used for `_LINE_OVER` (collinear edges that overlap). With `orient = _orient_inexact`,
+as `exact = False()`.
 =#
-function _intersection_point(::Type{T}, a1, a2, b1, b2) where T
+function _intersection_point(::Type{T}, a1, a2, b1, b2, orient::F = _orient_exact) where {T, F}
     line_orient = _LINE_OUT
     intr1 = ((zero(T), zero(T)), (zero(T), zero(T)))
     intr2 = intr1
@@ -249,11 +250,11 @@ function _intersection_point(::Type{T}, a1, a2, b1, b2) where T
     a_ext = (minmax(a1[1], a2[1])..., minmax(a1[2], a2[2])...)
     b_ext = (minmax(b1[1], b2[1])..., minmax(b1[2], b2[2])...)
     _extents_intersect(a_ext, b_ext) || return no_intr_result
-    a1_orient = _orient_exact(b1, b2, a1)
-    a2_orient = _orient_exact(b1, b2, a2)
+    a1_orient = orient(b1, b2, a1)
+    a2_orient = orient(b1, b2, a2)
     a1_orient != 0 && a1_orient == a2_orient && return no_intr_result
-    b1_orient = _orient_exact(a1, a2, b1)
-    b2_orient = _orient_exact(a1, a2, b2)
+    b1_orient = orient(a1, a2, b1)
+    b2_orient = orient(a1, a2, b2)
     b1_orient != 0 && b1_orient == b2_orient && return no_intr_result
     if a1_orient == a2_orient == b1_orient == b2_orient == 0
         line_orient, intr1, intr2 =
@@ -507,4 +508,184 @@ function which_vertices_match_points!(out, k, points, m, region::_ArrayPoly, ato
         end
     end
     return c
+end
+
+#=
+Write the polygon translated by Δx and Δy to row `row` of `coords`, an array with the
+layout of `_ArrayPoly`, as `_translate_poly(FT, poly, Δx, Δy)` where FT is the element type
+of `coords`. Returns the number of points, so the translated polygon is
+`_ArrayPoly(coords, row, n)`, or -1 if `coords` has too few columns.
+=#
+function _translate_poly!(coords::AbstractArray{<:Any, 3}, row, poly::_ArrayPoly, Δx, Δy)
+    n = _npoint(poly)
+    n > size(coords, 2) && return -1
+    for j in 1:n
+        x, y = _getpoint(poly, j)
+        coords[row, j, 1] = x + Δx
+        coords[row, j, 2] = y + Δy
+    end
+    return n
+end
+
+#= Whether the point is on the segment from `start` to `stop`, as
+`GO._point_segment_orientation(point, start, stop)`: `_POINT_ON` at an end, `_POINT_IN`
+between the ends and `_POINT_OUT` elsewhere. =#
+function _point_segment_orientation(point, start, stop)
+    x, y = point
+    x1, y1 = start
+    x2, y2 = stop
+    Δx_seg = x2 - x1
+    Δy_seg = y2 - y1
+    Δx_pt = x - x1
+    Δy_pt = y - y1
+    if (Δx_pt == 0 && Δy_pt == 0) || (Δx_pt == Δx_seg && Δy_pt == Δy_seg)
+        return _POINT_ON
+    else
+        # on the segment if parallel to it (`GO._isparallel`) and between its ends
+        Δx_seg * Δy_pt == Δy_seg * Δx_pt || return _POINT_OUT
+        between_endpoints =
+            (x2 > x1 ? x1 <= x <= x2 : x2 <= x <= x1) &&
+            (y2 > y1 ? y1 <= y <= y2 : y2 <= y <= y1)
+        between_endpoints || return _POINT_OUT
+    end
+    return _POINT_IN
+end
+
+#=
+The point after `prev` along the segment from `l_start` to `l_end`, of the points where
+the segment meets the polygon's edges, as the next point of GeometryOps'
+`intersection_points(GI.Line([l_start, l_end]), ring)` sorted by distance from `l_start`
+(in `_split_segment_interactions`). GeometryOps sorts and removes duplicates first, so
+points at the same distance are in the order of their coordinates; here the points are
+ordered by the key (distance, x, y), and this finds the smallest key after `prev`'s
+(`prev = nothing` for the first point). Searching again for each point means no buffer
+is needed. Returns the point and its key, or `nothing` if there are no more points.
+=#
+function _next_segment_intersection(l_start, l_end, p::_ArrayPoly, prev_key)
+    best_pt = (0.0, 0.0)
+    best_key = (Inf, Inf, Inf)
+    found = false
+    for j in 1:(_npoint(p) - 1)
+        q1, q2 = _getpoint(p, j), _getpoint(p, j + 1)
+        b1, b2 = (Float64(q1[1]), Float64(q1[2])), (Float64(q2[1]), Float64(q2[2]))
+        line_orient, (pt1, _), (pt2, _) = _intersection_point(Float64, l_start, l_end, b1, b2)
+        line_orient == _LINE_OUT && continue
+        for (k, pt) in enumerate((pt1, pt2))
+            k == 2 && line_orient != _LINE_OVER && break
+            key = (_euclid_distance(Float64, pt, l_start), pt[1], pt[2])
+            !isnothing(prev_key) && !isless(prev_key, key) && continue
+            if !found || isless(key, best_key)
+                best_pt, best_key, found = pt, key, true
+            end
+        end
+    end
+    return found ? (best_pt, best_key) : nothing
+end
+
+#= Whether the segment from `l_start` to `l_end` runs inside and outside the polygon, as
+`GO._split_segment_interactions(l_start, l_end, ring, in_curve, out_curve; exact =
+False())`: splits the segment where it meets the polygon's edges and checks the middle of
+each piece. Like GeometryOps, it works in Float64. =#
+function _split_segment_interactions(l_start, l_end, p::_ArrayPoly, in_curve, out_curve)
+    l_start = (Float64(l_start[1]), Float64(l_start[2]))
+    l_end = (Float64(l_end[1]), Float64(l_end[2]))
+    p_start = l_start
+    next = _next_segment_intersection(l_start, l_end, p, nothing)
+    while true
+        p_end = isnothing(next) ? l_end : next[1]
+        mid = ((p_start[1] + p_end[1]) / 2, (p_start[2] + p_end[2]) / 2)
+        mid_val = _point_filled_curve_orientation(mid, p)
+        if mid_val == _POINT_IN
+            in_curve = true
+        elseif mid_val == _POINT_OUT
+            out_curve = true
+        end
+        isnothing(next) && break
+        p_start = p_end
+        next = _next_segment_intersection(l_start, l_end, p, next[2])
+    end
+    return in_curve, out_curve
+end
+
+#=
+Whether the ring of polygon `line` runs inside, on and outside the ring of polygon `curve`,
+as `GO._line_filled_curve_interactions(line, curve; exact = False(), closed_line = true)`.
+Like GeometryOps, it stops looking once it has found all three, and an edge that only
+touches the curve at a vertex is checked by splitting it (`_split_segment_interactions`).
+=#
+function _line_filled_curve_interactions(line::_ArrayPoly, curve::_ArrayPoly)
+    in_curve = false
+    on_curve = false
+    out_curve = false
+    nl = _npoint(line)
+    nc = _npoint(curve)
+    nl -= _getpoint(line, 1) == _getpoint(line, nl) ? 1 : 0
+    nc -= _getpoint(curve, 1) == _getpoint(curve, nc) ? 1 : 0
+    # whether the first point is in, on or out of the curve
+    l_start = _getpoint(line, nl)
+    point_val = _point_filled_curve_orientation(l_start, curve)
+    if point_val == _POINT_IN
+        in_curve = true
+    elseif point_val == _POINT_ON
+        on_curve = true
+    else
+        out_curve = true
+    end
+    # the edges of the line where they meet the edges of the curve
+    for i in 1:nl
+        l_end = _getpoint(line, i)
+        c_start = _getpoint(curve, nc)
+        in_curve && on_curve && out_curve && break
+        for j in 1:nc
+            c_end = _getpoint(curve, j)
+            # `GO._seg_seg_orientation(l_start, l_end, c_start, c_end; exact = False())`
+            seg_val, _, _ = _intersection_point(Float64,
+                (Float64(l_start[1]), Float64(l_start[2])), (Float64(l_end[1]), Float64(l_end[2])),
+                (Float64(c_start[1]), Float64(c_start[2])), (Float64(c_end[1]), Float64(c_end[2])),
+                _orient_inexact)
+            if seg_val != _LINE_OUT
+                on_curve = true
+                if seg_val == _LINE_CROSS
+                    in_curve = true
+                    out_curve = true
+                else
+                    if seg_val == _LINE_OVER
+                        sp = _point_segment_orientation(l_start, c_start, c_end)
+                        lp = _point_segment_orientation(l_end, c_start, c_end)
+                        if sp != _POINT_IN || lp != _POINT_IN
+                            # the line goes past the curve's vertex: a hinge
+                            seg_val = _LINE_HINGE
+                        end
+                    end
+                    if seg_val == _LINE_HINGE
+                        in_curve, out_curve = _split_segment_interactions(l_start, l_end,
+                            curve, in_curve, out_curve)
+                        # the segment has been checked against the whole curve
+                        l_start = l_end
+                        break
+                    end
+                end
+            end
+            c_start = c_end
+        end
+        l_start = l_end
+    end
+    return in_curve, on_curve, out_curve
+end
+
+#=
+Whether the polygons intersect, that is touch or overlap, as `check_intersects(poly1,
+poly2)` (`GO.intersects`, which is `!GO.disjoint`). The polygons are disjoint if their
+bounding boxes are, or if the ring of poly1 is outside poly2 without touching it and the
+ring of poly2 is at least partly outside poly1 (so poly2 isn't inside poly1).
+=#
+function check_intersects(poly1::_ArrayPoly, poly2::_ArrayPoly)
+    _extents_intersect(_poly_extent(poly1), _poly_extent(poly2)) || return false
+    e1_in_p2, e1_on_p2, _ = _line_filled_curve_interactions(poly1, poly2)
+    e1_on_p2 && return true
+    if !e1_in_p2
+        _, _, e2_out_e1 = _line_filled_curve_interactions(poly2, poly1)
+        e2_out_e1 && return false
+    end
+    return true
 end
