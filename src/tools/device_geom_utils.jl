@@ -175,8 +175,8 @@ _orient_exact(a, b, c) = AdaptivePredicates.orient2p(
 
 #= Whether the point is inside, on or outside the polygon's ring, as
 `GO._point_filled_curve_orientation(point, ring; exact = False())`: a ray-crossing test
-that also detects points on an edge. =#
-function _point_filled_curve_orientation(point, p::_ArrayPoly)
+that also detects points on an edge. With `orient = _orient_exact`, as `exact = True()`. =#
+function _point_filled_curve_orientation(point, p::_ArrayPoly, orient::F = _orient_inexact) where F
     x, y = point
     n = _npoint(p)
     n -= _getpoint(p, 1) == _getpoint(p, n) ? 1 : 0
@@ -188,7 +188,7 @@ function _point_filled_curve_orientation(point, p::_ArrayPoly)
         v2 = ye - y
         if !((v1 < 0 && v2 < 0) || (v1 > 0 && v2 > 0))
             u1, u2 = xs - x, xe - x
-            f = _orient_inexact((xs, ys), (xe, ye), (x, y))
+            f = orient((xs, ys), (xe, ye), (x, y))
             if v2 > 0 && v1 ≤ 0
                 f == 0 && return _POINT_ON
                 f > 0 && (k += 1)
