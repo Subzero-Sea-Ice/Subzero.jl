@@ -811,8 +811,14 @@ bit for bit. Clips in the type of `out`'s points, which must be Float64 to match
 Writes the regions to `out` and returns their number, which is 0 if the polygons don't
 overlap or only touch. Returns `_CLIP_TOO_SMALL` if `lists` or `out` is too small, and
 `_CLIP_FAILED` where GeometryOps throws an error.
+
+It's `@noinline` because of what looks like a compiler bug on AMD GPUs (AMDGPU.jl 2.12):
+inlined into a kernel that then calls `get_intersection_points!`, the latter returned wrong
+counts (more than its buffer holds) in most threads once two or more threads ran, while
+both were right on the CPU backends and when either wasn't inlined. The function is large,
+so inlining it gains little anyway.
 =#
-function intersect_polys!(out::_PolyRegions, lists::_ClipLists, poly_a::_ArrayPoly,
+@noinline function intersect_polys!(out::_PolyRegions, lists::_ClipLists, poly_a::_ArrayPoly,
         poly_b::_ArrayPoly)
     T = eltype(out.coords)
     a, b, a_idx = lists.a, lists.b, lists.a_idx

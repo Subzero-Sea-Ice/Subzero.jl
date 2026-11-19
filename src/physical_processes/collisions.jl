@@ -356,6 +356,293 @@ function floe_floe_interaction!(
     return
 end
 
+#=
+Collision forces between two floes on the device. The functions below compute what
+`floe_floe_interaction!` computes for floes i and j of a `FixedWidthFloes`, bit for bit, as
+scalar operations, so that they can run in a GPU kernel: the overlap regions, the normal
+force on each region (`calc_normal_force`), and the friction (`calc_friction_forces`). They
+write the results to buffers instead of floe i's interactions, so that the results of all
+pairs can be gathered in a separate pass.
+
+The geometry is in `device_geom_utils.jl` and `device_clipping.jl`. As there, the overlap
+regions are in Float64 also for Float32 floes, because `intersect_polys` clips in Float64.
+=#
+
+#=
+Scratch space for computing the forces between pairs of floes, with one row per pair: the
+buffers that the geometry functions write to. `k` is the row that this value refers to; make
+one for another row with `_CollisionScratch(scratch, k)`.
+- `lists`: the node lists for clipping, used by both clippings in turn
+- `regions`: the overlap regions of the two floes
+- `new_regions`: the overlap regions after moving floe i in the direction of the force, in
+  `calc_normal_force`
+- `ipoints`: the points where the floes' edges meet (`ipoints[k, :, :]`)
+- `vertex_idx`: the regions' vertices that are those points (`vertex_idx[k, :]`)
+- `moved`: floe i's polygon moved in the direction of the force (`moved[k, :, :]`)
+=#
+struct _CollisionScratch{L<:_ClipLists, R<:_PolyRegions, PA<:AbstractArray{<:Any, 3},
+        IA<:AbstractMatrix{<:Integer}, MA<:AbstractArray{<:Any, 3}}
+    lists::L
+    regions::R
+    new_regions::R
+    ipoints::PA
+    vertex_idx::IA
+    moved::MA
+    k::Int
+end
+
+Adapt.@adapt_structure _CollisionScratch
+
+#= Scratch space for `nrows` pairs of floes of type FT, whose polygons have up to
+`max_points` points, on the CPU (move it to a device with `adapt`). There is room for
+`capacity` nodes and intersection points and up to `max_regions` overlap regions per pair. =#
+function _CollisionScratch(::Type{FT}, nrows, max_points, capacity, max_regions) where FT
+    return _CollisionScratch(
+        _ClipLists(Float64, nrows, capacity),
+        _PolyRegions(Float64, nrows, max_regions, capacity),
+        _PolyRegions(Float64, nrows, max_regions, capacity),
+        zeros(Float64, nrows, capacity, 2),
+        zeros(Int32, nrows, capacity),
+        zeros(FT, nrows, max_points, 2),
+        0,
+    )
+end
+
+# The same arrays, for row k
+_CollisionScratch(s::_CollisionScratch, k) = _CollisionScratch(_ClipLists(s.lists, k),
+    _PolyRegions(s.regions, k), _PolyRegions(s.new_regions, k), s.ipoints, s.vertex_idx,
+    s.moved, Int(k))
+
+#=
+The forces between pairs of floes, as the rows that `floe_floe_interaction!` passes to
+`add_interactions!`: for force k of pair (row) r, the force `force[r, k, :]` (normal force
+and friction), the point where it acts `point[r, k, :]`, and the area of the overlap region
+`overlap[r, k]`. Like the arrays of `floe_floe_interaction!`, they include forces that are
+zero, which `add_interactions!` leaves out. `k` is the row that this value refers to; make
+one for another row with `_PairForces(forces, k)`.
+=#
+struct _PairForces{A3<:AbstractArray{<:Any, 3}, A2<:AbstractMatrix}
+    force::A3
+    point::A3
+    overlap::A2
+    k::Int
+end
+
+Adapt.@adapt_structure _PairForces
+
+# Forces of type FT for `nrows` pairs, with room for `max_forces` forces each, on the CPU
+_PairForces(::Type{FT}, nrows, max_forces) where FT = _PairForces(
+    zeros(FT, nrows, max_forces, 2), zeros(FT, nrows, max_forces, 2),
+    zeros(FT, nrows, max_forces), 0)
+_PairForces(f::_PairForces, k) = _PairForces(f.force, f.point, f.overlap, Int(k))
+
+_capacity(f::_PairForces) = size(f.force, 2)
+
+# Velocity of the point (x, y) on floe i, including the rotation, as `_get_velocity(floe, x, y)`
+function _get_velocity(floes::FixedWidthFloes, i, x, y)
+    u = floes.u[i] + floes.ξ[i] * (x - floes.centroid[i, 1])
+    v = floes.v[i] + floes.ξ[i] * (y - floes.centroid[i, 2])
+    return u, v
+end
+
+#= Friction between floes i and j at the point (px, py), where the normal force is (nx, ny)
+and the mean length between the intersection points is Δl, as one row of
+`calc_friction_forces(ifloe, jfloe, fpoints, normal, Δl, consts, Δt)`. =#
+function _calc_friction_force(floes::FixedWidthFloes{FT}, i, j, px, py, nx, ny, Δl, consts,
+        Δt) where FT
+    G = consts.E/(2*(1+consts.ν))
+    nnorm = sqrt(nx^2 + ny^2)
+    iu, iv = _get_velocity(floes, i, px, py)
+    ju, jv = _get_velocity(floes, j, px, py)
+    udiff = iu - ju
+    vdiff = iv - jv
+    vnorm = sqrt(udiff^2 + vdiff^2)
+    xdir = FT(0)
+    ydir = FT(0)
+    if udiff != 0 || vdiff != 0
+        xdir = udiff/vnorm
+        ydir = vdiff/vnorm
+    end
+    dot_dir = xdir * udiff + ydir * vdiff
+    xfriction = G *  Δl * Δt * nnorm * xdir * -dot_dir
+    yfriction = G *  Δl * Δt * nnorm * ydir * -dot_dir
+    norm_fric = sqrt(xfriction^2 + yfriction^2)
+    if norm_fric > consts.μ * nnorm
+        xfriction = -consts.μ * nnorm * xdir
+        yfriction = -consts.μ * nnorm * ydir
+    end
+    return xfriction, yfriction
+end
+
+#=
+The force direction from the edges of the overlap region that are on the first polygon
+(`poly`), for a region with other than two intersection points, as
+`_many_intersect_normal_force!(T, force_dir, region, poly, force_factor)`. Returns the mean
+length of those edges, Δl, and the force direction: the given `force_dir` unless Δl is
+large enough.
+=#
+function _many_intersect_normal_force(::Type{T}, force_dir, region::_ArrayPoly,
+        poly::_ArrayPoly, force_factor) where T
+    x1, y1 = zero(T), zero(T)
+    Δl, n_pts = zero(T), 0
+    Fn_tot = (zero(T), zero(T))
+    for i in 1:_npoint(region)
+        px, py = _getpoint(region, i)
+        x2, y2 = T(px), T(py)
+        if i == 1
+            x1, y1 = x2, y2
+            continue
+        end
+        # the edge's midpoint, and its distance to the first polygon
+        xmid, ymid = 0.5 * (x2 + x1), 0.5 * (y2 + y1)
+        dist = abs(dist_to_poly((xmid, ymid), poly, T))
+        if dist < 1e-8  # only the region's edges on the first polygon
+            Δx, Δy = x2 - x1, y2 - y1
+            mag = sqrt(Δx^2 + Δy^2)
+            # reverse the force if it would push the edge out of the overlap region
+            xt = xmid + (-Δy / 100mag)
+            yt = ymid + (Δx / 100mag)
+            in_region = coveredby_poly((xt, yt), region)
+            f_sign = in_region ? 1 : -1
+            s = f_sign * force_factor  # `(f_sign * force_factor) .* (-Δy, Δx)`
+            Fn = (s * -Δy, s * Δx)
+            Δl += mag
+            n_pts += 1
+            Fn_tot = (Fn_tot[1] + Fn[1], Fn_tot[2] + Fn[2])
+        end
+        x1, y1 = x2, y2
+    end
+    # the mean of the sums
+    if 0 < n_pts < (_npoint(region) - 1)
+        Δl /= n_pts
+        if Δl > 0.1  # large enough to set the force direction
+            norm_Fn = sqrt(Fn_tot[1]^2 + Fn_tot[2]^2)
+            force_dir = (Fn_tot[1] / norm_Fn, Fn_tot[2] / norm_Fn)
+        end
+    end
+    return Δl, force_dir
+end
+
+#=
+The normal force on overlap region m of floes i and j (in `scratch.regions`), whose area is
+`area`, as `calc_normal_force(p1, p2, region, area, ipoints, force_factor)` with the
+`n_ipoints` intersection points of the floes in `scratch.ipoints`. Uses `scratch` for the
+clipping in the direction of the force.
+
+Returns the force, the mean length between the intersection points Δl, and 0, or a
+negative code (`_CLIP_TOO_SMALL` or `_CLIP_FAILED`) as the third value if the clipping
+failed.
+=#
+function calc_normal_force(scratch::_CollisionScratch, floes::FixedWidthFloes, i, j, m,
+        area, n_ipoints, force_factor::FT) where FT
+    k = scratch.k
+    region = _region(scratch.regions, m)
+    p1, p2 = _floe_poly(floes, i), _floe_poly(floes, j)
+    force_dir = (zero(FT), zero(FT))
+    # the region's vertices that are intersection points
+    n_match = which_vertices_match_points!(scratch.vertex_idx, k, scratch.ipoints, n_ipoints,
+        region)
+    n_match < 0 && return force_dir, zero(FT), _CLIP_TOO_SMALL
+    Δl = FT(0)
+    if n_match == 2  # two intersection points
+        x1, y1 = _getpoint(region, scratch.vertex_idx[k, 1])
+        x2, y2 = _getpoint(region, scratch.vertex_idx[k, 2])
+        Δx = FT(x2 - x1)
+        Δy = FT(y2 - y1)
+        Δl = sqrt(Δx^2 + Δy^2)
+        if Δl > 0.1  # large enough to consider
+            force_dir = (-Δy/Δl, Δx/Δl)
+        end
+    elseif n_match != 0  # an unusual number of intersection points
+        Δl, force_dir = _many_intersect_normal_force(FT, force_dir, region, p1, force_factor)
+    end
+    # reverse the force if moving floe i in its direction increases the overlap
+    if Δl > 0.1
+        n = _translate_poly!(scratch.moved, k, p1, force_dir[1], force_dir[2])
+        n < 0 && return force_dir, Δl, _CLIP_TOO_SMALL
+        p1new = _ArrayPoly(scratch.moved, k, n)
+        n_new = intersect_polys!(scratch.new_regions, scratch.lists, p1new, p2)
+        n_new < 0 && return force_dir, Δl, n_new
+        for r in 1:n_new
+            new_region = _region(scratch.new_regions, r)
+            if check_intersects(new_region, region) && area_poly(new_region, FT)/area > 1
+                force_dir = (force_dir[1] * -1, force_dir[2] * -1)  # `force_dir .*= -1`
+            end
+        end
+    end
+    # `force_dir * area * force_factor`
+    force = (force_dir[1] * area * force_factor, force_dir[2] * area * force_factor)
+    return force, Δl, 0
+end
+
+#=
+The forces between floes i and j, as `floe_floe_interaction!(ifloe, i, jfloe, j, consts,
+Δt, max_overlap)` with `calc_elastic_forces` and `calc_friction_forces`, using `scratch` and
+writing the forces to `out` (see `_PairForces`) instead of floe i's interactions.
+
+Returns the number of forces and whether the floes overlap so much that they should fuse
+(then there are no forces), or a negative code (`_CLIP_TOO_SMALL`, `_CLIP_FAILED`) as the
+number if a buffer is too small or the clipping failed.
+=#
+function floe_floe_interaction!(out::_PairForces, scratch::_CollisionScratch,
+        floes::FixedWidthFloes{FT}, i, j, consts, Δt, max_overlap) where FT
+    k = scratch.k
+    p1, p2 = _floe_poly(floes, i), _floe_poly(floes, j)
+    n_regions = intersect_polys!(scratch.regions, scratch.lists, p1, p2)
+    n_regions < 0 && return n_regions, false
+    total_area = FT(0)
+    for r in 1:n_regions
+        total_area += FT(area_poly(_region(scratch.regions, r), FT))
+    end
+    total_area > 0 || return 0, false
+    # the floes overlap too much: they should fuse
+    if max(total_area/floes.area[i], total_area/floes.area[j]) > max_overlap
+        return 0, true
+    end
+    ih = floes.height[i]
+    ir = FT(sqrt(floes.area[i]))
+    jh = floes.height[j]
+    jr = FT(sqrt(floes.area[j]))
+    force_factor = if ir>1e5 || jr>1e5
+        consts.E*min(ih, jh)/min(ir, jr)
+    else
+        consts.E*(ih*jh)/(ih*jr+jh*ir)
+    end
+    # `calc_elastic_forces`: a force on each region that is large enough, if the floes'
+    # edges meet at two or more points
+    n_ipoints = get_intersection_points!(scratch.ipoints, k, p1, p2, Float64)
+    n_ipoints < 0 && return _CLIP_TOO_SMALL, false
+    n_forces = 0
+    n_ipoints >= 2 || return n_forces, false
+    n1, n2 = _npoint(p1) - 1, _npoint(p2) - 1
+    min_area = min(n1, n2) * 100 / 1.75
+    for r in 1:n_regions
+        area = FT(area_poly(_region(scratch.regions, r), FT))
+        area < min_area && continue
+        n_forces == _capacity(out) && return _CLIP_TOO_SMALL, false
+        n_forces += 1
+        normal, Δl = (zero(FT), zero(FT)), zero(FT)
+        px, py = zero(FT), zero(FT)
+        if area != 0
+            # in floe i's type, as `fpoint[k, 1] = cx` in `calc_elastic_forces`
+            cx, cy = centroid_poly(_region(scratch.regions, r), FT)
+            px, py = FT(cx), FT(cy)
+            normal, Δl, err = calc_normal_force(scratch, floes, i, j, r, area, n_ipoints,
+                force_factor)
+            err < 0 && return err, false
+        end
+        # `calc_friction_forces`, and the total force
+        fx, fy = _calc_friction_force(floes, i, j, px, py, normal[1], normal[2], Δl, consts,
+            Δt)
+        out.force[k, n_forces, 1] = normal[1] + fx
+        out.force[k, n_forces, 2] = normal[2] + fy
+        out.point[k, n_forces, 1] = px
+        out.point[k, n_forces, 2] = py
+        out.overlap[k, n_forces] = area
+    end
+    return n_forces, false
+end
+
 """
     floe_domain_element_interaction!(floe, boundary::OpenBoundary, ...)
 
