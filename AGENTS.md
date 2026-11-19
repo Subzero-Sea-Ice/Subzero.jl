@@ -149,6 +149,11 @@ over if/else flags.
   back (`_log_flags`).
 - Only pass isbits arguments: scalars or small structs such as stress calculators,
   not `FloeSettings` or `Simulation`.
+- On AMD GPUs (AMDGPU.jl 2.12), a large kernel gave wrong results, or a "GPU Kernel
+  Exception: Unknown exception" from the resulting out-of-bounds index, once two or more
+  threads ran, while the CPU backends and single threads were right. It went away when
+  `intersect_polys!` wasn't inlined (it's now `@noinline`). If an AMD result differs only
+  with several threads, try `@noinline` on the large functions the kernel calls.
 - `InvalidIRError: ... unsupported dynamic function invocation` means something in
   the kernel isn't GPU-compatible: an allocation, a type instability, or a call into
   a library such as GeoInterface. The stack trace shows where.

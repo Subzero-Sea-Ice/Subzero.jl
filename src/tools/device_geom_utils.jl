@@ -62,9 +62,11 @@ _extents_intersect(a, b) = a[1] <= b[2] && b[1] <= a[2] && a[3] <= b[4] && b[3] 
 #= Signed area of the polygon's ring, as `GO._signed_area(T, ring)`: the shoelace formula,
 closing the ring from the last point to the first (which adds zero for a closed ring). =#
 function _signed_area(::Type{T}, p::_ArrayPoly) where T
-    area = zero(T)
+    # the sum is in the points' type if that's wider, as in GeometryOps; starting it at zero
+    # in that type gives the same sum and keeps its type fixed (needed in kernels)
+    area = zero(promote_type(T, eltype(p.coords)))
     n = _npoint(p)
-    n == 0 && return area
+    n == 0 && return T(area)
     xfirst, yfirst = _getpoint(p, 1)
     x1, y1 = xfirst, yfirst
     for j in 2:n
@@ -83,9 +85,13 @@ area_poly(p::_ArrayPoly, ::Type{T}) where T = abs(_signed_area(T, p))
 computes the ring's centroid and then weights it by the area and divides by the area again,
 as for a polygon with holes, which can change the last bit. =#
 function centroid_poly(p::_ArrayPoly, ::Type{T}) where T
-    xcentroid = zero(T)
-    ycentroid = zero(T)
-    area = zero(T)
+    # in the points' type if that's wider, as GeometryOps does (e.g. Float64 overlap regions
+    # with T = Float32); starting the sums at zero in that type gives the same sums and
+    # keeps their type fixed (needed in kernels)
+    S = promote_type(T, eltype(p.coords))
+    xcentroid = zero(S)
+    ycentroid = zero(S)
+    area = zero(S)
     x1, y1 = _getpoint(p, 1)
     for j in 1:_npoint(p)
         x2, y2 = _getpoint(p, j)
