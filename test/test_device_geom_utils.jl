@@ -295,4 +295,149 @@ them in a kernel on every backend and compares with the CPU.
             ((intrs[i, 5], intrs[i, 6]), (intrs[i, 7], intrs[i, 8])))
         @test all(i -> isequal(got(i), _go_intersection_point(FT, edges[i]...)), 1:n)
     end
+
+    #= Whether the device `check_intersects` gives the same as GeometryOps for polygons p
+    and q (vectors of (x, y), not closed), and whether the pair has edges that only touch or
+    overlap, which `check_intersects` handles by splitting edges =#
+    function _compare_intersects(p, q)
+        _, (pa, pb) = _array_polys([p, q])
+        same = Subzero.check_intersects(pa, pb) == Subzero.check_intersects(_gi_poly(p), _gi_poly(q))
+        T = Float64
+        edge(r, i) = ((T(r[i][1]), T(r[i][2])), (T(r[mod1(i + 1, end)][1]), T(r[mod1(i + 1, end)][2])))
+        touching = any(Iterators.product(eachindex(p), eachindex(q))) do (i, j)
+            kind, _, _ = Subzero._intersection_point(T, edge(p, i)..., edge(q, j)...,
+                Subzero._orient_inexact)
+            kind == Subzero._LINE_HINGE || kind == Subzero._LINE_OVER
+        end
+        return same, touching
+    end
+
+    @testset "Polygons intersecting with $FT, offset $offset" for FT in (Float64, Float32),
+            offset in (0.0, 1e6)
+        square(x0, y0, s) = [(x0, y0), (x0 + s, y0), (x0 + s, y0 + s), (x0, y0 + s)]
+        l_shape = [(0, 0), (3, 0), (3, 1), (1, 1), (1, 3), (0, 3)]
+        special_pairs = (
+            crossing = (square(0, 0, 2), square(1, 1, 2)),
+            identical = (square(0, 0, 2), square(0, 0, 2)),
+            shared_edge = (square(0, 0, 2), square(2, 0, 2)),
+            partly_shared_edge = (square(0, 0, 2), square(1, -2, 2)),
+            touching_corners = (square(0, 0, 2), square(2, 2, 2)),
+            vertex_on_edge = (square(0, 0, 2), [(1, 2), (2, 3), (0, 3)]),
+            nested = (square(0, 0, 4), square(1, 1, 2)),
+            nested_sharing_edge = (square(0, 0, 4), square(0, 1, 2)),
+            disjoint = (square(0, 0, 1), square(3, 3, 1)),
+            # bounding boxes overlap, but the polygons don't touch
+            in_notch = (l_shape, square(1.5, 1.5, 1)),
+            touching_in_notch = (l_shape, square(1, 1, 1)),
+        )
+        rng = Xoshiro(12)
+        test_pairs = [([Float64.(v) for v in p], [Float64.(v) for v in q]) for (p, q) in special_pairs]
+        synthetic = _geom_test_polys(Float64; n = 60)
+        append!(test_pairs, [(synthetic[i], synthetic[j]) for i in eachindex(synthetic)
+            for j in i:length(synthetic)])
+        # real floe shapes next to each other, close enough that some touch
+        real_shapes = _floe_shape_rings()[1:8:end]
+        for p in real_shapes
+            q = rand(rng, real_shapes)
+            cp = (mean(first, p), mean(last, p))
+            cq = (mean(first, q), mean(last, q))
+            Δx = cp[1] - cq[1] + (maximum(first, p) - minimum(first, q)) * (0.9 + 0.2 * rand(rng))
+            push!(test_pairs, (p, [(x + Δx, y + cp[2] - cq[2]) for (x, y) in q]))
+        end
+        #= As in calc_normal_force: overlap regions of real floe shapes, and the regions after
+        moving one floe a little, which share vertices and edges with the first ones. These
+        are Float64, as intersect_polys returns. =#
+        regions = Vector{Tuple{Float64, Float64}}[]
+        for p in real_shapes[1:2:end]
+            q = rand(rng, real_shapes)
+            cp = (mean(first, p), mean(last, p))
+            cq = (mean(first, q), mean(last, q))
+            q = [(x + cp[1] - cq[1] + 300 * randn(rng), y + cp[2] - cq[2]) for (x, y) in q]
+            region_polys(p, q) = [collect(GI.getpoint(GI.getexterior(r)))[1:(end - 1)]
+                for r in Subzero.intersect_polys(_gi_poly(p), _gi_poly(q), Float64)]
+            moved = [(x + 20 * randn(rng), y) for (x, y) in p]
+            for r in region_polys(p, q), s in region_polys(moved, q)
+                push!(regions, r, s)
+            end
+        end
+        shift(p) = [(FT(x + offset), FT(y + offset)) for (x, y) in p]
+        shift64(p) = [(x + offset, y + offset) for (x, y) in p]
+        same, n_true, n_false, n_touching = true, 0, 0, 0
+        all_pairs = [[(shift(p), shift(q)) for (p, q) in test_pairs];
+            [(shift64(regions[i]), shift64(regions[i + 1])) for i in 1:2:length(regions)]]
+        for (p, q) in all_pairs, (r, s) in ((p, q), (q, p))
+            same_rs, touching = _compare_intersects(r, s)
+            same &= same_rs
+            result = Subzero.check_intersects(_gi_poly(r), _gi_poly(s))
+            n_true += result
+            n_false += !result
+            n_touching += touching
+        end
+        @test same
+        @test n_true > 1000
+        @test n_false > 200
+        @test n_touching > 300
+    end
+
+    @testset "Translating polygons with $FT" for FT in (Float64, Float32)
+        polys = [_geom_test_polys(FT; n = 20); [[(FT(x), FT(y)) for (x, y) in p]
+            for p in _floe_shape_rings()[1:16:end]]]
+        coords, apolys = _array_polys(polys)
+        rng = Xoshiro(13)
+        dest = zeros(FT, 1, size(coords, 2), 2)
+        same = true
+        for (p, ap) in zip(polys, apolys), Δ in (FT.(100 .* randn(rng, 2)), 100 .* randn(rng, 2))
+            moved = Subzero._ArrayPoly(dest, 1, Subzero._translate_poly!(dest, 1, ap, Δ...))
+            expected = collect(GI.getpoint(GI.getexterior(
+                Subzero._translate_poly(FT, _gi_poly(p), Δ...))))
+            got = [Subzero._getpoint(moved, j) for j in 1:Subzero._npoint(moved)]
+            same &= isequal(got, expected)
+        end
+        @test same
+        @test Subzero._translate_poly!(zeros(FT, 1, 4, 2), 1, apolys[1], 1, 1) == -1
+    end
+
+    #= Kernel test: each floe checks whether it intersects a partner floe, and the partner
+    moved by a small distance, as in calc_normal_force =#
+    function _intersects_kernel!(floes, i, partner, shifts, moved, results)
+        poly, partner_poly = Subzero._floe_poly(floes, i), Subzero._floe_poly(floes, partner[i])
+        results[i, 1] = Subzero.check_intersects(poly, partner_poly)
+        n = Subzero._translate_poly!(moved, i, partner_poly, shifts[i, 1], shifts[i, 2])
+        moved_poly = Subzero._ArrayPoly(moved, i, n)
+        results[i, 2] = Subzero.check_intersects(poly, moved_poly)
+        return
+    end
+    @testset "Polygons intersecting on $backend with $FT" for backend in test_backends(),
+            FT in (Float64, Float32)
+        polys = _geom_test_polys(FT; n = 100)
+        fs = FloeSettings(FT; min_floe_area = 0)
+        rng = Xoshiro(14)
+        floes = StructArray([
+            Floe{FT}([[[x, y] for (x, y) in [p; [p[1]]]]], FT(0.25); floe_settings = fs, rng)
+            for p in polys
+        ])
+        fwf = Subzero.FixedWidthFloes(floes)
+        n = length(floes)
+        partner = Int32[mod1(i + rand(rng, 1:(n - 1)), n) for i in 1:n]
+        # some shifts move the partner far enough not to intersect, and the grid polygons by
+        # whole grid cells, so that they touch
+        shifts = FT.(rand(rng, (0, 250, 1000, 2000), n, 2) .* rand(rng, (-1, 1), n, 2))
+        outputs() = (zeros(FT, n, size(fwf.poly, 2), 2), zeros(Bool, n, 2))
+        ref = outputs()
+        for i in 1:n
+            _intersects_kernel!(fwf, i, partner, shifts, ref...)
+        end
+        moved(i) = Subzero._translate_poly(FT, floes.poly[partner[i]], shifts[i, :]...)
+        expected = [Subzero.check_intersects(floes.poly[i],
+            k == 1 ? floes.poly[partner[i]] : moved(i)) for i in 1:n, k in 1:2]
+        @test ref[2] == expected
+        dev = Subzero.adapt(backend, outputs())
+        Subzero.launch_per_floe!(_intersects_kernel!, backend, Subzero.adapt(backend, fwf),
+            Subzero.adapt(backend, partner), Subzero.adapt(backend, shifts), dev...)
+        Subzero.KernelAbstractions.synchronize(backend)
+        got = Subzero.adapt(Array, dev)
+        @test got[2] == ref[2]
+        @test isequal(got[1], ref[1])
+        @test 0 < count(ref[2]) < 2n
+    end
 end

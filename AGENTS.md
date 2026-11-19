@@ -138,7 +138,7 @@ over if/else flags.
   the geometry maths by hand (see `_move_floe!`). GeometryOps is fine on the CPU.
   `src/tools/device_geom_utils.jl` has kernel versions of the geometry functions in
   `geom_utils.jl` (`area_poly`, `centroid_poly`, `dist_to_poly`, `coveredby_poly`,
-  `get_intersection_points!`, ...) as methods for polygons stored in arrays (`_ArrayPoly`,
+  `get_intersection_points!`, `check_intersects`, `_translate_poly!`, ...) as methods for polygons stored in arrays (`_ArrayPoly`,
   `_floe_poly`), with helpers named after the GeometryOps functions they follow. They match
   GeometryOps bit for bit; keep it that way, and test new ones against GeometryOps in
   `test/test_device_geom_utils.jl`. `src/tools/device_clipping.jl` has `intersect_polys!`,
