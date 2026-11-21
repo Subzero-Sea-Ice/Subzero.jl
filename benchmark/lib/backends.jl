@@ -101,3 +101,9 @@ unsafe_free!(x) = nothing
 "CUDA" in BACKENDS && @eval unsafe_free!(x::CUDA.CuArray) = CUDA.unsafe_free!(x)
 "AMDGPU" in BACKENDS && @eval unsafe_free!(x::AMDGPU.ROCArray) = AMDGPU.unsafe_free!(x)
 free!(floes::FixedWidthFloes) = foreach(f -> unsafe_free!(getfield(floes, f)), fieldnames(FixedWidthFloes))
+# The device arrays of a workspace, including the scratch buffers of AcceleratedKernels' scan
+# (a nested NamedTuple of arrays in its `buffers` field)
+free!(ws::Subzero.GhostWorkspace) = foreach(_free_all, (ws.counts, ws.offsets, ws.sources,
+    ws.ghost_ids, ws.shifts, ws.scan.buffers))
+_free_all(x::NamedTuple) = foreach(_free_all, x)
+_free_all(x) = unsafe_free!(x)

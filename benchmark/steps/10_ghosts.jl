@@ -31,11 +31,11 @@ register_step!(;
         d = adapt(backend, deepcopy(src))
         workspace = Subzero.GhostWorkspace(d)
         # The ghosts must fit in the spare rows, else add_ghosts! allocates new arrays
-        Subzero.add_ghosts!(d, domain, backend; workspace).poly === d.poly ||
+        first(Subzero.add_ghosts!(d, domain, backend; workspace)).poly === d.poly ||
             error("the ghosts don't fit in the capacity of the floes")
         reset!(d, src, backend)
         trial = @bench(begin
-                g = Subzero.add_ghosts!($d, $domain, $backend; workspace = $workspace)
+                g, _ = Subzero.add_ghosts!($d, $domain, $backend; workspace = $workspace)
                 Subzero.remove_ghosts!(g, $n, $backend)
                 KernelAbstractions.synchronize($backend)
             end,
@@ -46,7 +46,7 @@ register_step!(;
         record!(ctx, "add_ghosts!", trial; FT)
         free!(d)
         free!(src)
-        foreach(unsafe_free!, (workspace.counts, workspace.offsets))
+        free!(workspace)
     end,
     baseline_result = function (n)
         floes, _ = ghosted_floes(n)
@@ -55,7 +55,7 @@ register_step!(;
     current_result = function (n, backend)
         domain = make_model(load_floes(0), n).domain
         d = adapt(backend, Subzero.FixedWidthFloes(load_floes(n)))
-        floes = adapt(Array, Subzero.add_ghosts!(d, domain, backend))
+        floes = adapt(Array, first(Subzero.add_ghosts!(d, domain, backend)))
         rows = 1:floes.n_floes
         Dict(
             "centroid" => [floes.centroid[i, :] for i in rows],

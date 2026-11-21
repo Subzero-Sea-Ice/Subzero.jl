@@ -1017,15 +1017,23 @@ end
 Add ghosts of the floes that pass through periodic boundaries of `domain`, on `backend`,
 with the same result as `add_ghosts!(floes::StructArray, domain)`: the ghosts are added
 after the floes in use, and their indices are stored in the `ghosts` of their parents.
-Returns the floes with the ghosts in use (see `set_n_floes`), which share the arrays of
-`floes` unless they had to be made larger. `workspace` is a `GhostWorkspace` for the
-capacity of `floes`, made if not given. This waits for the kernels to finish, because the
-number of ghosts is needed on the host.
+Returns the floes with the ghosts in use (see `set_n_floes`) and the workspace that fits
+them (`nothing` if none was given and none was needed). `workspace` is a `GhostWorkspace` for the capacity of `floes`, made if not given. This
+waits for the kernels to finish, because the number of ghosts is needed on the host.
+
+The returned floes share the arrays of `floes` unless they had to be made larger (see
+`with_capacity`). Either way, replace `floes` with the returned floes, and pass the returned
+workspace to the next call, so that it isn't made again. If the arrays are made larger in
+the north/south pass, the arrays of `floes` are left half-updated, with only the east/west
+ghosts.
+
+The floes must not have ghosts yet (call `remove_ghosts!` first): `ghosts` has room for
+`MAX_GHOSTS` ghosts per floe, which is the most a floe without ghosts can get, and the kernels
+don't check it.
 """
 function add_ghosts!(floes::FixedWidthFloes, domain::Domain, backend; workspace = nothing)
     floes, workspace = add_floe_ghosts!(floes, domain.east, domain.west, backend, workspace)
-    floes, _ = add_floe_ghosts!(floes, domain.north, domain.south, backend, workspace)
-    return floes
+    return add_floe_ghosts!(floes, domain.north, domain.south, backend, workspace)
 end
 
 # No ghosts through boundaries that aren't periodic
@@ -1159,7 +1167,7 @@ same time, not one after another.
 =#
 @kernel function _ghost_values_kernel!(floes, n, sources, ghost_ids, shifts, axis)
     j, v = @index(Global, NTuple)
-    _ghost_value!(floes, n + j, sources[j], v, axis, shifts[j], ghost_ids[j])
+    @inline _ghost_value!(floes, n + j, sources[j], v, axis, shifts[j], ghost_ids[j])
 end
 
 # Fields that a ghost doesn't copy: `deepcopy_floe` doesn't copy interactions, num_inters,
@@ -1176,7 +1184,7 @@ vertices of the polygon (`src + shift`, as `_translate_floe!`), except for the f
 what to do with it are known at compile time.
 =#
 @generated function _ghost_value!(floes::FixedWidthFloes, dst, src, v, axis, shift, ghost_id)
-    body = Expr(:block, :(first = 0))
+    body = Expr(:block, Expr(:meta, :inline), :(first = 0))
     for (k, name) in enumerate(fieldnames(floes))
         fieldtype(floes, k) <: AbstractArray || continue
         value = if name in _GHOST_ZEROED_FIELDS
@@ -1263,8 +1271,9 @@ _along_axis(axis, Δ) = axis == 1 ? (Δ, zero(Δ)) : (zero(Δ), Δ)
 Remove the ghosts that `add_ghosts!` added to floes on a device, as `timestep_sim!` does on
 the CPU: keep the first `n_init_floes` floes, which are the floes without ghosts, and empty
 their lists of ghosts. Floes that swapped places with a ghost keep their new place. Returns
-the floes without ghosts, which share the arrays of `floes`. The kernel is launched
-asynchronously. The rows of the ghosts keep their values, so fill them before using them.
+the floes without ghosts, which share the arrays of `floes`: replace `floes` with them. The
+kernel is launched asynchronously. The rows of the ghosts keep their values (they aren't zero
+and their status isn't 0), so fill them before using them.
 =#
 function remove_ghosts!(floes::FixedWidthFloes, n_init_floes, backend)
     floes = set_n_floes(floes, n_init_floes)

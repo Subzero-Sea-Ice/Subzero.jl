@@ -45,7 +45,7 @@ function _ghosts_on(backend, floes, domain; capacity = length(floes) + cld(lengt
     cpu = deepcopy(floes)
     Subzero.add_ghosts!(cpu, domain)
     dev = Subzero.adapt(backend, Subzero.FixedWidthFloes(floes; capacity))
-    dev = Subzero.add_ghosts!(dev, domain, backend; workspace)
+    dev, _ = Subzero.add_ghosts!(dev, domain, backend; workspace)
     return cpu, Subzero.adapt(Array, dev)
 end
 
@@ -106,15 +106,23 @@ end
         # A workspace can be reused, and the arrays are shared when the ghosts fit
         fwf = Subzero.adapt(backend, Subzero.FixedWidthFloes(floes; capacity = 2n))
         workspace = Subzero.GhostWorkspace(fwf)
+        cpu = deepcopy(floes)
         for _ in 1:2
-            dev = Subzero.add_ghosts!(Subzero.set_n_floes(fwf, n), domains.east_west, backend; workspace)
-            @test dev.poly === fwf.poly
-            cpu = deepcopy(floes)
             Subzero.add_ghosts!(cpu, domains.east_west)
+            dev, ws = Subzero.add_ghosts!(fwf, domains.east_west, backend; workspace)
+            @test dev.poly === fwf.poly
+            @test ws === workspace
             @test isempty(_differing_fields(Subzero.adapt(Array, dev), cpu))
             # remove the ghosts again, as timestep_sim! does
-            fwf = Subzero.adapt(backend, Subzero.FixedWidthFloes(floes; capacity = 2n))
+            _remove_ghosts_cpu!(cpu, n)
+            fwf = Subzero.remove_ghosts!(dev, n, backend)
         end
+        # A workspace that grows is returned
+        small = Subzero.adapt(backend, Subzero.FixedWidthFloes(floes))
+        dev, ws = Subzero.add_ghosts!(small, domains.both, backend;
+            workspace = Subzero.GhostWorkspace(small))
+        @test Subzero.capacity(dev) > Subzero.capacity(small)
+        @test length(ws.counts) == Subzero.capacity(dev)
         #= Removing the ghosts, as timestep_sim! does, and adding them again to the same
         arrays, as the next timestep would, when the rows of the old ghosts still hold their
         values. =#
@@ -123,18 +131,18 @@ end
             Subzero.add_ghosts!(cpu, domain)
             _remove_ghosts_cpu!(cpu, n)
             dev = Subzero.adapt(backend, Subzero.FixedWidthFloes(floes))
-            dev = Subzero.add_ghosts!(dev, domain, backend)
+            dev, _ = Subzero.add_ghosts!(dev, domain, backend)
             dev = Subzero.remove_ghosts!(dev, n, backend)
             Subzero.KernelAbstractions.synchronize(backend)
             @test isempty(_differing_fields(Subzero.adapt(Array, dev), cpu))
             # some floes swapped places with a ghost and keep their new place
             name == :both && @test cpu.centroid != floes.centroid
             Subzero.add_ghosts!(cpu, domain)
-            dev = Subzero.add_ghosts!(dev, domain, backend)
+            dev, _ = Subzero.add_ghosts!(dev, domain, backend)
             @test isempty(_differing_fields(Subzero.adapt(Array, dev), cpu))
         end
         # No floes
         empty_floes = Subzero.adapt(backend, Subzero.FixedWidthFloes(floes[1:0]))
-        @test Subzero.add_ghosts!(empty_floes, domains.both, backend).n_floes == 0
+        @test Subzero.add_ghosts!(empty_floes, domains.both, backend)[1].n_floes == 0
     end
 end

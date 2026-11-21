@@ -60,8 +60,9 @@ end
 Floe fields stored as plain arrays so that they can be moved to the GPU with `adapt`.
 The first index of every array is the floe index. The arrays have room for
 `capacity(floes)` floes, of which the first `n_floes` are in use, so that the number of
-floes can change without allocating new arrays (see `set_n_floes`). The spare rows are zero
-until they are used. Ragged fields are padded:
+floes can change without allocating new arrays (see `set_n_floes`). The spare rows of new
+arrays are zero; rows that were in use keep their values when the number of floes goes down
+(e.g. in `remove_ghosts!`). Ragged fields are padded:
 - `poly[i, j, d]` is coordinate `d` of vertex `j` of floe `i`'s exterior ring, for
   `j in 1:n_points[i]` (the last vertex repeats the first); padding is zero.
 - `interactions[i, k, c]` is column `c` of interaction `k` of floe `i`, for
@@ -71,7 +72,7 @@ until they are used. Ragged fields are padded:
 - `collision_force[i, d]`, `stress_accum[i, r, c]`, `stress_instant[i, r, c]`, and
   `strain[i, r, c]` hold the floe's small vector/matrix fields.
 `status` is the tag of the floe's `Status` as an integer (`Int32(active)`, ...). Its
-`fuse_idx` isn't stored. Spare rows have status 0, which isn't a valid tag.
+`fuse_idx` isn't stored. Zero spare rows have status 0, which isn't a valid tag.
 `flags` is a per-floe bit field that kernels can set to report events to the host.
 =#
 struct FixedWidthFloes{

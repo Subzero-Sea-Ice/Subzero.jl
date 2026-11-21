@@ -19,7 +19,9 @@ Launch it with [`launch_per_floe!`](@ref) rather than directly.
 """
 @kernel function per_floe_kernel!(f, floes, args)
     i = @index(Global)
-    f(floes, i, args...)
+    #= Inlined, so that the floes aren't copied into each thread's local memory to pass them
+    to f by reference, which made the kernels several times slower on CUDA =#
+    @inline f(floes, i, args...)
 end
 
 """

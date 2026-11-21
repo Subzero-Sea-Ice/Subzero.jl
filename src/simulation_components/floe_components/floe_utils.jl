@@ -90,7 +90,7 @@ Translate floe i by Δx and Δy. Same result as `_translate_floe!` for a `Floe`,
 scalar operations on the arrays of a `FixedWidthFloes`, so it can be called from a GPU
 kernel.
 =#
-function _translate_floe!(floes::FixedWidthFloes, i, Δx, Δy)
+@inline function _translate_floe!(floes::FixedWidthFloes, i, Δx, Δy)
     floes.centroid[i, 1] += Δx
     floes.centroid[i, 2] += Δy
     for j in 1:floes.n_points[i]
@@ -118,7 +118,7 @@ The interiors overlap if an edge of the polygon passes through the inside of the
 If no edge does, the inside of the rectangle is either entirely inside or entirely outside
 the polygon, so it overlaps if the polygon contains the rectangle's centre.
 =#
-function _overlaps_rectangle(floes::FixedWidthFloes{FT}, i, xmin, xmax, ymin, ymax) where FT
+@inline function _overlaps_rectangle(floes::FixedWidthFloes{FT}, i, xmin, xmax, ymin, ymax) where FT
     # in the floes' precision, so that e.g. Float64 bounds don't make Float32 floes use
     # Float64 maths, which some GPUs can't do
     xmin, xmax, ymin, ymax = FT(xmin), FT(xmax), FT(ymin), FT(ymax)
