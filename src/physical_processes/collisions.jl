@@ -1072,8 +1072,8 @@ function add_floe_ghosts!(
 end
 
 #=
-The coordinate that crosses the boundary: 1 (x) for east/west, 2 (y) for north/south, as
-the two methods of `find_ghosts!`. It's passed to the kernels as a number.
+The coordinate that crosses the boundary: 1 (x) for east/west, 2 (y) for north/south.
+It is passed to the kernels as a number.
 =#
 _ghost_axis(::PeriodicBoundary{<:Union{East, West}}) = 1
 _ghost_axis(::PeriodicBoundary{<:Union{North, South}}) = 2
@@ -1104,9 +1104,14 @@ function _count_ghosts(floes, axis, min_val, max_val, min_ext, max_ext, backend,
 end
 
 #=
-The number of ghosts that floe i needs, as in `find_ghosts!` and `ghosts_on_bounds!`: if an
-active parent floe overlaps the boundary that it may cross, it needs a ghost of itself and
-of each of its ghosts.
+The number of ghosts that floe `i`` needs: if an active parent floe overlaps the boundary
+that it may cross, it needs a ghost of itself and of each of its ghosts.
+Every vertex is within `rmax` of the centroid, so a floe can only overlap a boundary if its
+centroid is within `rmax` of it. Therefore a quick test is performed to exclude some
+polygons from the (more expensive) intersection test.
+
+Note that a floe that is wider than the domain (i.e. crosses both boundaries) would not
+be handled properly (although it would not be realistic, in any case)
 =#
 function _count_ghosts!(floes::FixedWidthFloes, i, counts, axis, min_val, max_val, min_ext, max_ext)
     (floes.status[i] == Int32(active) && floes.ghost_id[i] == 0) || return
