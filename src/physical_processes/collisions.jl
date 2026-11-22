@@ -1003,12 +1003,15 @@ end
 """
     add_ghosts!(floes::FixedWidthFloes, domain, backend; workspace = nothing)
 
-Add ghosts of the floes that pass through periodic boundaries of `domain`, on `backend`,
-with the same result as `add_ghosts!(floes::StructArray, domain)`: the ghosts are added
-after the floes in use, and their indices are stored in the `ghosts` of their parents.
+Add ghosts of the floes that pass through periodic boundaries of `domain` on `backend`.
+Add ghosts of the floes that pass through periodic boundaries of domain, on backend.
+The ghosts are added after the floes in use, and their indices are stored in the ghosts of
+their parents.
+
 Returns the floes with the ghosts in use (see `set_n_floes`) and the workspace that fits
-them (`nothing` if none was given and none was needed). `workspace` is a `GhostWorkspace` for the capacity of `floes`, made if not given. This
-waits for the kernels to finish, because the number of ghosts is needed on the host.
+them (`nothing` if none was given and none was needed). `workspace` is a `GhostWorkspace`
+for the capacity of `floes`, made if not given. This waits for the kernels to finish,
+because the number of ghosts is needed on the host.
 
 The returned floes share the arrays of `floes` unless they had to be made larger (see
 `with_capacity`). Either way, replace `floes` with the returned floes, and pass the returned
