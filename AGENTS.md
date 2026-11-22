@@ -147,10 +147,16 @@ over if/else flags.
 
 ### Floating point and reproducibility
 
-- Float64 literals such as `1.5Δt` turn Float32 calculations into Float64. That's
-  kept for now so that results stay within round-off of `main`, but it is slow on GPUs
-  and fails on GPUs without Float64 (Metal). Consumer GPUs are much slower at Float64
-  than Float32, so check correctness in Float64 and measure speed in Float32.
+- Ported code must match the original (the CPU code on `main`, or the GeometryOps
+  function it replaces) bit for bit with Float64 floes, which is how the original was
+  run. With Float32 floes it doesn't have to: compare with a tolerance, or not at all.
+- With Float32 floes, use Float32 maths throughout. Don't promote to Float64 inside a
+  function to copy the original's Float32 results (GeometryOps does this in places, e.g.
+  its orientation tests and clipping). Float64 maths is slow on consumer GPUs and fails on
+  GPUs without Float64 (Metal), so check correctness in Float64 and measure speed in Float32.
+- Float64 literals such as `1.5Δt` turn Float32 calculations into Float64. Some are
+  still in the code; they can be replaced with `FT(1.5) * Δt`, which gives the same
+  result with Float64 floes.
 - A Voronoi floe field (`VoronoiTesselationFieldGenerator`) isn't reproducible with
   a fixed `rng`. To compare two runs, generate the floes once and deep-copy them (see
   `test/test_simulation.jl`). In simulations with collisions, differences at
