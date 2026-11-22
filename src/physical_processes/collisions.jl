@@ -1033,9 +1033,8 @@ add_floe_ghosts!(floes::FixedWidthFloes{FT}, ::AbstractBoundary, ::AbstractBound
     workspace) where FT = floes, workspace
 
 #=
-Add the ghosts through `max_boundary` (north or east) and `min_boundary` (south or west),
-as `add_floe_ghosts!` for a `StructArray` of floes. Unlike that method, it doesn't only
-change `floes` in place: it returns the floes with the ghosts in use, which may have new,
+Add the ghosts through `max_boundary`` (north or east) and `min_boundary`` (south or west).
+Writes into `floes`, but returns the floes with the ghosts in use, which may have new,
 larger arrays (see `with_capacity`), and the workspace that fits them.
 =#
 function add_floe_ghosts!(
