@@ -1262,10 +1262,11 @@ end
 _along_axis(axis, Δ) = axis == 1 ? (Δ, zero(Δ)) : (zero(Δ), Δ)
 
 #=
-Remove the ghosts that `add_ghosts!` added to floes on a device, as `timestep_sim!` does on
-the CPU: keep the first `n_init_floes` floes, which are the floes without ghosts, and empty
-their lists of ghosts. Floes that swapped places with a ghost keep their new place. Returns
-the floes without ghosts, which share the arrays of `floes`: replace `floes` with them. The
+Remove the ghosts that `add_ghosts!`` added: keep the first: keep the first `n_init_floes`
+floes, which are the floes without ghosts, and empty their lists of ghosts. Floes that
+swapped places with a ghost keep their new place.
+
+Returns the floes without ghosts, which share the arrays of `floes`: replace `floes` with them. The
 kernel is launched asynchronously. The rows of the ghosts keep their values (they aren't zero
 and their status isn't 0), so fill them before using them.
 =#
