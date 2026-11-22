@@ -1129,9 +1129,9 @@ function _count_ghosts!(floes::FixedWidthFloes, i, counts, axis, min_val, max_va
 end
 
 #=
-Plan the ghosts of floe i in the rows that the scan gave it, as `ghosts_on_bounds!`: copies
-of its ghosts (in order), then of itself, translated by the domain size `L` to the other side
-of the domain, with ghost ids that follow those of floe i's ghosts. Ghost j (row
+Plan the ghosts of floe `i` in the rows that the scan gave it: copies
+of its ghosts (in order), then of itself, translated by the domain size `L` to the other
+side of the domain, with ghost ids that follow those of floe i's ghosts. Ghost j (row
 `n_floes + j`) is a copy of row `sources[j]`, shifted by `shifts[j]` along `axis`.
 =#
 function _plan_ghosts!(floes::FixedWidthFloes, i, counts, offsets, sources, ghost_ids, shifts, axis, L, min_val)
@@ -1159,9 +1159,13 @@ same time, not one after another.
     @inline _ghost_value!(floes, n + j, sources[j], v, axis, shifts[j], ghost_ids[j])
 end
 
-# Fields that a ghost doesn't copy: `deepcopy_floe` doesn't copy interactions, num_inters,
-# and damage, `add_floe_ghosts!` empties the ghosts' lists of ghosts, and flags are for
-# events of the floe itself
+#=
+Fields that a ghost does not copy from its parent: a new ghost has no interactions,
+no damage (?) and no ghosts of its own, and flags are for the events of the floe itself.
+
+TODO: Check if it is correct for a new ghost to have no damage - this seems to be how
+the original CPU version of Subzero did it.
+=#
 const _GHOST_ZEROED_FIELDS = (:num_inters, :interactions, :damage, :num_ghosts, :ghosts, :flags)
 
 #=
