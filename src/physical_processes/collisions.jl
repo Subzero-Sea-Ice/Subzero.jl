@@ -1232,9 +1232,10 @@ _values_per_floe(floes::FixedWidthFloes) = sum(fieldnames(FixedWidthFloes)) do n
 end
 
 #=
-Add the new ghosts of floe i to its list of ghosts, as `add_floe_ghosts!`, and if floe i's
-centroid is outside of the domain, swap places with its last new ghost, the copy of floe i,
-as `find_ghosts!`.
+Add the new ghosts of floe i to its list of ghosts. If floe i's centroid is outside of the
+domain, swap places with its last new ghost, the copy of floe i, so that the floe in use is
+the one inside the domain. Note that this "swap" is a swap of coordinates, not an exchange
+of rows in the Floes array.
 =#
 function _link_ghosts!(floes::FixedWidthFloes, i, counts, offsets, axis, L, min_val, max_val)
     nnew = counts[i]
