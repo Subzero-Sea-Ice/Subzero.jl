@@ -957,34 +957,23 @@ function add_ghosts!(
 end
 
 #=
-Adding ghosts to floes on a device (`FixedWidthFloes`), with the same result as
-`add_ghosts!` on the CPU: the same ghosts in the same rows, with the same values. The ghosts
-are added after the floes in use, in two passes as on the CPU: through the east/west
-boundaries, then through the north/south boundaries, which also makes ghosts of the ghosts
-from the first pass. Each pass:
+Adding ghosts to floes on a device (`FixedWidthFloes`).
+
+The ghosts are added after the floes in use, in the order of their parents: first the ghosts
+through the east/west boundaries, then those through the north/south boundaries, which also
+makes ghosts of the first ones. The ghosts are added after the floes in use, in two passes:
+through the east/west boundaries, then through the north/south boundaries, which also makes
+ghosts of the ghosts from the first pass.
+
+Each pass:
 1. `_count_ghosts!`: per floe, the number of ghosts it needs.
-2. A scan of these counts, which gives each floe the rows of its new ghosts, in the order in
-   which the CPU appends them.
+2. A scan of these counts, which gives each floe the rows of its new ghosts.
 3. `_plan_ghosts!`: per floe, the source row, ghost id, and shift of each of its ghosts.
 4. `_ghost_values_kernel!`: one thread per value of each ghost, which copies (and shifts)
    that value from the source row. One thread per floe would copy a few hundred values one
    after another, which is slow on a GPU, where there are often only a few hundred ghosts.
 5. `_link_ghosts!`: per floe, add its ghosts to its list of ghosts, and swap places with its
    last ghost if its centroid is outside of the domain.
-
-On the CPU, `add_floe_ghosts!` loops over the floes and calls `find_ghosts!` for each, which
-calls `ghosts_on_bounds!`. Kernels can't append floes one at a time, so the work is split
-differently:
-
-- `add_ghosts!` and `add_floe_ghosts!` are methods of the CPU functions.
-- `_count_ghosts!`: the boundary tests in `find_ghosts!` and the overlap test in
-  `ghosts_on_bounds!`.
-- `_plan_ghosts!`: which floes `ghosts_on_bounds!` copies, and its `trans_vec`.
-- `_ghost_values_kernel!` and `_ghost_value!`: `deepcopy_floe` and `_translate_floe!` in
-  `ghosts_on_bounds!`.
-- `_link_ghosts!`: the updates of `ghost_id` and `ghosts` in `add_floe_ghosts!`, and the swap
-  in `find_ghosts!`.
-- `remove_ghosts!`: the `deleteat!` and `empty!` in `timestep_sim!`.
 =#
 
 #=
