@@ -8,7 +8,8 @@ over if/else flags.
 ## Code layout and style
 
 - `src/Subzero.jl` `include`s every source file in dependency order. A new file
-  isn't picked up until it's added there, in the right place.
+  isn't picked up until it's added there, in the right place. The `GeometryOpsGPU`
+  submodule includes its own files, in `src/GeometryOpsGPU/GeometryOpsGPU.jl`.
 - `docs/src/api.md` lists functions by hand in `@docs` blocks. Add every new
   public function there. The docs build only warns if one is missing.
 - There's no formatter configured. Match the style of the surrounding code and
@@ -134,8 +135,14 @@ over if/else flags.
 
 - Don't allocate: no comprehensions, array literals, slices (`A[i, :]`),
   broadcasting or `zeros`. Loop over scalars instead.
-- Don't call GeometryOps or GeoInterface, because they build geometry objects. Write
-  the geometry maths by hand (see `_move_floe!`). GeometryOps is fine on the CPU.
+- Don't call GeometryOps or GeoInterface, because they build geometry objects. Use the
+  `GeometryOpsGPU` submodule (`src/GeometryOpsGPU/`, imported as `GOG`) instead, and add
+  missing functions there: e.g. `GOG.transform!(f, _floe_poly(floes, i))` (see
+  `_move_floe!`). Its API follows GeometryOps: the same names and argument order where
+  GeometryOps has the function, `!` when it writes into its arguments, polygons as
+  `GOG.ArrayPolygon`s, and files laid out as in GeometryOps' `src/`. It must not use
+  Subzero, so that it can become a package of its own. Test it against GeometryOps in
+  `test/test_geometry_ops_gpu.jl`. GeometryOps is fine on the CPU.
 - Don't log. Set a bit in `floes.flags` (the `FLAG_*` constants in
   `update_floe.jl`). The host logs each type of event once per timestep after copying
   back (`_log_flags`).

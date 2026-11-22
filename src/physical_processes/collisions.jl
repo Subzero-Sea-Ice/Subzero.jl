@@ -1057,16 +1057,16 @@ function add_floe_ghosts!(
     n == 0 && return floes, workspace
     axis = _ghost_axis(max_boundary)
     min_val, max_val = FT(min_boundary.val), FT(max_boundary.val)
-    min_rect = _bounding_box(FT, min_boundary.poly)
-    max_rect = _bounding_box(FT, max_boundary.poly)
+    min_ext = GI.extent(min_boundary.poly)
+    max_ext = GI.extent(max_boundary.poly)
     workspace = _ghost_workspace(workspace, floes)
-    total = _count_ghosts(floes, axis, min_val, max_val, min_rect, max_rect, backend, workspace)
+    total = _count_ghosts(floes, axis, min_val, max_val, min_ext, max_ext, backend, workspace)
     total == 0 && return floes, workspace
     if n + total > capacity(floes)
         # rare: make room for the ghosts and 25% more, and count again with a new workspace
         floes = with_capacity(floes, n + total + cld(n + total, 4))
         workspace = GhostWorkspace(floes)
-        _count_ghosts(floes, axis, min_val, max_val, min_rect, max_rect, backend, workspace)
+        _count_ghosts(floes, axis, min_val, max_val, min_ext, max_ext, backend, workspace)
     end
     L = max_val - min_val
     ws = workspace
@@ -1095,22 +1095,15 @@ function _ghost_workspace(workspace, floes)
     return workspace
 end
 
-# xmin, xmax, ymin, ymax of a polygon
-function _bounding_box(::Type{FT}, poly) where FT
-    xs = [GI.x(p) for p in GI.getpoint(poly)]
-    ys = [GI.y(p) for p in GI.getpoint(poly)]
-    return FT(minimum(xs)), FT(maximum(xs)), FT(minimum(ys)), FT(maximum(ys))
-end
-
 #=
 Count the ghosts each floe needs into `workspace.counts` and scan them into
 `workspace.offsets`. Returns the total number of ghosts. The counts of the spare rows are
 zero, so the last element of the scan is the total.
 =#
-function _count_ghosts(floes, axis, min_val, max_val, min_rect, max_rect, backend, workspace)
+function _count_ghosts(floes, axis, min_val, max_val, min_ext, max_ext, backend, workspace)
     fill!(workspace.counts, 0)
     launch_per_floe!(_count_ghosts!, backend, floes, workspace.counts, axis, min_val, max_val,
-        min_rect, max_rect)
+        min_ext, max_ext)
     # the scan may run on the host's threads, so the kernel must have finished
     KernelAbstractions.synchronize(backend)
     AK.accumulate!(+, workspace.offsets, workspace.counts; workspace = workspace.scan)
@@ -1124,14 +1117,14 @@ The number of ghosts that floe i needs, as in `find_ghosts!` and `ghosts_on_boun
 active parent floe overlaps the boundary that it may cross, it needs a ghost of itself and
 of each of its ghosts.
 =#
-function _count_ghosts!(floes::FixedWidthFloes, i, counts, axis, min_val, max_val, min_rect, max_rect)
+function _count_ghosts!(floes::FixedWidthFloes, i, counts, axis, min_val, max_val, min_ext, max_ext)
     (floes.status[i] == Int32(active) && floes.ghost_id[i] == 0) || return
     c = floes.centroid[i, axis]
     r = floes.rmax[i]
     if c - r < min_val
-        _overlaps_rectangle(floes, i, min_rect...) || return
+        GOG.interiors_intersect(_floe_poly(floes, i), min_ext) || return
     elseif c + r > max_val
-        _overlaps_rectangle(floes, i, max_rect...) || return
+        GOG.interiors_intersect(_floe_poly(floes, i), max_ext) || return
     else
         return
     end

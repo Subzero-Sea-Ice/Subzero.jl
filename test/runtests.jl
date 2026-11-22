@@ -27,6 +27,7 @@ using Test
     include("test_physical_processes/test_ridge_raft.jl")
     include("test_physical_processes/test_welding.jl")
     include("test_floe_utils.jl")
+    include("test_geometry_ops_gpu.jl")
     include("test_simulation_components/model.jl")
     include("test_output.jl")
     include("test_simulation.jl")

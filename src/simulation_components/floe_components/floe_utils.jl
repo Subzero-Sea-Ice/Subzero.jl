@@ -57,46 +57,34 @@ function _translate_floe!(::Type{FT}, floe, Δx, Δy) where FT
     return
 end
 
-#=
-Rotate the polygon of floe i by Δα around (cx, cy) and then translate it by Δx and Δy, in
-place. Same result as `_move_poly`, but written as scalar operations on the arrays of a
-`FixedWidthFloes`, so it can be called from a GPU kernel.
-=#
-function _move_poly!(floes::FixedWidthFloes{FT}, i, Δx, Δy, Δα, cx, cy) where FT
-    sinα, cosα = sincos(FT(Δα))
-    for j in 1:floes.n_points[i]
-        x = floes.poly[i, j, 1] - cx
-        y = floes.poly[i, j, 2] - cy
-        floes.poly[i, j, 1] = cosα * x - sinα * y + cx + Δx
-        floes.poly[i, j, 2] = sinα * x + cosα * y + cy + Δy
-    end
-    return
-end
+# Floe i's polygon as a `GOG.ArrayPolygon`, for the geometry functions of `GeometryOpsGPU`.
+# It shares the floes' arrays, so changing it changes floe i.
+@inline _floe_poly(floes::FixedWidthFloes, i) =
+    GOG.ArrayPolygon(floes.poly, Int(i), Int(floes.n_points[i]))
 
-# translate floe i by Δx and Δy and rotate it by Δα around its centroid
-function _move_floe!(floes::FixedWidthFloes, i, Δx, Δy, Δα)
+#=
+Translate floe i by Δx and Δy and rotate it by Δα around its centroid. Same result as
+`_move_poly` for the polygon, up to round-off, but it can be called from a GPU kernel.
+=#
+function _move_floe!(floes::FixedWidthFloes{FT}, i, Δx, Δy, Δα) where FT
     cx = floes.centroid[i, 1]
     cy = floes.centroid[i, 2]
     # move centroid
     floes.centroid[i, 1] += Δx
     floes.centroid[i, 2] += Δy
-    # move polygon
-    _move_poly!(floes, i, Δx, Δy, Δα, cx, cy)
+    # move polygon: rotate around the old centroid
+    GOG.transform!(GOG.RotateTranslate(FT(Δα), cx, cy, Δx, Δy), _floe_poly(floes, i))
     return
 end
 
 #=
-Translate floe i by Δx and Δy. Same result as `_translate_floe!` for a `Floe`, but written as
-scalar operations on the arrays of a `FixedWidthFloes`, so it can be called from a GPU
-kernel.
+Translate floe i by Δx and Δy. Same result as `_translate_floe!` for a `Floe`, but it can be
+called from a GPU kernel.
 =#
 @inline function _translate_floe!(floes::FixedWidthFloes, i, Δx, Δy)
     floes.centroid[i, 1] += Δx
     floes.centroid[i, 2] += Δy
-    for j in 1:floes.n_points[i]
-        floes.poly[i, j, 1] += Δx
-        floes.poly[i, j, 2] += Δy
-    end
+    GOG.transform!(GOG.Translate(Δx, Δy), _floe_poly(floes, i))
     return
 end
 
@@ -107,66 +95,6 @@ function _zero_row!(a::AbstractArray{<:Any, 2}, i)
     end
     return
 end
-
-#=
-Whether floe i's polygon overlaps the rectangle `xmin ≤ x ≤ xmax`, `ymin ≤ y ≤ ymax` with a
-positive area. Same result as `!isempty(intersect_polys(poly, rectangle))`: a polygon that
-only touches the rectangle doesn't overlap it. Written as scalar operations, without
-GeometryOps, so it can be called from a GPU kernel.
-
-The interiors overlap if an edge of the polygon passes through the inside of the rectangle.
-If no edge does, the inside of the rectangle is either entirely inside or entirely outside
-the polygon, so it overlaps if the polygon contains the rectangle's centre.
-=#
-@inline function _overlaps_rectangle(floes::FixedWidthFloes{FT}, i, xmin, xmax, ymin, ymax) where FT
-    # in the floes' precision, so that e.g. Float64 bounds don't make Float32 floes use
-    # Float64 maths, which some GPUs can't do
-    xmin, xmax, ymin, ymax = FT(xmin), FT(xmax), FT(ymin), FT(ymax)
-    xc = (xmin + xmax) / 2
-    yc = (ymin + ymax) / 2
-    centre_inside = false
-    # the ring is closed, so edge j goes from vertex j to vertex j + 1
-    for j in 1:(floes.n_points[i] - 1)
-        x1, y1 = floes.poly[i, j, 1], floes.poly[i, j, 2]
-        x2, y2 = floes.poly[i, j + 1, 1], floes.poly[i, j + 1, 2]
-        _edge_through_rectangle(x1, y1, x2, y2, xmin, xmax, ymin, ymax) && return true
-        # even-odd rule: count the edges that a ray from the centre in +x direction crosses
-        if (y1 > yc) != (y2 > yc) && xc < x1 + (yc - y1) * (x2 - x1) / (y2 - y1)
-            centre_inside = !centre_inside
-        end
-    end
-    return centre_inside
-end
-
-#=
-Whether the edge from (x1, y1) to (x2, y2) passes through the inside of the rectangle
-`xmin ≤ x ≤ xmax`, `ymin ≤ y ≤ ymax`, rather than only touching its sides or missing it.
-Liang–Barsky clipping gives the part of the edge in the closed rectangle, as the
-parameters t0 ≤ t ≤ t1 of the points (x1, y1) + t * (x2 - x1, y2 - y1). If the edge passes
-through the inside, every point between the ends of that part is inside, so the midpoint
-is. If it only touches the sides, the midpoint is on a side too.
-=#
-function _edge_through_rectangle(x1, y1, x2, y2, xmin, xmax, ymin, ymax)
-    dx = x2 - x1
-    dy = y2 - y1
-    t0, t1 = zero(dx), one(dx)
-    # the edge is on the inner side of each side of the rectangle where p * t ≤ q
-    for (p, q) in ((-dx, x1 - xmin), (dx, xmax - x1), (-dy, y1 - ymin), (dy, ymax - y1))
-        if iszero(p)  # parallel to this side
-            q < 0 && return false
-        elseif p < 0
-            t0 = max(t0, q / p)
-        else
-            t1 = min(t1, q / p)
-        end
-    end
-    t0 < t1 || return false
-    tm = (t0 + t1) / 2
-    xm = x1 + tm * dx
-    ym = y1 + tm * dy
-    return xmin < xm < xmax && ymin < ym < ymax
-end
-
 
 #= 
 Deepcopy of a floe by creating a new floe and deep copying all fields.

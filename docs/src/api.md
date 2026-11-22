@@ -189,3 +189,15 @@ calc_strain!
 launch_per_floe!
 per_floe_kernel!
 ```
+
+### GeometryOpsGPU
+```@docs
+GeometryOpsGPU
+GeometryOpsGPU.ArrayPolygon
+GeometryOpsGPU.npoint
+GeometryOpsGPU.getpoint
+GeometryOpsGPU.transform!
+GeometryOpsGPU.Translate
+GeometryOpsGPU.RotateTranslate
+GeometryOpsGPU.interiors_intersect
+```

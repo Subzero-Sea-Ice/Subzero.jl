@@ -18,6 +18,10 @@ using CoordinateTransformations, Dates, Extents,
 using Adapt, KernelAbstractions
 import AcceleratedKernels as AK
 
+# Geometry that runs in GPU kernels, with an API like GeometryOps'
+include("GeometryOpsGPU/GeometryOpsGPU.jl")
+import .GeometryOpsGPU as GOG
+
 
 const SIM_DEF = "`sim::Simulation`: simulation to be run"
 const FT_DEF = "`FT::Type{<:AbstractFloat}`: Float type used to run the simulation, either \
