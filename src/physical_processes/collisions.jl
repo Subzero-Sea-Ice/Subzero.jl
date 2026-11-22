@@ -961,9 +961,7 @@ Adding ghosts to floes on a device (`FixedWidthFloes`).
 
 The ghosts are added after the floes in use, in the order of their parents: first the ghosts
 through the east/west boundaries, then those through the north/south boundaries, which also
-makes ghosts of the first ones. The ghosts are added after the floes in use, in two passes:
-through the east/west boundaries, then through the north/south boundaries, which also makes
-ghosts of the ghosts from the first pass.
+makes ghosts of the first ones. The ghosts are added after the currently active floes.
 
 Each pass:
 1. `_count_ghosts!`: per floe, the number of ghosts it needs.
@@ -1004,9 +1002,8 @@ end
     add_ghosts!(floes::FixedWidthFloes, domain, backend; workspace = nothing)
 
 Add ghosts of the floes that pass through periodic boundaries of `domain` on `backend`.
-Add ghosts of the floes that pass through periodic boundaries of domain, on backend.
-The ghosts are added after the floes in use, and their indices are stored in the ghosts of
-their parents.
+The ghosts are added after the floes in use, and their indices are stored in the `ghosts`
+of their parents.
 
 Returns the floes with the ghosts in use (see `set_n_floes`) and the workspace that fits
 them (`nothing` if none was given and none was needed). `workspace` is a `GhostWorkspace`
@@ -1033,7 +1030,7 @@ add_floe_ghosts!(floes::FixedWidthFloes{FT}, ::AbstractBoundary, ::AbstractBound
     workspace) where FT = floes, workspace
 
 #=
-Add the ghosts through `max_boundary`` (north or east) and `min_boundary`` (south or west).
+Add the ghosts through `max_boundary` (north or east) and `min_boundary` (south or west).
 Writes into `floes`, but returns the floes with the ghosts in use, which may have new,
 larger arrays (see `with_capacity`), and the workspace that fits them.
 =#
@@ -1104,14 +1101,14 @@ function _count_ghosts(floes, axis, min_val, max_val, min_ext, max_ext, backend,
 end
 
 #=
-The number of ghosts that floe `i`` needs: if an active parent floe overlaps the boundary
+The number of ghosts that floe `i` needs: if an active parent floe overlaps the boundary
 that it may cross, it needs a ghost of itself and of each of its ghosts.
 Every vertex is within `rmax` of the centroid, so a floe can only overlap a boundary if its
 centroid is within `rmax` of it. Therefore a quick test is performed to exclude some
 polygons from the (more expensive) intersection test.
 
 Note that a floe that is wider than the domain (i.e. crosses both boundaries) would not
-be handled properly (although it would not be realistic, in any case)
+be handled properly (although it would not be realistic, in any case).
 =#
 function _count_ghosts!(floes::FixedWidthFloes, i, counts, axis, min_val, max_val, min_ext, max_ext)
     (floes.status[i] == Int32(active) && floes.ghost_id[i] == 0) || return
@@ -1262,13 +1259,13 @@ end
 _along_axis(axis, Δ) = axis == 1 ? (Δ, zero(Δ)) : (zero(Δ), Δ)
 
 #=
-Remove the ghosts that `add_ghosts!`` added: keep the first: keep the first `n_init_floes`
+Remove the ghosts that `add_ghosts!` added: keep the first: `n_init_floes`
 floes, which are the floes without ghosts, and empty their lists of ghosts. Floes that
 swapped places with a ghost keep their new place.
 
-Returns the floes without ghosts, which share the arrays of `floes`: replace `floes` with them. The
-kernel is launched asynchronously. The rows of the ghosts keep their values (they aren't zero
-and their status isn't 0), so fill them before using them.
+Returns the floes without ghosts, which share the arrays of `floes`: replace `floes` with
+them. The kernel is launched asynchronously. The rows of the ghosts keep their values (they
+aren't zero and their status isn't 0), so fill them before using them.
 =#
 function remove_ghosts!(floes::FixedWidthFloes, n_init_floes, backend)
     floes = set_n_floes(floes, n_init_floes)
