@@ -32,17 +32,23 @@ centroid is outside of the domain. `add_ghosts!` alone is recorded too.
 
 ## Results
 
-`thinkpad-p14s` (Ryzen AI 9 HX PRO 470, Radeon 890M), 100,000 floes, 2026-11-13, `4f83ec2`:
+`thinkpad-p14s` (Ryzen AI 9 HX PRO 470, Radeon 890M), 100,000 floes, 2026-11-22, `aab9b8f`:
 
 | | add and remove | `add_ghosts!` |
 |---|--:|--:|
 | baseline, 1 and 8 threads | 21.4 ms | – |
-| CPU, 1 thread | 4.08 ms | 3.96 ms |
-| CPU, 8 threads | 1.85 ms | 1.75 ms |
-| AMDGPU Float64 | 1.27 ms | 1.03 ms |
-| AMDGPU Float32 | 1.08 ms | 1.17 ms |
+| CPU, 1 thread | 3.74 ms | 3.53 ms |
+| CPU, 8 threads | 1.78 ms | 1.73 ms |
+| AMDGPU Float64 | 1.28 ms | 1.20 ms |
+| AMDGPU Float32 | 1.06 ms | 0.99 ms |
 
 The checks match the baseline exactly on the CPU and the GPU (maximum relative difference 0).
+
+Inlining the per-floe functions into the kernels (`aab9b8f`, after a review on CUDA) changed
+little here: on 2026-11-13 (`4f83ec2`), adding and removing took 4.08, 1.85, 1.27 and
+1.08 ms in the same rows. On an RTX 3050 Ti, it took Float64 from 7.40 ms to 2.10 ms,
+because without it every thread copied the whole `FixedWidthFloes` into local memory. The
+`add_ghosts!` times alone vary more between runs: 1.03 and 1.17 ms on 2026-11-13.
 
 There is little work: only floes at the edges of the domain get ghosts, 805 of 100,000
 floes in this input, and 798 of those in the north/south pass, because the floe field is
