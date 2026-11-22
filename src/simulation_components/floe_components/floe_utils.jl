@@ -63,8 +63,7 @@ end
     GOG.ArrayPolygon(floes.poly, Int(i), Int(floes.n_points[i]))
 
 #=
-Translate floe i by Δx and Δy and rotate it by Δα around its centroid. Same result as
-`_move_poly` for the polygon, up to round-off, but it can be called from a GPU kernel.
+Rotate floe i by Δα around its centroid and translate it by Δx and Δy.
 =#
 function _move_floe!(floes::FixedWidthFloes{FT}, i, Δx, Δy, Δα) where FT
     cx = floes.centroid[i, 1]
@@ -78,8 +77,7 @@ function _move_floe!(floes::FixedWidthFloes{FT}, i, Δx, Δy, Δα) where FT
 end
 
 #=
-Translate floe i by Δx and Δy. Same result as `_translate_floe!` for a `Floe`, but it can be
-called from a GPU kernel.
+Translate floe i by Δx and Δy.
 =#
 @inline function _translate_floe!(floes::FixedWidthFloes, i, Δx, Δy)
     floes.centroid[i, 1] += Δx
