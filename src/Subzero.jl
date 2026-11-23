@@ -41,7 +41,6 @@ from the centroid to any given vertex"
 # Types
 include("tools/geom_utils.jl")
 include("tools/device_geom_utils.jl")
-include("tools/device_clipping.jl")
 # Model
 include("simulation_components/grids.jl")
 include("simulation_components/domain_components/abstract_domains.jl")

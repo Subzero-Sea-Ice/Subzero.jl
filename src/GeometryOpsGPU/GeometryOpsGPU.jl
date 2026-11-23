@@ -23,7 +23,8 @@ moved into GeometryOps one day:
 The differences from GeometryOps:
 - Polygons are `ArrayPolygon`s, not any GeoInterface geometry, and have no holes.
   `ArrayPolygon`s are GeoInterface polygons, though, so GeometryOps accepts them on the host.
-- Results are written into preallocated arrays rather than returned as new geometries.
+- Results are written into preallocated arrays rather than returned as new geometries, and
+  functions that need scratch memory are given it (e.g. `ClipLists`).
 - There's no manifold or algorithm argument: everything is planar. Edge intersections and
   the orientations that decide them are always exact (`exact = True()` in GeometryOps), and
   point-in-polygon tests are not (`exact = False()`), as in GeometryOps' defaults.
@@ -35,6 +36,7 @@ imports it as `GOG`, as it imports GeometryOps as `GO`.
 """
 module GeometryOpsGPU
 
+import Adapt
 import AdaptivePredicates
 import Extents
 import GeoInterface as GI
@@ -50,6 +52,7 @@ include("methods/geom_relations/coveredby.jl")
 include("methods/geom_relations/within.jl")
 include("methods/geom_relations/interiors_intersect.jl")
 include("methods/distance.jl")
+include("methods/clipping/clipping_processor.jl")
 include("methods/clipping/intersection.jl")
 include("transformations/transform.jl")
 

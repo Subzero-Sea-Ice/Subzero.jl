@@ -1,16 +1,18 @@
 #=
-The polygon clipping in `src/tools/device_clipping.jl` replaces GeometryOps' Foster-Hormann
-clipping in GPU kernels, and must give the same results bit for bit. These tests compare each
-step with the GeometryOps function it follows, node by node, on the CPU, and then run the
-steps in a kernel on every backend.
+Tests of GeometryOpsGPU's polygon clipping (`methods/clipping/`) against GeometryOps'
+Foster-Hormann clipping, which it follows: each step, node by node, on the CPU, and then the
+steps in a kernel on every backend. With Float64 polygons the results must be the same, bit
+for bit. Kernels name the module in full: the local `GOG` would be captured, and a module
+can't be passed to a kernel.
 =#
-@testset "Device clipping" begin
+@testset "GeometryOpsGPU clipping" begin
+    GOG = Subzero.GeometryOpsGPU
     go_alg = GO.FosterHormannClipping(GO.Planar())
     # A GeometryOps PolyNode as the NamedTuple that _get_node returns
     _go_node(n) = (; point = n.point, inter = n.inter, neighbor = n.neighbor, idx = n.idx,
-        ent_exit = n.ent_exit, crossing = n.crossing, endpoint = Int8(Int(n.endpoint)),
+        ent_exit = n.ent_exit, crossing = n.crossing, endpoint = GOG.EndPointType(Int(n.endpoint)),
         fracs = n.fracs)
-    _nodes(l, n) = [Subzero._get_node(l, m) for m in 1:n]
+    _nodes(l, n) = [GOG._get_node(l, m) for m in 1:n]
     _indices(l, n) = [l[m] for m in 1:n]
 
     #= Build the node lists of polygons p and q (vectors of (x, y), not closed), clipping in
@@ -25,13 +27,13 @@ steps in a kernel on every backend.
 
         _, (poly_a, poly_b) = _array_polys([p, q])
         capacity = 2 * (length(p) + length(q)) + 64
-        a = Subzero._PolyNodes(Subzero._PolyNodes(T, 1, capacity), 1)
-        b = Subzero._PolyNodes(Subzero._PolyNodes(T, 1, capacity), 1)
-        a_idx = Subzero._IndexList(Subzero._IndexList(1, capacity), 1)
-        na, n_idx, nbi = Subzero._build_a_list!(a, a_idx, T, poly_a, poly_b)
+        a = GOG._PolyNodes(GOG._PolyNodes(T, 1, capacity), 1)
+        b = GOG._PolyNodes(GOG._PolyNodes(T, 1, capacity), 1)
+        a_idx = GOG._IndexList(GOG._IndexList(1, capacity), 1)
+        na, n_idx, nbi = GOG._build_a_list!(a, a_idx, T, poly_a, poly_b)
         same_a = isequal((na, n_idx, nbi), (length(a_list), length(a_idx_after_a), n_b_intrs)) &&
             isequal(_nodes(a, na), a_after_a) && isequal(_indices(a_idx, n_idx), a_idx_after_a)
-        nb = Subzero._build_b_list!(b, a, a_idx, n_idx, T, poly_b)
+        nb = GOG._build_b_list!(b, a, a_idx, n_idx, T, poly_b)
         same_b = nb == length(b_list) && isequal(_nodes(b, nb), _go_node.(b_list)) &&
             isequal(_nodes(a, na), _go_node.(a_list)) &&
             isequal(_indices(a_idx, n_idx), a_idx_list)
@@ -107,29 +109,29 @@ steps in a kernel on every backend.
 
     @testset "Building the lists: too little room" begin
         _, (poly_a, poly_b) = _array_polys([square(0.0, 0.0, 2.0), square(1.0, 1.0, 2.0)])
-        lists(capacity) = Subzero._PolyNodes(Subzero._PolyNodes(Float64, 1, capacity), 1)
-        indices(capacity) = Subzero._IndexList(Subzero._IndexList(1, capacity), 1)
+        lists(capacity) = GOG._PolyNodes(GOG._PolyNodes(Float64, 1, capacity), 1)
+        indices(capacity) = GOG._IndexList(GOG._IndexList(1, capacity), 1)
         # 4 vertices and 2 intersection points in each list
-        @test Subzero._build_a_list!(lists(6), indices(2), Float64, poly_a, poly_b) == (6, 2, 2)
-        @test Subzero._build_a_list!(lists(5), indices(2), Float64, poly_a, poly_b) == (-1, 0, 0)
-        @test Subzero._build_a_list!(lists(6), indices(1), Float64, poly_a, poly_b) == (-1, 0, 0)
+        @test GOG._build_a_list!(lists(6), indices(2), Float64, poly_a, poly_b) == (6, 2, 2)
+        @test GOG._build_a_list!(lists(5), indices(2), Float64, poly_a, poly_b) == (-1, 0, 0)
+        @test GOG._build_a_list!(lists(6), indices(1), Float64, poly_a, poly_b) == (-1, 0, 0)
         a, a_idx = lists(6), indices(2)
-        Subzero._build_a_list!(a, a_idx, Float64, poly_a, poly_b)
-        @test Subzero._build_b_list!(lists(6), a, a_idx, 2, Float64, poly_b) == 6
-        Subzero._build_a_list!(a, a_idx, Float64, poly_a, poly_b)
-        @test Subzero._build_b_list!(lists(5), a, a_idx, 2, Float64, poly_b) == -1
+        GOG._build_a_list!(a, a_idx, Float64, poly_a, poly_b)
+        @test GOG._build_b_list!(lists(6), a, a_idx, 2, Float64, poly_b) == 6
+        GOG._build_a_list!(a, a_idx, Float64, poly_a, poly_b)
+        @test GOG._build_b_list!(lists(5), a, a_idx, 2, Float64, poly_b) == -1
     end
 
     #= Kernel test: each floe builds the lists of itself and a partner floe in its rows of
     the lists, clipping in Float64 as intersect_polys does =#
     function _build_lists_kernel!(floes, i, a_nodes, b_nodes, a_indices, counts, partner)
-        a = Subzero._PolyNodes(a_nodes, i)
-        b = Subzero._PolyNodes(b_nodes, i)
-        a_idx = Subzero._IndexList(a_indices, i)
+        a = Subzero.GeometryOpsGPU._PolyNodes(a_nodes, i)
+        b = Subzero.GeometryOpsGPU._PolyNodes(b_nodes, i)
+        a_idx = Subzero.GeometryOpsGPU._IndexList(a_indices, i)
         poly_a, poly_b = Subzero._floe_poly(floes, i), Subzero._floe_poly(floes, partner[i])
-        na, n_idx, nbi = Subzero._build_a_list!(a, a_idx, Float64, poly_a, poly_b)
+        na, n_idx, nbi = Subzero.GeometryOpsGPU._build_a_list!(a, a_idx, Float64, poly_a, poly_b)
         counts[i, 1], counts[i, 2], counts[i, 3] = na, n_idx, nbi
-        counts[i, 4] = na < 0 ? 0 : Subzero._build_b_list!(b, a, a_idx, n_idx, Float64, poly_b)
+        counts[i, 4] = na < 0 ? 0 : Subzero.GeometryOpsGPU._build_b_list!(b, a, a_idx, n_idx, Float64, poly_b)
         return
     end
     @testset "Building the lists on $backend with floes $FT" for backend in test_backends(),
@@ -146,8 +148,8 @@ steps in a kernel on every backend.
         # partners include the floe itself
         partner = Int32[rand(rng) < 0.1 ? i : rand(rng, 1:n) for i in 1:n]
         capacity = 64
-        outputs() = (Subzero._PolyNodes(Float64, n, capacity),
-            Subzero._PolyNodes(Float64, n, capacity), Subzero._IndexList(n, capacity),
+        outputs() = (GOG._PolyNodes(Float64, n, capacity),
+            GOG._PolyNodes(Float64, n, capacity), GOG._IndexList(n, capacity),
             zeros(Int32, n, 4))
         ref = outputs()
         for i in 1:n
@@ -169,8 +171,8 @@ steps in a kernel on every backend.
     end
 
     # The regions in `out` and the polygons that GeometryOps returns as vectors of points
-    _regions(out, n) = [[Subzero.GeometryOpsGPU.getpoint(Subzero._region(out, m), j)
-        for j in 1:Subzero.GeometryOpsGPU.npoint(Subzero._region(out, m))] for m in 1:n]
+    _regions(out, n) = [[GOG.getpoint(GOG.region(out, m), j)
+        for j in 1:GOG.npoint(GOG.region(out, m))] for m in 1:n]
     _go_regions(polys) = [collect(GI.getpoint(GI.getexterior(r))) for r in polys]
 
     #= Clip polygons p and q (vectors of (x, y), not closed) in T with GeometryOps and with
@@ -187,19 +189,19 @@ steps in a kernel on every backend.
 
         _, (poly_a, poly_b) = _array_polys([p, q])
         capacity = 2 * (length(p) + length(q)) + 64
-        lists() = Subzero._ClipLists(Subzero._ClipLists(T, 1, capacity), 1)
-        regions() = Subzero._PolyRegions(Subzero._PolyRegions(T, 1, 16, capacity), 1)
+        lists() = GOG.ClipLists(GOG.ClipLists(T, 1, capacity), 1)
+        regions() = GOG.PolyRegions(GOG.PolyRegions(T, 1, 16, capacity), 1)
         l = lists()
-        na, n_idx, _ = Subzero._build_a_list!(l.a, l.a_idx, T, poly_a, poly_b)
-        nb = Subzero._build_b_list!(l.b, l.a, l.a_idx, n_idx, T, poly_b)
-        ok = Subzero._classify_crossing!(l.a, na, l.b, nb) &&
-            Subzero._flag_ent_exit!(l.a, na, poly_b) && Subzero._flag_ent_exit!(l.b, nb, poly_a)
-        n_cross = Subzero._index_crossing_intrs!(l.a, l.b, l.a_idx, n_idx)
+        na, n_idx, _ = GOG._build_a_list!(l.a, l.a_idx, T, poly_a, poly_b)
+        nb = GOG._build_b_list!(l.b, l.a, l.a_idx, n_idx, T, poly_b)
+        ok = GOG._classify_crossing!(l.a, na, l.b, nb) &&
+            GOG._flag_ent_exit!(l.a, na, poly_b) && GOG._flag_ent_exit!(l.b, nb, poly_a)
+        n_cross = GOG._index_crossing_intrs!(l.a, l.b, l.a_idx, n_idx)
         same_lists = ok && isequal(_nodes(l.a, na), _go_node.(a_list)) &&
             isequal(_nodes(l.b, nb), _go_node.(b_list)) &&
             isequal(_indices(l.a_idx, n_cross), a_idx_list)
         out = regions()
-        n_traced = Subzero._trace_polynodes!(out, l.a, na, l.b, nb, l.a_idx, n_cross)
+        n_traced = GOG._trace_polynodes!(out, l.a, na, l.b, nb, l.a_idx, n_cross)
         same_traced = isequal(_regions(out, n_traced), _go_regions(traced))
 
         result = nothing
@@ -278,11 +280,11 @@ steps in a kernel on every backend.
                 (1.0, 3.0), (0.0, 3.0)],
             [(-1.0, 2.0), (4.0, 2.0), (4.0, 2.5), (-1.0, 2.5)]]
         _, (crossing_a, crossing_b, inside, u_shape, bar) = _array_polys(polys)
-        lists(capacity) = Subzero._ClipLists(Subzero._ClipLists(Float64, 1, capacity), 1)
+        lists(capacity) = GOG.ClipLists(GOG.ClipLists(Float64, 1, capacity), 1)
         regions(max_polys, capacity) =
-            Subzero._PolyRegions(Subzero._PolyRegions(Float64, 1, max_polys, capacity), 1)
-        clip(l, out, p, q) = Subzero.intersect_polys!(out, l, p, q)
-        too_small = Subzero._CLIP_TOO_SMALL
+            GOG.PolyRegions(GOG.PolyRegions(Float64, 1, max_polys, capacity), 1)
+        clip(l, out, p, q) = GOG.intersection!(out, l, p, q)
+        too_small = GOG.CLIP_TOO_SMALL
         # crossing squares: 6 nodes in each list, and a region of 4 points and the
         # repeated first point
         @test clip(lists(6), regions(1, 5), crossing_a, crossing_b) == 1
@@ -301,8 +303,8 @@ steps in a kernel on every backend.
     in its rows, as the collisions and other steps will =#
     function _intersect_kernel!(floes, i, lists, regions, counts, partner)
         poly_a, poly_b = Subzero._floe_poly(floes, i), Subzero._floe_poly(floes, partner[i])
-        counts[i] = Subzero.intersect_polys!(Subzero._PolyRegions(regions, i),
-            Subzero._ClipLists(lists, i), poly_a, poly_b)
+        counts[i] = Subzero.intersect_polys!(Subzero.GeometryOpsGPU.PolyRegions(regions, i),
+            Subzero.GeometryOpsGPU.ClipLists(lists, i), poly_a, poly_b)
         return
     end
     @testset "Clipping on $backend with floes $FT" for backend in test_backends(),
@@ -319,8 +321,8 @@ steps in a kernel on every backend.
         # partners include the floe itself
         partner = Int32[rand(rng) < 0.1 ? i : rand(rng, 1:n) for i in 1:n]
         capacity, max_polys = 64, 8
-        outputs() = (Subzero._ClipLists(Float64, n, capacity),
-            Subzero._PolyRegions(Float64, n, max_polys, capacity), zeros(Int32, n))
+        outputs() = (GOG.ClipLists(Float64, n, capacity),
+            GOG.PolyRegions(Float64, n, max_polys, capacity), zeros(Int32, n))
         ref = outputs()
         for i in 1:n
             _intersect_kernel!(fwf, i, ref..., partner)
@@ -330,7 +332,7 @@ steps in a kernel on every backend.
         @test all(1:n) do i
             expected = _go_regions(Subzero.intersect_polys(floes.poly[i],
                 floes.poly[partner[i]], FT))
-            isequal(_regions(Subzero._PolyRegions(ref[2], i), ref[3][i]), expected)
+            isequal(_regions(GOG.PolyRegions(ref[2], i), ref[3][i]), expected)
         end
         dev = Subzero.adapt(backend, outputs())
         Subzero.launch_per_floe!(_intersect_kernel!, backend, Subzero.adapt(backend, fwf),
@@ -339,8 +341,8 @@ steps in a kernel on every backend.
         got = Subzero.adapt(Array, dev)
         @test isequal(got[3], ref[3])
         @test all(1:n) do i
-            isequal(_regions(Subzero._PolyRegions(got[2], i), got[3][i]),
-                _regions(Subzero._PolyRegions(ref[2], i), ref[3][i]))
+            isequal(_regions(GOG.PolyRegions(got[2], i), got[3][i]),
+                _regions(GOG.PolyRegions(ref[2], i), ref[3][i]))
         end
         # most pairs overlap, and some in several regions
         @test count(>(0), ref[3]) > n ÷ 2

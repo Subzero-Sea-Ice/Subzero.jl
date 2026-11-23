@@ -242,3 +242,41 @@ end
 
 # x / y clamped between ϵ and 1 - ϵ, as `GO._clamped_frac`
 _clamped_frac(x::T, y::T, ϵ = zero(T)) where T = clamp(x / y, ϵ, one(T) - ϵ)
+
+"""
+    intersection!(out::PolyRegions, lists::ClipLists, poly_a::ArrayPolygon, poly_b::ArrayPolygon)
+
+The regions where the polygons overlap, as `GO.intersection(poly_a, poly_b, T; target =
+GI.PolygonTrait(), fix_multipoly = nothing)` with Foster-Hormann clipping, where `T` is the
+float type of `out`, and `lists` must have the same type. Unlike that, the regions are written
+into `out` (see [`PolyRegions`](@ref GeometryOpsGPU.PolyRegions)), using `lists` as scratch
+memory, and their number is returned: 0 if the polygons don't overlap or only touch.
+Returns `CLIP_TOO_SMALL` if `lists` or `out` is too small, and `CLIP_FAILED` where
+GeometryOps throws an error.
+"""
+function intersection!(out::PolyRegions, lists::ClipLists, poly_a::ArrayPolygon,
+        poly_b::ArrayPolygon)
+    T = eltype(out.coords)
+    a, b, a_idx = lists.a, lists.b, lists.a_idx
+    na, n_idx, _ = _build_a_list!(a, a_idx, T, poly_a, poly_b)
+    na < 0 && return CLIP_TOO_SMALL
+    na < 2 && return CLIP_FAILED  # GeometryOps can't index a_list[end - 1]
+    nb = _build_b_list!(b, a, a_idx, n_idx, T, poly_b)
+    nb < 0 && return CLIP_TOO_SMALL
+    _classify_crossing!(a, na, b, nb) || return CLIP_FAILED
+    _flag_ent_exit!(a, na, poly_b) || return CLIP_FAILED
+    _flag_ent_exit!(b, nb, poly_a) || return CLIP_FAILED
+    n_cross = _index_crossing_intrs!(a, b, a_idx, n_idx)
+    n_polys = _trace_polynodes!(out, a, na, b, nb, a_idx, n_cross)
+    n_polys < 0 && return n_polys
+    if n_polys == 0  # the boundaries don't cross: one polygon may be inside the other
+        a_in_b, b_in_a = _find_non_cross_orientation(a, na, b, nb, poly_a, poly_b)
+        if a_in_b || b_in_a
+            out.max_polys < 1 && return CLIP_TOO_SMALL
+            _copy_poly_to_region!(out, 1, a_in_b ? poly_a : poly_b, T) ||
+                return CLIP_TOO_SMALL
+            n_polys = 1
+        end
+    end
+    return _remove_collinear_points!(out, n_polys)
+end

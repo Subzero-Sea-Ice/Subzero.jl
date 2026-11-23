@@ -23,6 +23,17 @@ get_intersection_points!(out, k, poly1::GOG.ArrayPolygon, poly2::GOG.ArrayPolygo
     ::Type{T} = eltype(poly1.coords)) where T = GOG.intersection_points!(out, k, poly1, poly2, T)
 
 #=
+The regions where two polygons overlap, as `intersect_polys(poly_a, poly_b, FT)`. They're
+written to `out` (a `GOG.PolyRegions`), using the node lists `lists` (a `GOG.ClipLists`), and
+their number is returned, or `GOG.CLIP_TOO_SMALL` or `GOG.CLIP_FAILED` (see
+`GOG.intersection!`). `intersect_polys` always clips in Float64, also for Float32 floes,
+because `GO.intersection` doesn't pass the float type on to the clipping; for the same
+results, `out` and `lists` must be Float64.
+=#
+intersect_polys!(out::GOG.PolyRegions, lists::GOG.ClipLists, poly_a::GOG.ArrayPolygon,
+    poly_b::GOG.ArrayPolygon) = GOG.intersection!(out, lists, poly_a, poly_b)
+
+#=
 Indices of the region's points that are within `atol` of each of the points
 `points[k, 1:m, :]`, in increasing order, as `which_vertices_match_points(points, region,
 atol)`. For each point, it takes the closest of the region's points, the first one if there

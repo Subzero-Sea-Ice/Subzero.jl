@@ -147,9 +147,9 @@ over if/else flags.
   `test/test_geometry_ops_gpu.jl`. GeometryOps is fine on the CPU.
   Subzero's own geometry functions (`area_poly`, `get_intersection_points!`, ...) have
   methods for `GOG.ArrayPolygon`s in `src/tools/device_geom_utils.jl`, which call GOG.
-  `src/tools/device_clipping.jl` has `intersect_polys!`, which writes the overlap regions
-  of two polygons to `_PolyRegions`, using node lists in `_ClipLists`; both are fixed-size
-  buffers with one row per pair of polygons.
+  `intersect_polys!` clips with `GOG.intersection!`, which writes the overlap regions of two
+  polygons to a `GOG.PolyRegions`, using node lists in a `GOG.ClipLists`; both are
+  fixed-size buffers with one row per pair of polygons.
 - Don't log. Set a bit in `floes.flags` (the `FLAG_*` constants in
   `update_floe.jl`). The host logs each type of event once per timestep after copying
   back (`_log_flags`).
