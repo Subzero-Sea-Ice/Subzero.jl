@@ -122,17 +122,11 @@ differ by round-off.
             if intersects(fwf, i, rect) != overlaps_go(floes, i, rect, FT)]
         @test isempty(mismatches)
     end
-    #= Bounds of another type are converted to the polygon's type: Float64 and integer bounds
-    give the same results as the same bounds in the polygon's type =#
-    @testset "interiors_intersect with bounds of another type" begin
+    # Bounds of another type than the polygon's aren't accepted
+    @testset "interiors_intersect with Float32 polygons" begin
         floes, _, rects = _overlap_test_floes(Float32)
         fwf = Subzero.FixedWidthFloes(floes)
-        n = length(floes)
-        results(ext) = [intersects(fwf, i, ext) for i in 1:n]
-        as64(ext) = Extent(X = Float64.(ext.X), Y = Float64.(ext.Y))
-        @test all(ext -> results(as64(ext)) == results(ext), rects)
-        @test results(Extent(X = (10_000, 15_000), Y = (-5_000, 15_000))) ==
-            results(Extent(X = (10f3, 15f3), Y = (-5f3, 15f3)))
+        @test_throws MethodError intersects(fwf, 1, Extent(X = (1e4, 1.5e4), Y = (-5e3, 1.5e4)))
         # With Float32 polygons the maths is in Float32: no intermediate value is a Float64
         float64_values(f, types) = count(==(Float64), only(Base.code_typed(f, types))[1].ssavaluetypes)
         @test float64_values(GOG._interiors_intersect_rect,

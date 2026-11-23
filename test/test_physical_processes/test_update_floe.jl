@@ -316,6 +316,16 @@ end
             end
         end
     end
+    #= With Float32 floes, the maths must be in Float32, so that the kernels can run on GPUs
+    without Float64, such as Apple GPUs (Metal) and some Intel GPUs: no intermediate value in
+    these functions, or in the functions inlined into them, is a Float64 =#
+    @testset "No Float64 maths with Float32 floes" begin
+        float64_values(f, types) = count(==(Float64), only(Base.code_typed(f, types))[1].ssavaluetypes)
+        F = typeof(Subzero.FixedWidthFloes(_make_timestep_test_floes(Float32, FloeSettings(Float32))))
+        @test float64_values(Subzero.update_ice_coordinates!, Tuple{F, Int, Int}) == 0
+        @test float64_values(Subzero.update_velocities!, Tuple{F, Int, Int, Float32}) == 0
+        @test float64_values(Subzero._move_floe!, Tuple{F, Int, Float32, Float32, Float32}) == 0
+    end
     @testset "Replace floe" begin
         # Test replace floe
         coords1 = [[

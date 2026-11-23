@@ -24,9 +24,9 @@ end
 A point function for [`transform!`](@ref GeometryOpsGPU.transform!) that moves a point by
 `Δx` and `Δy`: `(x + Δx, y + Δy)`, as CoordinateTransformations' `Translation(Δx, Δy)`.
 """
-struct Translate{X, Y}
-    Δx::X
-    Δy::Y
+struct Translate{T}
+    Δx::T
+    Δy::T
 end
 
 @inline (t::Translate)((x, y)) = (x + t.Δx, y + t.Δy)
@@ -37,16 +37,16 @@ end
 A point function for [`transform!`](@ref GeometryOpsGPU.transform!) that rotates a point by
 `Δα` radians anticlockwise around `(cx, cy)`, and then moves it by `Δx` and `Δy`. That's
 `Translation(Δx, Δy) ∘ recenter(LinearMap(Angle2d(Δα)), (cx, cy))` in
-CoordinateTransformations and Rotations, up to round-off. `sincos(Δα)` is computed once,
-here, in the type of `Δα`.
+CoordinateTransformations and Rotations, up to round-off. All arguments must have the same
+type, that of the polygon's coordinates. `sincos(Δα)` is computed once, here.
 """
-struct RotateTranslate{S, C, D}
-    sinα::S
-    cosα::S
-    cx::C
-    cy::C
-    Δx::D
-    Δy::D
+struct RotateTranslate{T}
+    sinα::T
+    cosα::T
+    cx::T
+    cy::T
+    Δx::T
+    Δy::T
 end
 
 function RotateTranslate(Δα, cx, cy, Δx, Δy)

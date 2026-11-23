@@ -7,9 +7,7 @@ their interiors intersect. A polygon that only touches the rectangle doesn't. Th
 `!isempty(GO.intersection(poly, rect; target = GI.PolygonTrait()))`. GeometryOps has no
 function of its own for it.
 
-`ext` needs `X` and `Y` bounds, e.g. `GI.extent(rect)`. They are converted to the
-polygon's float type, so that Float64 bounds don't make the maths for a Float32 polygon
-Float64.
+`ext` needs `X` and `Y` bounds, e.g. `GI.extent(rect)`, of the polygon's float type.
 
 The interiors intersect if an edge of the polygon passes through the inside of the
 rectangle. If no edge does, the inside of the rectangle is either entirely inside or
@@ -17,14 +15,14 @@ entirely outside the polygon, so they intersect if the polygon contains the rect
 centre.
 """
 @inline function interiors_intersect(p::ArrayPolygon, ext::Extents.Extent)
-    T = eltype(p.coords)
     b = Extents.bounds(ext)
-    return _interiors_intersect_rect(p, T(b.X[1]), T(b.X[2]), T(b.Y[1]), T(b.Y[2]))
+    return _interiors_intersect_rect(p, b.X[1], b.X[2], b.Y[1], b.Y[2])
 end
 
-# `interiors_intersect` for the rectangle xmin ≤ x ≤ xmax, ymin ≤ y ≤ ymax, in the
-# polygon's float type
-@inline function _interiors_intersect_rect(p::ArrayPolygon, xmin, xmax, ymin, ymax)
+# `interiors_intersect` for the rectangle xmin ≤ x ≤ xmax, ymin ≤ y ≤ ymax, whose bounds
+# have the polygon's float type
+@inline function _interiors_intersect_rect(p::ArrayPolygon{<:AbstractArray{T}},
+        xmin::T, xmax::T, ymin::T, ymax::T) where T
     xc = (xmin + xmax) / 2
     yc = (ymin + ymax) / 2
     centre_inside = false

@@ -65,14 +65,14 @@ end
 #=
 Rotate floe i by Δα around its centroid and translate it by Δx and Δy.
 =#
-function _move_floe!(floes::FixedWidthFloes{FT}, i, Δx, Δy, Δα) where FT
+function _move_floe!(floes::FixedWidthFloes, i, Δx, Δy, Δα)
     cx = floes.centroid[i, 1]
     cy = floes.centroid[i, 2]
     # move centroid
     floes.centroid[i, 1] += Δx
     floes.centroid[i, 2] += Δy
     # move polygon: rotate around the old centroid
-    GOG.transform!(GOG.RotateTranslate(FT(Δα), cx, cy, Δx, Δy), _floe_poly(floes, i))
+    GOG.transform!(GOG.RotateTranslate(Δα, cx, cy, Δx, Δy), _floe_poly(floes, i))
     return
 end
 

@@ -1044,7 +1044,7 @@ function add_floe_ghosts!(
     n = floes.n_floes
     n == 0 && return floes, workspace
     axis = _ghost_axis(max_boundary)
-    min_val, max_val = FT(min_boundary.val), FT(max_boundary.val)
+    min_val, max_val = min_boundary.val, max_boundary.val
     min_ext = GI.extent(min_boundary.poly)
     max_ext = GI.extent(max_boundary.poly)
     workspace = _ghost_workspace(workspace, floes)
