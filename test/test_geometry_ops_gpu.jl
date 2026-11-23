@@ -314,8 +314,11 @@ Float32 polygons they may differ by round-off.
         FT == Float32 && @test n_endpoints > 100
     end
 
-    #= With Float32 points and polygons, the maths is in Float32: no intermediate value in
-    these functions (and the functions inlined into them) is a Float64 =#
+    #= With Float32 points and polygons, the maths must be in Float32, so that the code can
+    run on GPUs without Float64: Apple GPUs (Metal) and some Intel GPUs have none, and on
+    most other consumer GPUs Float64 is much slower. This checks that no intermediate value
+    in these functions, or in the functions inlined into them, is a Float64. Functions that
+    aren't inlined are listed separately, e.g. AdaptivePredicates' `orient2`. =#
     @testset "No Float64 maths with Float32" begin
         float64_values(f, types) = count(==(Float64), only(Base.code_typed(f, types))[1].ssavaluetypes)
         P = GOG.ArrayPolygon{Array{Float32, 3}}
