@@ -17,7 +17,8 @@ moved into GeometryOps one day:
   the host. In kernels they can differ by round-off, as every KernelAbstractions backend has
   its own `sin`, `cos`, ..., and GPU compilers fuse multiplications and additions. With
   Float32 polygons, the maths is in Float32 throughout, even where GeometryOps converts to
-  Float64, so results can differ by round-off.
+  Float64, so results can differ by round-off (and therefore e.g. points very close to an
+  edge could be classed differently, as a result).
 
 The differences from GeometryOps:
 - Polygons are `ArrayPolygon`s, not any GeoInterface geometry, and have no holes.
