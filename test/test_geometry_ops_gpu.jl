@@ -43,6 +43,21 @@ can move with GeometryOpsGPU.
             _gog_points(apolys[i]) == go_points(GO.transform(CT.Translation(Δx, Δy), gps[i]))
         end
         @test all(_gog_padding_is_zero, apolys)
+        #= Into another polygon: the moved points are written into `out`'s rows, and the
+        polygons are left as they are =#
+        coords, apolys = _array_polys(polys)
+        before = copy(coords)
+        out = fill(FT(NaN), size(coords))
+        moved = [GOG.transform!(GOG.Translate(Δx, Δy), GOG.ArrayPolygon(out, i, 0), apolys[i])
+            for i in eachindex(apolys)]
+        @test all(eachindex(polys)) do i
+            moved[i].coords === out && moved[i].i == i &&
+                GOG.npoint(moved[i]) == GOG.npoint(apolys[i]) &&
+                _gog_points(moved[i]) == go_points(GO.transform(CT.Translation(Δx, Δy), gps[i]))
+        end
+        @test isequal(coords, before)
+        # points after the polygon's are left as they are
+        @test all(i -> all(isnan, out[i, (GOG.npoint(apolys[i]) + 1):end, :]), eachindex(polys))
         #= RotateTranslate, as GO.transform with Translation ∘ recenter(LinearMap(Angle2d)): bit
         for bit in Float64, to round-off in Float32. The centres are tuples, as in _move_poly:
         with a Vector, StaticArrays multiplies with muladd, which may or may not be fused,
