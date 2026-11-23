@@ -5,6 +5,59 @@ against GeometryOps. With Float64 polygons the results must be the same, bit for
 `geometry_ops_gpu_utils.jl`.
 =#
 @testset "GeometryOpsGPU intersects" begin
+    #=
+    Pairs of polygons (vectors of points, not closed) with all the ways two polygons can meet:
+    named special cases, in both orders; polygons that touch exactly (shifted by their width
+    along an axis-aligned side) or are a few millimetres apart; every pair of the synthetic
+    polygons, including each with itself; and real floe shapes moved onto each other. All
+    shifted by `offset`, where larger coordinates make the floats further apart.
+    =#
+    function _intersects_test_pairs(::Type{FT}; offset = 0.0) where FT
+        sq(x0, y0, s) = [(x0, y0), (x0 + s, y0), (x0 + s, y0 + s), (x0, y0 + s)]
+        special = [
+            (sq(0, 0, 2), sq(1, 1, 2)),  # crossing
+            (sq(0, 0, 2), sq(0, 0, 2)),  # identical
+            (sq(0, 0, 2), reverse(sq(0, 0, 2))),  # identical, other direction
+            (sq(0, 0, 2), sq(2, 0, 2)),  # shared edge
+            (sq(0, 0, 2), sq(1, -2, 2)),  # partly shared edge
+            (sq(0, 0, 2), sq(2, 2, 2)),  # touching corners
+            (sq(0, 0, 2), [(1, 2), (2, 3), (0, 3)]),  # vertex on an edge
+            (sq(0, 0, 4), sq(1, 1, 2)),  # nested
+            (sq(0, 0, 4), sq(0, 1, 2)),  # nested, sharing an edge
+            (sq(0, 0, 1), sq(3, 3, 1)),  # disjoint
+            (sq(0, 0, 1), sq(0.5, 1.5, 1)),  # disjoint, overlapping in x
+            # collinear points along a shared edge: an overlapping chain of edges
+            ([(0, 0), (1, 0), (2, 0), (3, 0), (3, 2), (0, 2)],
+                [(0.5, -1), (2.5, -1), (2.5, 0), (2, 0), (1, 0), (0.5, 0)]),
+            # a repeated point: an edge of length zero
+            ([(0, 0), (2, 0), (2, 0), (2, 2), (0, 2)], sq(1, 1, 2)),
+        ]
+        pairs = [x for (p, q) in special for x in ((p, q), (q, p))]
+        rng = Xoshiro(13)
+        synthetic = _geom_test_polys(Float64; n = 40)
+        for p in synthetic
+            xs, ys = extrema(first, p), extrema(last, p)
+            # touching: shifted by its width or height; and a few millimetres further
+            for (Δx, Δy) in ((xs[2] - xs[1], 0), (0, ys[2] - ys[1]))
+                push!(pairs, (p, [(x + Δx, y + Δy) for (x, y) in p]))
+                g = 1e-3 * rand(rng, 1:5)
+                push!(pairs, (p, [(x + Δx + sign(Δx) * g, y + Δy + sign(Δy) * g) for (x, y) in p]))
+            end
+        end
+        append!(pairs, [(synthetic[i], synthetic[j]) for i in eachindex(synthetic)
+            for j in i:length(synthetic)])
+        real_shapes = _floe_shape_rings()[1:8:end]
+        for p in real_shapes
+            q = rand(rng, real_shapes)
+            cp = (mean(first, p), mean(last, p))
+            cq = (mean(first, q), mean(last, q))
+            Δx, Δy = cp[1] - cq[1] + 300 * randn(rng), cp[2] - cq[2]
+            push!(pairs, (p, [(x + Δx, y + Δy) for (x, y) in q]))
+        end
+        shift(p) = [(FT(x + offset), FT(y + offset)) for (x, y) in p]
+        return [(shift(p), shift(q)) for (p, q) in pairs]
+    end
+
     # All pairs of edges of the polygons, as (a1, a2, b1, b2)
     _edge_pairs(polys) = [(p[a], p[mod1(a + 1, end)], q[b], q[mod1(b + 1, end)])
         for p in polys for q in polys for a in eachindex(p) for b in eachindex(q)]
@@ -102,6 +155,28 @@ against GeometryOps. With Float64 polygons the results must be the same, bit for
         @test n > 1000
         # segments that meet the curve at several points, so the order matters
         @test n_several > 500
+    end
+
+
+    #= Where the ring of each polygon of a pair is relative to the other polygon. With
+    Float32 points, the in and out of pieces along the other ring's boundary depend on how
+    their midpoints are rounded (see "Splitting segments"), so they may differ where both
+    find the ring on the other's boundary. =#
+    @testset "Line and curve interactions with $FT, offset $offset, exact = $exact" for
+            FT in (Float64, Float32), offset in (0.0, 1e6), exact in (true, false)
+        gog_exact, go_exact = exact ? (GOG.True(), GO.True()) : (GOG.False(), GO.False())
+        same, kinds = true, Set{NTuple{3, Bool}}()
+        for (p, q) in _intersects_test_pairs(FT; offset)
+            _, (a, b) = _array_polys([p, q])
+            x = GOG._line_filled_curve_interactions(a, b; exact = gog_exact, closed_line = true)
+            y = GO._line_filled_curve_interactions(GO.Planar(), GI.LinearRing([p; [p[1]]]),
+                GI.LinearRing([q; [q[1]]]); exact = go_exact, closed_line = true)
+            push!(kinds, x)
+            same &= x == y || (FT == Float32 && x[2] && y[2])
+        end
+        @test same
+        # the rings are in, on and out of the other polygons in many combinations
+        @test length(kinds) >= 5
     end
 
 end
