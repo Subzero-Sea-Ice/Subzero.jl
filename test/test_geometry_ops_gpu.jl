@@ -325,7 +325,7 @@ Float32 polygons they may differ by round-off.
         for (f, types) in (
             (GOG.Predicates._orient, Tuple{GOG.True, pt, pt, pt}),
             (GOG.Predicates._orient, Tuple{GOG.False, pt, pt, pt}),
-            (Subzero.AdaptivePredicates.orient2, Tuple{pt, pt, pt}),
+            (Subzero.GeometryOpsGPU.AdaptivePredicates.orient2, Tuple{pt, pt, pt}),
             (GOG._point_filled_curve_orientation, Tuple{pt, P}),
             (GOG.coveredby, Tuple{pt, P}),
             (GOG.within, Tuple{pt, P}),

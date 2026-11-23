@@ -12,7 +12,6 @@ import Base.show
 import GeometryOps as GO
 import GeometryOps.GeoInterface as GI
 import StaticArrays as SA
-import AdaptivePredicates
 using CoordinateTransformations, Dates, Extents, 
     Interpolations, JLD2, LinearAlgebra, Logging, Measures, NCDatasets,
     Printf, Random, Rotations, SplitApplyCombine, Statistics, StructArrays
