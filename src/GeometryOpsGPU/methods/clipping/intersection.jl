@@ -248,15 +248,15 @@ _clamped_frac(x::T, y::T, ϵ = zero(T)) where T = clamp(x / y, ϵ, one(T) - ϵ)
 
 The regions where the polygons overlap, as `GO.intersection(poly_a, poly_b, T; target =
 GI.PolygonTrait(), fix_multipoly = nothing)` with Foster-Hormann clipping, where `T` is the
-float type of `out`, and `lists` must have the same type. Unlike that, the regions are written
+polygons' float type, which `out` and `lists` must have too. Unlike that, the regions are written
 into `out` (see [`PolyRegions`](@ref GeometryOpsGPU.PolyRegions)), using `lists` as scratch
 memory, and their number is returned: 0 if the polygons don't overlap or only touch.
 Returns `CLIP_TOO_SMALL` if `lists` or `out` is too small, and `CLIP_FAILED` where
 GeometryOps throws an error.
 """
-function intersection!(out::PolyRegions, lists::ClipLists, poly_a::ArrayPolygon,
-        poly_b::ArrayPolygon)
-    T = eltype(out.coords)
+function intersection!(out::PolyRegions{<:AbstractArray{T, 3}},
+        lists::ClipLists{<:_PolyNodes{<:AbstractArray{T, 3}}},
+        poly_a::ArrayPolygon{<:AbstractArray{T}}, poly_b::ArrayPolygon{<:AbstractArray{T}}) where T
     a, b, a_idx = lists.a, lists.b, lists.a_idx
     na, n_idx, _ = _build_a_list!(a, a_idx, T, poly_a, poly_b)
     na < 0 && return CLIP_TOO_SMALL

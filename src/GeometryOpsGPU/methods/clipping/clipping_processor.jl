@@ -137,8 +137,6 @@ _capacity(l::_IndexList) = size(l.idx, 2)
 Base.getindex(l::_IndexList, m) = Int(l.idx[l.k, m])
 Base.setindex!(l::_IndexList, x, m) = (l.idx[l.k, m] = x; l)
 
-# The point (x, y) converted to T, as GeometryOps' `_tuple_point(p, T)`
-_tuple_point(p, ::Type{T}) where T = (T(p[1]), T(p[2]))
 
 #= Sort nodes `first:last` of the list by the fraction along their edge of the list's
 polygon, as `sort!(nodes, by = x -> x.fracs[1])`: a stable insertion sort, so nodes with the
@@ -185,23 +183,21 @@ number of nodes, the number of indices, and the number of intersection points th
 new nodes in B's list (GeometryOps' `n_b_intrs`), or (-1, 0, 0) if `a` or `a_idx` is too
 small.
 =#
-function _build_a_list!(a::_PolyNodes, a_idx::_IndexList, ::Type{T}, poly_a::ArrayPolygon,
-        poly_b::ArrayPolygon) where T
+function _build_a_list!(a::_PolyNodes, a_idx::_IndexList, ::Type{T}, poly_a::ArrayPolygon{<:AbstractArray{T}},
+        poly_b::ArrayPolygon{<:AbstractArray{T}}) where T
     a_count = 0  # number of nodes in a
     n_idx = 0  # number of indices in a_idx
     n_b_intrs = 0
     prev_counter = 0  # index of the node of the current edge's first point
     for i in 1:(npoint(poly_a) - 1)
-        a_pt1 = _tuple_point(getpoint(poly_a, i), T)
-        a_pt2 = _tuple_point(getpoint(poly_a, i + 1), T)
+        a_pt1, a_pt2 = getpoint(poly_a, i), getpoint(poly_a, i + 1)
         a_pt1 == a_pt2 && continue
         a_count == _capacity(a) && return -1, 0, 0
         a_count += 1
         _set_node!(a, a_count, _poly_node(T; point = a_pt1))
         prev_counter = a_count
         for j in 1:(npoint(poly_b) - 1)
-            b_pt1 = _tuple_point(getpoint(poly_b, j), T)
-            b_pt2 = _tuple_point(getpoint(poly_b, j + 1), T)
+            b_pt1, b_pt2 = getpoint(poly_b, j), getpoint(poly_b, j + 1)
             b_pt1 == b_pt2 && continue
             line_orient, intr1, intr2 = _intersection_point(T, (a_pt1, a_pt2), (b_pt1, b_pt2))
             line_orient == line_out && continue
@@ -266,14 +262,14 @@ list through `neighbor`, and puts `a_idx` back in increasing order.
 Writes the nodes to `b`. Returns the number of nodes, or -1 if `b` is too small.
 =#
 function _build_b_list!(b::_PolyNodes, a::_PolyNodes, a_idx::_IndexList, n_idx,
-        ::Type{T}, poly_b::ArrayPolygon) where T
+        ::Type{T}, poly_b::ArrayPolygon{<:AbstractArray{T}}) where T
     # order the intersection nodes by their place along B
     _sort_indices!(a_idx, n_idx, x -> a.neighbor[a.k, x] + a.fracs[a.k, x, 2])
     intr_curr = 1
     b_count = 0
     b_pt1 = (zero(T), zero(T))
     for i in 1:npoint(poly_b)
-        b_pt2 = _tuple_point(getpoint(poly_b, i), T)
+        b_pt2 = getpoint(poly_b, i)
         if i ≤ 1 || b_pt1 == b_pt2  # don't repeat points
             b_pt1 = b_pt2
             continue
@@ -723,10 +719,10 @@ end
 
 # Copy the polygon to polygon m of `out`, converted to T, as `GI.Polygon([tuples(ring)])`.
 # Returns false if `out` is too small.
-function _copy_poly_to_region!(out::PolyRegions, m, poly::ArrayPolygon, ::Type{T}) where T
+function _copy_poly_to_region!(out::PolyRegions, m, poly::ArrayPolygon{<:AbstractArray{T}}, ::Type{T}) where T
     npoint(poly) > _capacity(out) && return false
     for j in 1:npoint(poly)
-        _set_region_point!(out, m, j, _tuple_point(getpoint(poly, j), T))
+        _set_region_point!(out, m, j, getpoint(poly, j))
     end
     out.n[_region_row(out, m)] = npoint(poly)
     return true

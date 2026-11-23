@@ -60,12 +60,11 @@ can't be passed to a kernel.
         repeated_point = ([(0, 0), (2, 0), (2, 0), (2, 2), (0, 2)], square(1, 1, 2)),
     )
 
-    @testset "Building the lists: special cases with floes $FT, clipping in $T" for
-            FT in (Float64, Float32), T in unique((Float64, FT))
+    @testset "Building the lists: special cases with $FT" for FT in (Float64, Float32)
         for (name, (p, q)) in pairs(special_pairs)
             p, q = [FT.(v) for v in p], [FT.(v) for v in q]
             for (r, s) in ((p, q), (q, p))
-                same_a, same_b = _compare_build_lists(T, r, s)
+                same_a, same_b = _compare_build_lists(FT, r, s)
                 @test same_a
                 @test same_b
             end
@@ -74,9 +73,8 @@ can't be passed to a kernel.
 
     #= Many pairs: the synthetic polygons with each other (including with themselves), and
     real floe shapes moved onto each other, at large coordinates too. =#
-    @testset "Building the lists: random and real pairs with floes $FT, clipping in $T, \
-            offset $offset" for FT in (Float64, Float32), T in unique((Float64, FT)),
-            offset in (0.0, 1e6)
+    @testset "Building the lists: random and real pairs with $FT, offset $offset" for
+            FT in (Float64, Float32), offset in (0.0, 1e6)
         rng = Xoshiro(11)
         synthetic = _geom_test_polys(Float64; n = 60)
         real_shapes = _floe_shape_rings()[1:8:end]
@@ -93,7 +91,7 @@ can't be passed to a kernel.
         same = trues(2)
         n_crossing, n_touching, n_b_vertex = 0, 0, 0
         for (p, q) in test_pairs
-            same_a, same_b, a_list, b_list = _compare_build_lists(T, shift(p), shift(q))
+            same_a, same_b, a_list, b_list = _compare_build_lists(FT, shift(p), shift(q))
             same .&= (same_a, same_b)
             n_crossing += any(n -> n.crossing, a_list)
             # hinges and overlaps: intersection nodes that aren't crossings yet
@@ -273,12 +271,11 @@ can't be passed to a kernel.
         return same_lists, same_traced, same_result, cases
     end
 
-    @testset "Clipping: special cases with floes $FT, clipping in $T" for
-            FT in (Float64, Float32), T in unique((Float64, FT))
+    @testset "Clipping: special cases with $FT" for FT in (Float64, Float32)
         for (name, (p, q)) in pairs(special_pairs)
             p, q = [FT.(v) for v in p], [FT.(v) for v in q]
             for (r, s) in ((p, q), (q, p))
-                same_lists, same_traced, same_result = _compare_clipping(T, r, s)
+                same_lists, same_traced, same_result = _compare_clipping(FT, r, s)
                 @test same_lists
                 @test same_traced
                 @test same_result
@@ -288,9 +285,8 @@ can't be passed to a kernel.
 
     #= The same pairs as for building the lists, but every pair of synthetic polygons, so
     that all the special cases come up many times =#
-    @testset "Clipping: random and real pairs with floes $FT, clipping in $T, \
-            offset $offset" for FT in (Float64, Float32), T in unique((Float64, FT)),
-            offset in (0.0, 1e6)
+    @testset "Clipping: random and real pairs with $FT, offset $offset" for
+            FT in (Float64, Float32), offset in (0.0, 1e6)
         rng = Xoshiro(11)
         synthetic = _geom_test_polys(Float64; n = 60)
         real_shapes = _floe_shape_rings()[1:8:end]
@@ -307,7 +303,7 @@ can't be passed to a kernel.
         same = trues(3)
         counts = Dict(:chain => 0, :nested => 0, :several => 0, :collinear_removed => 0)
         for (p, q) in test_pairs, (r, s) in ((shift(p), shift(q)), (shift(q), shift(p)))
-            same_lists, same_traced, same_result, cases = _compare_clipping(T, r, s)
+            same_lists, same_traced, same_result, cases = _compare_clipping(FT, r, s)
             same .&= (same_lists, same_traced, same_result)
             for (case, happened) in pairs(cases)
                 counts[case] += happened
@@ -344,6 +340,9 @@ can't be passed to a kernel.
         @test clip(lists(8), regions(0, 5), crossing_a, inside) == too_small
         @test clip(lists(32), regions(2, 16), u_shape, bar) == 2
         @test clip(lists(32), regions(1, 16), u_shape, bar) == too_small
+        # buffers of another type than the polygons' aren't accepted
+        @test_throws MethodError clip(GOG.ClipLists(GOG.ClipLists(Float32, 1, 6), 1),
+            regions(1, 5), crossing_a, crossing_b)
     end
 
     #= Kernel test: each floe intersects itself with a partner floe, with lists and regions
