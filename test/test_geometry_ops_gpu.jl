@@ -1,12 +1,13 @@
 #=
 Tests of the GeometryOpsGPU submodule against GeometryOps, which accepts `ArrayPolygon`s as
 GeoInterface polygons. With Float64 polygons the results must be the same, bit for bit; with
-Float32 polygons they may differ by round-off.
+Float32 polygons they may differ by round-off. The tests use only GeometryOpsGPU, GeometryOps
+and the packages they build on, with the helpers in `geometry_ops_gpu_utils.jl`, so that they
+can move with GeometryOpsGPU.
 =#
 @testset "GeometryOpsGPU" begin
-    GOG = Subzero.GeometryOpsGPU
-    Extent = Subzero.Extents.Extent
-    CT = Subzero.CoordinateTransformations
+    Extent = Extents.Extent
+    CT = CoordinateTransformations
     # The points of a GeoInterface polygon's exterior ring, as tuples
     gi_points(p) = [(GI.x(q), GI.y(q)) for q in GI.getpoint(GI.getexterior(p))]
 
@@ -29,45 +30,48 @@ Float32 polygons they may differ by round-off.
         @test GI.extent(p) == GOG.extent(p) == Extent(X = (1.0, 2.0), Y = (2.0, 3.0))
     end
 
-    #= transform! changes the polygon in place, as GO.transform with CoordinateTransformations'
-    types, and leaves the padding after its points alone =#
+    # transform! changes the polygon in place and leaves the padding after its points alone
     @testset "transform! with $FT" for FT in (Float64, Float32)
-        floes = _make_timestep_test_floes(FT, FloeSettings(FT))
-        n = length(floes)
-        original = Subzero.FixedWidthFloes(floes)
-        Δx, Δy, Δα = FT(-2e4), FT(1234.5), FT(0.7)
-        cs = [floes.centroid[i] for i in 1:n]
-        transforms = (
-            translate = (i -> GOG.Translate(Δx, Δy), i -> CT.Translation(Δx, Δy)),
-            # the centre as a tuple, as in _move_poly: with a Vector, StaticArrays multiplies
-            # with muladd, which may or may not be fused, depending on the CPU
-            rotate_translate = (i -> GOG.RotateTranslate(Δα, cs[i]..., Δx, Δy),
-                i -> CT.Translation(Δx, Δy) ∘
-                    CT.recenter(CT.LinearMap(Subzero.Rotations.Angle2d(Δα)), Tuple(cs[i]))),
-        )
-        @testset "$name" for (name, (gog, ct)) in pairs(transforms)
-            fwf = Subzero.FixedWidthFloes(floes)
-            foreach(i -> GOG.transform!(gog(i), Subzero._floe_poly(fwf, i)), 1:n)
-            expected = [gi_points(GO.transform(ct(i), Subzero._floe_poly(original, i))) for i in 1:n]
-            # bit for bit in Float64, to round-off in Float32
-            rtol = FT == Float64 ? 0.0 : 10eps(FT)
-            @test isempty(_not_approx([reinterpret(FT, _fwf_points(fwf, i)) for i in 1:n],
-                [reinterpret(FT, FT.(collect(Iterators.flatten(e)))) for e in expected]; rtol))
-            @test isempty(_failing(i -> _fwf_padding_is_zero(fwf, i), 1:n))
+        polys = _geom_test_polys(FT; n = 40)
+        gps = _gi_poly.(polys)
+        go_points(g) = [(FT(GI.x(q)), FT(GI.y(q))) for q in GI.getpoint(GI.getexterior(g))]
+        # Translate adds Δx and Δy to every coordinate, as GO.transform with a Translation
+        Δx, Δy = FT(-2e4), FT(1234.5)
+        _, apolys = _array_polys(polys)
+        foreach(p -> GOG.transform!(GOG.Translate(Δx, Δy), p), apolys)
+        @test all(eachindex(polys)) do i
+            _gog_points(apolys[i]) == go_points(GO.transform(CT.Translation(Δx, Δy), gps[i]))
         end
+        @test all(_gog_padding_is_zero, apolys)
+        #= RotateTranslate, as GO.transform with Translation ∘ recenter(LinearMap(Angle2d)): bit
+        for bit in Float64, to round-off in Float32. The centres are tuples, as in _move_poly:
+        with a Vector, StaticArrays multiplies with muladd, which may or may not be fused,
+        depending on the CPU. =#
+        Δα = FT(0.7)
+        _, apolys = _array_polys(polys)
+        centres = [GOG.centroid(p, FT) for p in apolys]
+        foreach(i -> GOG.transform!(GOG.RotateTranslate(Δα, centres[i]..., Δx, Δy), apolys[i]),
+            eachindex(apolys))
+        expected(i) = go_points(GO.transform(CT.Translation(Δx, Δy) ∘
+            CT.recenter(CT.LinearMap(Rotations.Angle2d(Δα)), centres[i]), gps[i]))
+        @test all(eachindex(polys)) do i
+            isapprox(reinterpret(FT, _gog_points(apolys[i])), reinterpret(FT, expected(i));
+                rtol = FT == Float64 ? 0.0 : 10eps(FT))
+        end
+        @test all(_gog_padding_is_zero, apolys)
     end
 
     #=
-    Floes for testing `interiors_intersect`, and rectangles to test them with. Besides
-    random star-shaped floes, there are axis-aligned rectangles and L-shapes on a grid with a
-    spacing of 250 m, and the rectangles' sides are on the same grid or go through floe
-    vertices, so floes and rectangles often share edges or vertices. The floes from
-    `edge_cases` are tested with the rectangle 10 ≤ x ≤ 15 km, -5 ≤ y ≤ 15 km, the eastern
-    boundary of a 10 km × 10 km domain.
+    Polygons for testing `interiors_intersect`, and rectangles to test them with. Besides
+    random star-shaped polygons, there are axis-aligned rectangles and L-shapes on a grid with
+    a spacing of 250 m, and the rectangles' sides are on the same grid or go through polygon
+    vertices, so polygons and rectangles often share edges or vertices. The polygons from
+    `edge_cases` are tested with the rectangle 10 ≤ x ≤ 15 km, -5 ≤ y ≤ 15 km (in Subzero, the
+    eastern periodic boundary of a 10 km × 10 km domain). Returns the polygons as vectors of
+    points and as `ArrayPolygon`s, the number of edge cases, and the rectangles.
     =#
-    function _overlap_test_floes(::Type{FT}; n = 200) where FT
+    function _overlap_test_polys(::Type{FT}; n = 200) where FT
         rng = Xoshiro(3)
-        fs = FloeSettings(FT; min_floe_area = 0)
         edge_cases = [
             [(1, 1), (3, 1), (3, 3), (1, 3)],  # inside the domain
             [(8, 1), (10, 1), (10, 3), (8, 3)],  # edge on the rectangle's side
@@ -98,10 +102,6 @@ Float32 polygons they may differ by round-off.
                     [(g[1], h[1]), (g[3], h[1]), (g[3], h[2]), (g[2], h[2]), (g[2], h[3]), (g[1], h[3])])
             end
         end
-        floes = StructArray([
-            Floe{FT}([[[x, y] for (x, y) in [p; [p[1]]]]], FT(0.25); floe_settings = fs, rng)
-            for p in polys
-        ])
         vertices = [p for poly in polys[(length(edge_cases) + 1):end] for p in poly]
         pick(i) = (u = rand(rng); u < 0.4 ? rand(rng, vertices)[i] :
             u < 0.7 ? FT(250 * rand(rng, -4:4)) : FT(4e3 * rand(rng) - 2e3))
@@ -111,76 +111,57 @@ Float32 polygons they may differ by round-off.
             ymin, ymax = minmax(pick(2), pick(2))
             xmin < xmax && ymin < ymax && push!(rects, Extent(X = (xmin, xmax), Y = (ymin, ymax)))
         end
-        return floes, length(edge_cases), rects
+        _, apolys = _array_polys(polys)
+        return polys, apolys, length(edge_cases), rects
     end
-    # The rectangle `ext` as a GeoInterface polygon, for GeometryOps
-    gi_rect(ext) = (((x1, x2), (y1, y2)) = (ext.X, ext.Y);
-        GI.Polygon([GI.LinearRing([(x1, y1), (x1, y2), (x2, y2), (x2, y1), (x1, y1)])]))
-    # Whether the interiors of floe i and the rectangle overlap, by GeometryOps, as the
-    # docstring of interiors_intersect describes it
-    function overlaps_go(fwf, i, ext)
-        p, rect = Subzero._floe_poly(fwf, i), gi_rect(ext)
-        return GO.intersects(p, rect) && !GO.touches(p, rect)
+    #= Whether the interiors of the polygon (a vector of points) and the rectangle overlap, by
+    GeometryOps, as the docstring of interiors_intersect describes it =#
+    function overlaps_go(p, ext, FT)
+        gp, rect = _gi_poly(p), _gi_rect(ext)
+        return GO.intersects(gp, rect) && !GO.touches(gp, rect)
     end
-    intersects(fwf, i, ext) = GOG.interiors_intersect(Subzero._floe_poly(fwf, i), ext)
     @testset "interiors_intersect matches GeometryOps with $FT" for FT in (Float64, Float32)
-        floes, n_edge_cases, rects = _overlap_test_floes(FT)
-        fwf = Subzero.FixedWidthFloes(floes)
-        east = GI.extent(PeriodicBoundary(East, FT; x0 = 0, xf = 1e4, y0 = 0, yf = 1e4).poly)
-        @test (east.X..., east.Y...) == (FT(1e4), FT(1.5e4), FT(-5e3), FT(1.5e4))
-        @test [intersects(fwf, i, east) for i in 1:n_edge_cases] ==
+        polys, apolys, n_edge_cases, rects = _overlap_test_polys(FT)
+        east = Extent(X = (FT(1e4), FT(1.5e4)), Y = (FT(-5e3), FT(1.5e4)))
+        @test [GOG.interiors_intersect(apolys[i], east) for i in 1:n_edge_cases] ==
             [false, false, false, true, true, true, true, false, false, true, true, false]
-        # (rectangle, floe) pairs where the two differ. In Float32 they may differ by
-        # round-off, but don't for these floes.
-        mismatches = [(rect, i) for rect in [east; rects], i in eachindex(floes)
-            if intersects(fwf, i, rect) != overlaps_go(fwf, i, rect)]
+        # (rectangle, polygon) pairs where the two differ. In Float32 they may differ by
+        # round-off, but don't for these polygons.
+        mismatches = [(rect, i) for rect in [east; rects], i in eachindex(polys)
+            if GOG.interiors_intersect(apolys[i], rect) != overlaps_go(polys[i], rect, FT)]
         @test isempty(mismatches)
     end
     # Bounds of another type than the polygon's aren't accepted
     @testset "interiors_intersect with Float32 polygons" begin
-        floes, _, _ = _overlap_test_floes(Float32)
-        fwf = Subzero.FixedWidthFloes(floes)
-        @test_throws MethodError intersects(fwf, 1, Extent(X = (1e4, 1.5e4), Y = (-5e3, 1.5e4)))
+        _, apolys, _, _ = _overlap_test_polys(Float32)
+        @test_throws MethodError GOG.interiors_intersect(apolys[1],
+            Extent(X = (1e4, 1.5e4), Y = (-5e3, 1.5e4)))
     end
-    #= Kernel test: mark_overlap! writes whether each floe overlaps the rectangle into its
-    flags. These are test markers, not FLAG_* event bits. It names the module in full: the
-    local `GOG` would be captured, and a module can't be passed to a kernel. =#
-    mark_overlap!(floes, i, ext) = (floes.flags[i] =
-        Subzero.GeometryOpsGPU.interiors_intersect(Subzero._floe_poly(floes, i), ext) ? 0x01 : 0x00;
-        nothing)
+    # Kernel test: whether each polygon overlaps the rectangle
+    _mark_overlap!(i, coords, ns, ext, marks) =
+        (marks[i] = GOG.interiors_intersect(GOG.ArrayPolygon(coords, i, ns[i]), ext); nothing)
     @testset "interiors_intersect on $backend with $FT" for backend in test_backends(),
             FT in (Float64, Float32)
-        floes, _, rects = _overlap_test_floes(FT)
-        marks(ext) = _launch_on(mark_overlap!, backend, Subzero.FixedWidthFloes(floes), ext).flags[1:length(floes)]
-        fwf = Subzero.FixedWidthFloes(floes)
-        expected(ext) = [overlaps_go(fwf, i, ext) ? 0x01 : 0x00 for i in eachindex(floes)]
+        polys, apolys, _, rects = _overlap_test_polys(FT)
+        n = length(polys)
+        coords = Adapt.adapt(backend, apolys[1].coords)
+        ns = Adapt.adapt(backend, GOG.npoint.(apolys))
+        function marks(ext)
+            dev = KA.zeros(backend, Bool, n)
+            _gog_launch!(_mark_overlap!, backend, n, coords, ns, ext, dev)
+            return Array(dev)
+        end
+        expected(ext) = [overlaps_go(p, ext, FT) for p in polys]
         # rectangles for which the kernel's result differs
-        @test isempty(_failing(ext -> marks(ext) == expected(ext), rects))
+        @test isempty(filter(ext -> marks(ext) != expected(ext), rects))
     end
 
     #=
     The geometry functions that GeometryOpsGPU takes from GeometryOps, compared with
     GeometryOps on random polygons and points chosen to hit the edge cases: points on edges
     and vertices, edges that touch, overlap, or are almost parallel. The kernel tests run
-    them, through Subzero's methods for `ArrayPolygon`s (`area_poly`, ...), on every backend
-    and compare with the CPU.
+    them on every backend and compare with the CPU.
     =#
-    # A test point for polygon p: a vertex, a point along an edge, a grid point, or a random point
-    function _geom_test_points(rng, p::Vector{Tuple{FT, FT}}, polys) where FT
-        u = rand(rng)
-        pt = if u < 0.3
-            rand(rng, rand(rng, polys))
-        elseif u < 0.5
-            (FT(250 * rand(rng, -4:4)), FT(125 * rand(rng, -10:10)))
-        elseif u < 0.7
-            v, w = rand(rng, p), rand(rng, p)
-            v .+ FT(rand(rng, 0:4) / 4) .* (w .- v)
-        else
-            (FT(3e3 * rand(rng) - 1.5e3), FT(3e3 * rand(rng) - 1.5e3))
-        end
-        return pt
-    end
-
     #=
     Whether GOG's point tests give the same results as GeometryOps'. With Float32 points
     and polygons, GOG's test for a point on an edge (`isapprox` of two cross products) has
@@ -259,14 +240,12 @@ Float32 polygons they may differ by round-off.
             exact = GO.True())
         return Int8(Int(kind)), intr1, intr2
     end
-
-    @testset "Intersection points and matching vertices with $FT" for FT in (Float64, Float32)
+    @testset "Intersection points with $FT" for FT in (Float64, Float32)
         polys = _geom_test_polys(FT)
         _, apolys = _array_polys(polys)
         gps = _gi_poly.(polys)
         points = zeros(FT, 1, 64, 2)
-        idxs = zeros(Int, 1, 64)
-        same_points, same_idxs, n_nonempty = true, true, 0
+        same_points, n_nonempty = true, 0
         rng = Xoshiro(3)
         for _ in 1:3000
             i, j = rand(rng, eachindex(polys), 2)
@@ -274,32 +253,19 @@ Float32 polygons they may differ by round-off.
             ref = GO.intersection_points(gps[i], gps[j], FT)
             m = GOG.intersection_points!(points, 1, apolys[i], apolys[j], FT)
             same_points &= isequal([(points[1, l, 1], points[1, l, 2]) for l in 1:m], ref)
-            isempty(ref) && continue
-            n_nonempty += 1
-            c = Subzero.which_vertices_match_points!(idxs, 1, points, m, apolys[j])
-            same_idxs &= isequal(idxs[1, 1:c], Subzero.which_vertices_match_points(ref, gps[j]))
+            n_nonempty += !isempty(ref)
         end
         @test same_points
-        @test same_idxs
         @test n_nonempty > 1000
-        #= Two squares that overlap in the region [1, 2] × [0, 1]: their edges cross at (1, 0)
-        and (2, 1), which are vertices 1 and 3 of the region =#
+        # Two squares whose edges cross at (1, 0) and (2, 1)
         sq1 = [(FT(0), FT(0)), (FT(2), FT(0)), (FT(2), FT(2)), (FT(0), FT(2))]
         sq2 = [(FT(1), FT(-1)), (FT(3), FT(-1)), (FT(3), FT(1)), (FT(1), FT(1))]
-        region = [(FT(1), FT(0)), (FT(2), FT(0)), (FT(2), FT(1)), (FT(1), FT(1))]
-        _, (r1, r2, rr) = _array_polys([sq1, sq2, region])
+        _, (r1, r2) = _array_polys([sq1, sq2])
         pts = zeros(FT, 1, 2, 2)
         @test GOG.intersection_points!(pts, 1, r1, r2, FT) == 2
         @test pts[1, :, :] == [1 0; 2 1]
-        idx = zeros(Int, 1, 2)
-        @test Subzero.which_vertices_match_points!(idx, 1, pts, 2, rr) == 2
-        @test idx[1, :] == [1, 3]
-        # Too little room for the points or indices: -1
+        # Too little room for the points: -1
         @test GOG.intersection_points!(zeros(FT, 1, 1, 2), 1, r1, r2, FT) == -1
-        @test Subzero.which_vertices_match_points!(zeros(Int, 1, 1), 1, pts, 2, rr) == -1
-        # Like which_vertices_match_points, a single point matches nothing; no points either
-        @test Subzero.which_vertices_match_points!(idx, 1, pts, 1, rr) == 0
-        @test Subzero.which_vertices_match_points!(idx, 1, pts, 0, rr) == 0
     end
 
     #= Real floe shapes (7 to 591 vertices, from test/inputs/floe_shapes.jld2) and the
@@ -334,8 +300,8 @@ Float32 polygons they may differ by round-off.
         @test same
         @test all(<=(sqrt(eps(Float32))), near)
         @test n_on > 100
-        points, idxs = zeros(FT, 1, 64, 2), zeros(Int, 1, 64)
-        same_points, same_idxs, n_nonempty = true, true, 0
+        points = zeros(FT, 1, 64, 2)
+        same_points, n_nonempty = true, 0
         for i in eachindex(base), _ in 1:2
             j = rand(rng, eachindex(base))
             i == j && continue
@@ -348,105 +314,87 @@ Float32 polygons they may differ by round-off.
             ref = GO.intersection_points(gps[i], _gi_poly(pj), FT)
             m = GOG.intersection_points!(points, 1, ri, rj, FT)
             same_points &= isequal([(points[1, l, 1], points[1, l, 2]) for l in 1:m], ref)
-            isempty(ref) && continue
-            n_nonempty += 1
-            c = Subzero.which_vertices_match_points!(idxs, 1, points, m, rj)
-            same_idxs &= isequal(idxs[1, 1:c], Subzero.which_vertices_match_points(ref, _gi_poly(pj)))
+            n_nonempty += !isempty(ref)
         end
         @test same_points
-        @test same_idxs
         @test n_nonempty > 100
     end
-    function _geom_point_tests!(orient, sdist, i, s, ::Type{FT}, point, r) where FT
-        orient[i, s] = Int8(Subzero.GeometryOpsGPU._point_filled_curve_orientation(point, r)) +
-            Int8(4) * Subzero.coveredby_poly(point, r) +
-            Int8(8) * Subzero.GeometryOpsGPU.within(point, r)
-        sdist[i, s] = Subzero.dist_to_poly(point, r, FT)
-        return
-    end
+
     #= Run `launch()`. With Float32 on the CPU backend, also check that the kernels it launches
     don't compute in Float64, so that they can run on GPUs without Float64, such as Apple GPUs
-    (Metal) and some Intel GPUs (see `_float64_kernels`). With the floe update and ghost
-    kernels in `test_kernel_code.jl`, this covers every function of the module that kernels
-    use. =#
+    (Metal) and some Intel GPUs (see `_float64_kernels`). The kernels below call every
+    function of the module that kernels use, except the clipping (see
+    `test_geometry_ops_gpu_clipping.jl`) and `interiors_intersect` and `transform!` (see
+    `test_kernel_code.jl`). =#
     function _launch_float32_checked(launch, backend, FT)
-        if FT == Float32 && backend isa typeof(Subzero.KernelAbstractions.CPU())
+        if FT == Float32 && backend isa typeof(KA.CPU())
             @test isempty(_float64_kernels(launch))
         else
             launch()
         end
     end
-    #= Kernel test: each floe computes its area and centroid, the point tests for its test
-    points, and the intersection points and matching vertices with a partner floe =#
-    function _geom_kernel!(floes, i, pts, orient, sdist, areas, cents, partner,
-            ipts, nipts, idxs, nidxs)
-        FT = eltype(floes.area)
-        r = Subzero._floe_poly(floes, i)
-        areas[i] = Subzero.area_poly(r, FT)
-        cents[i, 1], cents[i, 2] = Subzero.centroid_poly(r, FT)
+    #= Kernel test: each polygon computes its area and centroid, the point tests for its test
+    points, and the intersection points with a partner polygon =#
+    function _geom_kernel!(i, coords, ns, pts, orient, sdist, areas, cents, partner, ipts, nipts)
+        FT = eltype(coords)
+        r = GOG.ArrayPolygon(coords, i, ns[i])
+        areas[i] = GOG.area(r, FT)
+        cents[i, 1], cents[i, 2] = GOG.centroid(r, FT)
         for s in axes(pts, 2)
-            _geom_point_tests!(orient, sdist, i, s, FT, (pts[i, s, 1], pts[i, s, 2]), r)
+            pt = (pts[i, s, 1], pts[i, s, 2])
+            orient[i, s] = Int8(GOG._point_filled_curve_orientation(pt, r)) +
+                Int8(4) * GOG.coveredby(pt, r) + Int8(8) * GOG.within(pt, r)
+            sdist[i, s] = GOG.signed_distance(pt, r, FT)
         end
-        rj = Subzero._floe_poly(floes, partner[i])
-        m = Subzero.get_intersection_points!(ipts, i, r, rj)
-        nipts[i] = m
-        nidxs[i] = m < 0 ? 0 : Subzero.which_vertices_match_points!(idxs, i, ipts, m, rj)
+        j = partner[i]
+        nipts[i] = GOG.intersection_points!(ipts, i, r, GOG.ArrayPolygon(coords, j, ns[j]), FT)
         return
     end
     @testset "Kernels on $backend with $FT" for backend in test_backends(), FT in (Float64, Float32)
         polys = _geom_test_polys(FT; n = 100)
-        fs = FloeSettings(FT; min_floe_area = 0)
+        coords, apolys = _array_polys(polys)
+        ns = GOG.npoint.(apolys)
         rng = Xoshiro(4)
-        floes = StructArray([
-            Floe{FT}([[[x, y] for (x, y) in [p; [p[1]]]]], FT(0.25); floe_settings = fs, rng)
-            for p in polys
-        ])
-        fwf = Subzero.FixedWidthFloes(floes)
-        n, ns = length(floes), 18
-        pts = zeros(FT, n, ns, 2)
-        for i in 1:n, s in 1:ns
+        n, k = length(polys), 18
+        pts = zeros(FT, n, k, 2)
+        for i in 1:n, s in 1:k
             pts[i, s, :] .= _geom_test_points(rng, polys[i], polys)
         end
-        partner = Int32[mod1(i + rand(rng, 1:(n - 1)), n) for i in 1:n]
-        outputs() = (zeros(Int8, n, ns), zeros(FT, n, ns), zeros(FT, n), zeros(FT, n, 2),
-            zeros(FT, n, 32, 2), zeros(Int32, n), zeros(Int32, n, 32), zeros(Int32, n))
-        args(out) = (pts, out[1], out[2], out[3], out[4], partner, out[5:8]...)
+        partner = [mod1(i + rand(rng, 1:(n - 1)), n) for i in 1:n]
+        outputs() = (zeros(Int8, n, k), zeros(FT, n, k), zeros(FT, n), zeros(FT, n, 2),
+            zeros(FT, n, 32, 2), zeros(Int, n))
+        args(out) = (coords, ns, pts, out[1], out[2], out[3], out[4], partner, out[5], out[6])
         # Reference: the same function called on the CPU without a kernel
         ref = outputs()
         for i in 1:n
-            _geom_kernel!(fwf, i, args(ref)...)
+            _geom_kernel!(i, args(ref)...)
         end
-        dev = Subzero.adapt(backend, outputs())
-        dev_args = Subzero.adapt(backend, args(dev))
-        launch() = (Subzero.launch_per_floe!(_geom_kernel!, backend, Subzero.adapt(backend, fwf),
-            dev_args...); Subzero.KernelAbstractions.synchronize(backend))
-        _launch_float32_checked(launch, backend, FT)
-        got = Subzero.adapt(Array, dev)
+        dev = Adapt.adapt(backend, outputs())
+        _launch_float32_checked(backend, FT) do
+            _gog_launch!(_geom_kernel!, backend, n, Adapt.adapt(backend, args(dev))...)
+        end
+        got = Adapt.adapt(Array, dev)
         @test all(isequal.(got, ref))
         # The partners do intersect, so the intersection points are tested
         @test count(>(0), ref[6]) > n ÷ 2
     end
 
-    #= Kernel test of edge intersections. Its purpose is to make sure that every backend gives
-    the same intersections as GeometryOps on every branch of `GOG._intersection_point`,
-    including the rare ones. A GPU compiler could do floating-point maths differently from the
-    CPU (fuse a multiplication and an addition, use a less exact square root, or reorder
-    operations), which would change the results, and could break the exact orientation test,
-    which relies on IEEE arithmetic. The per-floe kernel test above has too few edge pairs to
+    #= Kernel test of edge intersections. Its purpose is to make sure that GPUs give the same
+    intersections as GeometryOps on every branch of `GOG._intersection_point`, including the
+    rare ones. A GPU compiler could do floating-point maths differently from the CPU (fuse a
+    multiplication and an addition, use a less exact square root, or reorder operations),
+    which would change the results, and could break the exact orientation test, which
+    relies on IEEE arithmetic. The per-floe kernel test above has too few edge pairs to
     reach the rare branches, such as the nearest end of almost parallel edges, so this test
     runs all pairs of edges of 60 test polygons, which touch, cross, and overlap, and almost
     parallel edges (about 150,000 pairs) in a kernel and compares them with GeometryOps
-    directly. Kernels name the module in full, because the local `GOG`
-    would be captured, and a module can't be passed to a kernel.
-
-    Each thread computes the intersection of one pair: `launch_per_floe!` only needs
-    `n_floes`, so it gets a NamedTuple with the number of pairs instead of floes. =#
-    function _edge_intersection_kernel!(_, i, edges, kinds, intrs)
+    directly. Each thread computes the intersection of one pair. =#
+    function _edge_intersection_kernel!(i, edges, kinds, intrs)
         FT = eltype(edges)
         a1, a2 = (edges[i, 1], edges[i, 2]), (edges[i, 3], edges[i, 4])
         b1, b2 = (edges[i, 5], edges[i, 6]), (edges[i, 7], edges[i, 8])
         kind, (p1, (α1, β1)), (p2, (α2, β2)) =
-            Subzero.GeometryOpsGPU._intersection_point(FT, (a1, a2), (b1, b2))
+            GOG._intersection_point(FT, (a1, a2), (b1, b2))
         kinds[i] = Int8(kind)
         intrs[i, 1], intrs[i, 2], intrs[i, 3], intrs[i, 4] = p1[1], p1[2], α1, β1
         intrs[i, 5], intrs[i, 6], intrs[i, 7], intrs[i, 8] = p2[1], p2[2], α2, β2
@@ -459,12 +407,12 @@ Float32 polygons they may differ by round-off.
         n = length(edges)
         edge_array = [e[k][d] for e in edges, k in 1:4, d in 1:2]
         edge_array = reshape(permutedims(edge_array, (1, 3, 2)), n, 8)
-        dev_kinds = Subzero.KernelAbstractions.zeros(backend, Int8, n)
-        dev_intrs = Subzero.KernelAbstractions.zeros(backend, FT, n, 8)
-        launch() = (Subzero.launch_per_floe!(_edge_intersection_kernel!, backend, (; n_floes = n),
-            Subzero.adapt(backend, edge_array), dev_kinds, dev_intrs);
-            Subzero.KernelAbstractions.synchronize(backend))
-        _launch_float32_checked(launch, backend, FT)
+        dev_kinds = KA.zeros(backend, Int8, n)
+        dev_intrs = KA.zeros(backend, FT, n, 8)
+        _launch_float32_checked(backend, FT) do
+            _gog_launch!(_edge_intersection_kernel!, backend, n, Adapt.adapt(backend, edge_array),
+                dev_kinds, dev_intrs)
+        end
         kinds, intrs = Array(dev_kinds), Array(dev_intrs)
         got(i) = (kinds[i], ((intrs[i, 1], intrs[i, 2]), (intrs[i, 3], intrs[i, 4])),
             ((intrs[i, 5], intrs[i, 6]), (intrs[i, 7], intrs[i, 8])))
