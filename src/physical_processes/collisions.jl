@@ -1121,7 +1121,7 @@ function _count_ghosts!(floes::FixedWidthFloes, i, counts, axis, min_val, max_va
     else
         return
     end
-    counts[i] = floes.num_ghosts[i] + 1
+    counts[i] = floes.num_ghosts[i] + Int32(1)
     return
 end
 
@@ -1138,9 +1138,10 @@ function _plan_ghosts!(floes::FixedWidthFloes, i, counts, offsets, sources, ghos
     # through the min boundary, the ghost is on the max side of the domain, and vice versa
     shift = floes.centroid[i, axis] - floes.rmax[i] < min_val ? L : -L
     nghosts = floes.num_ghosts[i]
-    for k in 1:nnew
+    # Int32, as the index arrays: the stores don't convert
+    for k in Int32(1):nnew
         j = before + k
-        sources[j] = k <= nghosts ? floes.ghosts[i, k] : i
+        sources[j] = k <= nghosts ? floes.ghosts[i, k] : Int32(i)
         ghost_ids[j] = nghosts + k
         shifts[j] = shift
     end
@@ -1237,10 +1238,10 @@ of rows in the Floes array.
 function _link_ghosts!(floes::FixedWidthFloes, i, counts, offsets, axis, L, min_val, max_val)
     nnew = counts[i]
     nnew == 0 && return
-    # rows of the new ghosts: before + 1, ..., before + nnew
-    before = floes.n_floes + offsets[i] - nnew
+    # rows of the new ghosts: before + 1, ..., before + nnew, as Int32 like the index arrays
+    before = Int32(floes.n_floes) + offsets[i] - nnew
     nghosts = floes.num_ghosts[i]
-    for k in 1:nnew
+    for k in Int32(1):nnew
         floes.ghosts[i, nghosts + k] = before + k
     end
     floes.num_ghosts[i] = nghosts + nnew
@@ -1274,7 +1275,7 @@ function remove_ghosts!(floes::FixedWidthFloes, n_init_floes, backend)
 end
 
 function _clear_ghosts!(floes::FixedWidthFloes, i)
-    floes.num_ghosts[i] = 0
+    floes.num_ghosts[i] = Int32(0)
     _zero_row!(floes.ghosts, i)
     return
 end
