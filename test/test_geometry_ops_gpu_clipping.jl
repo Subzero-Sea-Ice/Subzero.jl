@@ -15,10 +15,11 @@ can't be passed to a kernel.
     _nodes(l, n) = [GOG._get_node(l, m) for m in 1:n]
     _indices(l, n) = [l[m] for m in 1:n]
 
-    #= Build the node lists of polygons p and q (vectors of (x, y), not closed), clipping in
-    T, with GeometryOps and with the device functions. Returns whether they're the same after
+    #= Build the node lists of polygons p and q (vectors of (x, y), not closed), in their
+    float type, with GeometryOps and with the device functions. Returns whether they're the same after
     each step, and GeometryOps' lists. =#
-    function _compare_build_lists(::Type{T}, p, q) where T
+    function _compare_build_lists(p, q)
+        T = eltype(eltype(p))
         ring_a, ring_b = GI.LinearRing([p; [p[1]]]), GI.LinearRing([q; [q[1]]])
         a_list, a_idx_list, n_b_intrs = GO._build_a_list(go_alg, T, ring_a, ring_b;
             exact = GO.True())
@@ -64,7 +65,7 @@ can't be passed to a kernel.
         for (name, (p, q)) in pairs(special_pairs)
             p, q = [FT.(v) for v in p], [FT.(v) for v in q]
             for (r, s) in ((p, q), (q, p))
-                same_a, same_b = _compare_build_lists(FT, r, s)
+                same_a, same_b = _compare_build_lists(r, s)
                 @test same_a
                 @test same_b
             end
@@ -91,7 +92,7 @@ can't be passed to a kernel.
         same = trues(2)
         n_crossing, n_touching, n_b_vertex = 0, 0, 0
         for (p, q) in test_pairs
-            same_a, same_b, a_list, b_list = _compare_build_lists(FT, shift(p), shift(q))
+            same_a, same_b, a_list, b_list = _compare_build_lists(shift(p), shift(q))
             same .&= (same_a, same_b)
             n_crossing += any(n -> n.crossing, a_list)
             # hinges and overlaps: intersection nodes that aren't crossings yet
@@ -125,7 +126,6 @@ can't be passed to a kernel.
     intermediate value in these functions, or in the functions inlined into them, is a
     Float64 (see "No Float64 maths with Float32" in test_geometry_ops_gpu.jl) =#
     @testset "No Float64 maths when clipping in Float32" begin
-        float64_values(f, types) = count(==(Float64), only(Base.code_typed(f, types))[1].ssavaluetypes)
         P = GOG.ArrayPolygon{Array{Float32, 3}}
         pt = NTuple{2, Float32}
         L = typeof(GOG.ClipLists(GOG.ClipLists(Float32, 1, 8), 1))
@@ -145,7 +145,7 @@ can't be passed to a kernel.
             (GOG._find_non_cross_orientation, Tuple{N, Int, N, Int, P, P}),
             (GOG._remove_collinear_points!, Tuple{Rg, Int}),
         )
-            @test float64_values(f, types) == 0
+            @test _float64_values(f, types) == 0
         end
     end
 
@@ -179,7 +179,7 @@ can't be passed to a kernel.
         capacity = 64
         outputs() = (GOG._PolyNodes(FT, n, capacity),
             GOG._PolyNodes(FT, n, capacity), GOG._IndexList(n, capacity),
-            zeros(Int32, n, 4))
+            zeros(Int, n, 4))
         ref = outputs()
         for i in 1:n
             _build_lists_kernel!(fwf, i, ref..., partner)
@@ -224,13 +224,14 @@ can't be passed to a kernel.
             2e-3 * scale
     end
 
-    #= Clip polygons p and q (vectors of (x, y), not closed) in T with GeometryOps and with
-    the device functions. Returns whether the node lists after all steps of
-    `GO._build_ab_list` are the same, whether the traced regions are the same, whether the
+    #= Clip polygons p and q (vectors of (x, y), not closed) in their float type with
+    GeometryOps and with the device functions. Returns whether the node lists after all steps
+    of `GO._build_ab_list` are the same, whether the traced regions are the same, whether the
     result of `intersect_polys!` is the same as `intersect_polys`, and what the pair tests
     (for counting cases). `intersect_polys` always clips in Float64, so in Float32 the result
     is only compared approximately (`_close_to_expected`). =#
-    function _compare_clipping(::Type{T}, p, q) where T
+    function _compare_clipping(p, q)
+        T = eltype(eltype(p))
         ring_a, ring_b = GI.LinearRing([p; [p[1]]]), GI.LinearRing([q; [q[1]]])
         a_list, b_list, a_idx_list = GO._build_ab_list(go_alg, T, ring_a, ring_b,
             GO._inter_delay_cross_f, GO._inter_delay_bounce_f; exact = GO.True())
@@ -254,8 +255,7 @@ can't be passed to a kernel.
         n_traced = GOG._trace_polynodes!(out, l.a, na, l.b, nb, l.a_idx, n_cross)
         same_traced = isequal(_regions(out, n_traced), _go_regions(traced))
 
-        FT = eltype(eltype(p))
-        result = _go_regions(Subzero.intersect_polys(_gi_poly(p), _gi_poly(q), FT))
+        result = _go_regions(Subzero.intersect_polys(_gi_poly(p), _gi_poly(q), T))
         out = regions()
         n = Subzero.intersect_polys!(out, lists(), poly_a, poly_b)
         same_result = n >= 0 && (T == Float64 ? isequal(_regions(out, n), result) :
@@ -275,7 +275,7 @@ can't be passed to a kernel.
         for (name, (p, q)) in pairs(special_pairs)
             p, q = [FT.(v) for v in p], [FT.(v) for v in q]
             for (r, s) in ((p, q), (q, p))
-                same_lists, same_traced, same_result = _compare_clipping(FT, r, s)
+                same_lists, same_traced, same_result = _compare_clipping(r, s)
                 @test same_lists
                 @test same_traced
                 @test same_result
@@ -303,7 +303,7 @@ can't be passed to a kernel.
         same = trues(3)
         counts = Dict(:chain => 0, :nested => 0, :several => 0, :collinear_removed => 0)
         for (p, q) in test_pairs, (r, s) in ((shift(p), shift(q)), (shift(q), shift(p)))
-            same_lists, same_traced, same_result, cases = _compare_clipping(FT, r, s)
+            same_lists, same_traced, same_result, cases = _compare_clipping(r, s)
             same .&= (same_lists, same_traced, same_result)
             for (case, happened) in pairs(cases)
                 counts[case] += happened
@@ -369,7 +369,7 @@ can't be passed to a kernel.
         capacity, max_polys = 64, 8
         # clipping in the floes' type
         outputs() = (GOG.ClipLists(FT, n, capacity),
-            GOG.PolyRegions(FT, n, max_polys, capacity), zeros(Int32, n))
+            GOG.PolyRegions(FT, n, max_polys, capacity), zeros(Int, n))
         ref = outputs()
         for i in 1:n
             _intersect_kernel!(fwf, i, ref..., partner)

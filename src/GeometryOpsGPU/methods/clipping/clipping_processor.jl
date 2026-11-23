@@ -52,7 +52,7 @@ fields of a `PolyNode` in column m of row k of these arrays:
 `_PolyNodes(nodes, k)`. It's isbits on the device, so kernels can create and pass it.
 =#
 struct _PolyNodes{PA<:AbstractArray{<:Any, 3}, BA<:AbstractMatrix{Bool},
-        IA<:AbstractMatrix{<:Integer}, EA<:AbstractMatrix{EndPointType}}
+        IA<:AbstractMatrix{Int}, EA<:AbstractMatrix{EndPointType}}
     point::PA
     fracs::PA
     inter::BA
@@ -71,8 +71,8 @@ Adapt.@adapt_structure _PolyNodes
 _PolyNodes(::Type{T}, nlists, capacity) where T = _PolyNodes(
     zeros(T, nlists, capacity, 2), zeros(T, nlists, capacity, 2),
     zeros(Bool, nlists, capacity), zeros(Bool, nlists, capacity),
-    zeros(Bool, nlists, capacity), zeros(Int32, nlists, capacity),
-    zeros(Int32, nlists, capacity), fill(not_endpoint, nlists, capacity), 0,
+    zeros(Bool, nlists, capacity), zeros(Int, nlists, capacity),
+    zeros(Int, nlists, capacity), fill(not_endpoint, nlists, capacity), 0,
 )
 
 # The same arrays, for list k
@@ -96,8 +96,8 @@ function _get_node(l::_PolyNodes, m)
     return (;
         point = (l.point[k, m, 1], l.point[k, m, 2]),
         inter = l.inter[k, m],
-        neighbor = Int(l.neighbor[k, m]),
-        idx = Int(l.idx[k, m]),
+        neighbor = l.neighbor[k, m],
+        idx = l.idx[k, m],
         ent_exit = l.ent_exit[k, m],
         crossing = l.crossing[k, m],
         endpoint = l.endpoint[k, m],
@@ -122,7 +122,7 @@ end
 #= A list of node indices, as GeometryOps' `a_idx_list`: entry m of list k is `idx[k, m]`.
 `k` is the list that this value refers to; make one for another list with
 `_IndexList(list, k)`. =#
-struct _IndexList{IA<:AbstractMatrix{<:Integer}}
+struct _IndexList{IA<:AbstractMatrix{Int}}
     idx::IA
     k::Int
 end
@@ -130,11 +130,11 @@ end
 Adapt.@adapt_structure _IndexList
 
 # `nlists` lists of up to `capacity` indices, on the CPU
-_IndexList(nlists, capacity) = _IndexList(zeros(Int32, nlists, capacity), 0)
+_IndexList(nlists, capacity) = _IndexList(zeros(Int, nlists, capacity), 0)
 _IndexList(l::_IndexList, k) = _IndexList(l.idx, Int(k))
 
 _capacity(l::_IndexList) = size(l.idx, 2)
-Base.getindex(l::_IndexList, m) = Int(l.idx[l.k, m])
+Base.getindex(l::_IndexList, m) = l.idx[l.k, m]
 Base.setindex!(l::_IndexList, x, m) = (l.idx[l.k, m] = x; l)
 
 
@@ -568,7 +568,7 @@ kernel. It's isbits on a device, so kernels can create and pass it.
 Polygon `m` of list `k` is [`region(regions, m)`](@ref GeometryOpsGPU.region), an
 `ArrayPolygon`. GeometryOps has no equivalent.
 """
-struct PolyRegions{A<:AbstractArray{<:Any, 3}, IA<:AbstractVector{<:Integer}}
+struct PolyRegions{A<:AbstractArray{<:Any, 3}, IA<:AbstractVector{Int}}
     coords::A
     n::IA
     max_polys::Int
@@ -578,7 +578,7 @@ end
 Adapt.@adapt_structure PolyRegions
 
 PolyRegions(::Type{T}, nlists, max_polys, capacity) where T = PolyRegions(
-    zeros(T, nlists * max_polys, capacity, 2), zeros(Int32, nlists * max_polys),
+    zeros(T, nlists * max_polys, capacity, 2), zeros(Int, nlists * max_polys),
     Int(max_polys), 0)
 
 PolyRegions(r::PolyRegions, k) = PolyRegions(r.coords, r.n, r.max_polys, Int(k))
@@ -594,7 +594,7 @@ Polygon `m` of the list that `regions` refers to, as an `ArrayPolygon` (row
 """
 function region(r::PolyRegions, m)
     row = _region_row(r, m)
-    return ArrayPolygon(r.coords, row, Int(r.n[row]))
+    return ArrayPolygon(r.coords, row, r.n[row])
 end
 
 # Point j of row `row` of the regions' arrays
@@ -739,7 +739,7 @@ function _remove_collinear_points!(out::PolyRegions, n_polys)
     n_kept = 0
     for m in 1:n_polys
         row = _region_row(out, m)
-        n = Int(out.n[row])
+        n = out.n[row]
         # whether the first point (repeated as the last point) is needed
         first_removed = Predicates.orient(_region_point(out, row, n - 1),
             _region_point(out, row, 1), _region_point(out, row, 2); exact = False()) == 0

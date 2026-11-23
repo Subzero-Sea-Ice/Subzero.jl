@@ -210,3 +210,9 @@ coordinates up to ±65 km), as vectors of (x, y), without repeating the first po
 _floe_shape_rings() = jldopen(joinpath(@__DIR__, "inputs", "floe_shapes.jld2")) do f
     [[(c[1], c[2]) for c in p[1]] for p in vec(f["floe_vertices"])]
 end
+
+#= The number of intermediate values that are Float64 in the compiled code of `f` for the
+argument types `types` (a Tuple type), including the functions inlined into it. The tests
+use it to check that Float32 inputs get Float32 maths, so that the kernels can run on GPUs
+without Float64. =#
+_float64_values(f, types) = count(==(Float64), only(Base.code_typed(f, types))[1].ssavaluetypes)

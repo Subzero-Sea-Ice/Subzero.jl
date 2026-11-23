@@ -138,7 +138,7 @@ Float32 polygons they may differ by round-off.
     end
     # Bounds of another type than the polygon's aren't accepted
     @testset "interiors_intersect with Float32 polygons" begin
-        floes, _, rects = _overlap_test_floes(Float32)
+        floes, _, _ = _overlap_test_floes(Float32)
         fwf = Subzero.FixedWidthFloes(floes)
         @test_throws MethodError intersects(fwf, 1, Extent(X = (1e4, 1.5e4), Y = (-5e3, 1.5e4)))
     end
