@@ -179,4 +179,65 @@ against GeometryOps. With Float64 polygons the results must be the same, bit for
         @test length(kinds) >= 5
     end
 
+
+    #= intersects and disjoint against GeometryOps, on all the test pairs. Unlike the line
+    and curve interactions, they match in Float32 too on these pairs: wherever rounding
+    changes an in or out, the polygons touch, which decides both. =#
+    @testset "intersects and disjoint with $FT, offset $offset" for FT in (Float64, Float32),
+            offset in (0.0, 1e6)
+        same, n_apart, n_touching, n_overlapping = true, 0, 0, 0
+        for (p, q) in _intersects_test_pairs(FT; offset)
+            _, (a, b) = _array_polys([p, q])
+            gp, gq = _gi_poly(p), _gi_poly(q)
+            x = GOG.intersects(a, b)
+            same &= x == GO.intersects(gp, gq) && GOG.disjoint(a, b) == GO.disjoint(gp, gq) &&
+                x == !GOG.disjoint(a, b)
+            if !x
+                n_apart += 1
+            elseif isempty(GO.intersection(gp, gq; target = GI.PolygonTrait(),
+                    fix_multipoly = nothing))
+                n_touching += 1
+            else
+                n_overlapping += 1
+            end
+        end
+        @test same
+        # pairs that are apart, only touch, and overlap
+        @test n_apart > 100
+        @test n_touching > 30
+        @test n_overlapping > 100
+    end
+
+    # Polygons of different float types aren't accepted
+    @testset "intersects with polygons of different types" begin
+        _, (a,) = _array_polys([[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]])
+        _, (b,) = _array_polys([[(0f0, 0f0), (1f0, 0f0), (0f0, 1f0)]])
+        @test_throws MethodError GOG.intersects(a, b)
+    end
+
+    # Kernel test: whether each pair of polygons intersects, and whether it is disjoint
+    function _intersects_kernel!(i, coords_a, ns_a, coords_b, ns_b, out)
+        a = GOG.ArrayPolygon(coords_a, i, ns_a[i])
+        b = GOG.ArrayPolygon(coords_b, i, ns_b[i])
+        out[i, 1] = GOG.intersects(a, b)
+        out[i, 2] = GOG.disjoint(a, b)
+        return
+    end
+    @testset "intersects on $backend with $FT" for backend in test_backends(),
+            FT in (Float64, Float32)
+        pairs = _intersects_test_pairs(FT)
+        coords_a, polys_a = _array_polys(first.(pairs))
+        coords_b, polys_b = _array_polys(last.(pairs))
+        n = length(pairs)
+        expected = hcat([GOG.intersects(polys_a[i], polys_b[i]) for i in 1:n],
+            [GOG.disjoint(polys_a[i], polys_b[i]) for i in 1:n])
+        dev = KA.zeros(backend, Bool, n, 2)
+        _launch_float32_checked(backend, FT) do
+            _gog_launch!(_intersects_kernel!, backend, n, Adapt.adapt(backend, coords_a),
+                Adapt.adapt(backend, GOG.npoint.(polys_a)), Adapt.adapt(backend, coords_b),
+                Adapt.adapt(backend, GOG.npoint.(polys_b)), dev)
+        end
+        @test Array(dev) == expected
+        @test count(expected[:, 1]) > 100 && count(expected[:, 2]) > 100
+    end
 end

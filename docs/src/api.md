@@ -204,6 +204,8 @@ GeometryOpsGPU.signed_distance
 GeometryOpsGPU.PointOrientation
 GeometryOpsGPU.coveredby
 GeometryOpsGPU.within
+GeometryOpsGPU.disjoint
+GeometryOpsGPU.intersects
 GeometryOpsGPU.LineOrientation
 GeometryOpsGPU.intersection_points!
 GeometryOpsGPU.intersection!
