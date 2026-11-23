@@ -218,6 +218,28 @@ Float32 polygons they may differ by round-off.
         return (pt, Float64.(pt), (0.5 * (pt[1] + pt[1]), 0.5 * (pt[2] + pt[2])))
     end
 
+    #=
+    Whether GOG's point tests give the same results as GeometryOps'. With Float32 points
+    and polygons, GOG's test for a point on an edge (`isapprox` of two cross products) has
+    the tolerance of Float32, where GeometryOps converts to Float64, so points close to an
+    edge can be on it for GOG only. For those, `coveredby`, `within`, and the sign of the
+    distance may differ. Returns whether the results are the same (or may differ), and if
+    they may differ, the distance to the polygon's edges relative to the diagonal of its
+    bounding box, else `nothing`. A point is on an edge for `isapprox` if it is closer to
+    the edge than about `sqrt(eps(Float32))` times the edge's length.
+    =#
+    function _same_point_tests(q, r, gp, ::Type{FT}) where FT
+        d, d_go = GOG.signed_distance(q, r, FT), GO.signed_distance(q, gp, FT)
+        isequal(abs(d), abs(d_go)) || return false, nothing
+        if q isa NTuple{2, Float32} && GOG._point_filled_curve_orientation(q, r) == GOG.point_on
+            ext = GOG.extent(r)
+            return true, abs(d) / hypot(ext.X[2] - ext.X[1], ext.Y[2] - ext.Y[1])
+        end
+        same = isequal(GOG.coveredby(q, r), GO.coveredby(q, gp)) &&
+            isequal(GOG.within(q, r), GO.within(q, gp)) && isequal(d, d_go)
+        return same, nothing
+    end
+
     @testset "Area, centroid, and point tests with $FT" for FT in (Float64, Float32)
         polys = _geom_test_polys(FT)
         _, apolys = _array_polys(polys)
@@ -226,19 +248,19 @@ Float32 polygons they may differ by round-off.
         @test all(i -> isequal(GOG.centroid(apolys[i], FT), GO.centroid(gps[i], FT)), eachindex(polys))
         rng = Xoshiro(2)
         orientations = GOG.PointOrientation[]
-        same = trues(4)
+        same, near = true, Float64[]
         for _ in 1:5000
             i = rand(rng, eachindex(polys))
             r, gp = apolys[i], gps[i]
             for pt in _geom_test_points(rng, polys[i], polys)
                 push!(orientations, GOG._point_filled_curve_orientation(pt, r))
-                same[1] &= isequal(GOG.coveredby(pt, r), GO.coveredby(pt, gp))
-                same[2] &= isequal(GOG.within(pt, r), GO.within(pt, gp))
-                same[3] &= isequal(GOG.signed_distance(pt, r, FT), GO.signed_distance(pt, gp, FT))
-                same[4] &= isequal(GOG._distance_curve(FT, pt, r), abs(GO.signed_distance(pt, gp, FT)))
+                s, d = _same_point_tests(pt, r, gp, FT)
+                same &= s
+                isnothing(d) || push!(near, d)
             end
         end
-        @test all(same)
+        @test same
+        @test all(<=(sqrt(eps(Float32))), near)
         # The points hit all three cases, including many points exactly on an edge
         @test count(==(GOG.point_on), orientations) > 1000
         @test count(==(GOG.point_in), orientations) > 1000
@@ -290,6 +312,35 @@ Float32 polygons they may differ by round-off.
         end
         # In Float64, rounding hardly ever puts the crossing outside the bounding boxes
         FT == Float32 && @test n_endpoints > 100
+    end
+
+    #= With Float32 points and polygons, the maths is in Float32: no intermediate value in
+    these functions (and the functions inlined into them) is a Float64 =#
+    @testset "No Float64 maths with Float32" begin
+        float64_values(f, types) = count(==(Float64), only(Base.code_typed(f, types))[1].ssavaluetypes)
+        P = GOG.ArrayPolygon{Array{Float32, 3}}
+        pt = NTuple{2, Float32}
+        ext = typeof(Subzero.Extents.Extent(X = (1f0, 2f0), Y = (1f0, 2f0)))
+        F = Type{Float32}
+        for (f, types) in (
+            (GOG.Predicates._orient, Tuple{GOG.True, pt, pt, pt}),
+            (GOG.Predicates._orient, Tuple{GOG.False, pt, pt, pt}),
+            (Subzero.AdaptivePredicates.orient2, Tuple{pt, pt, pt}),
+            (GOG._point_filled_curve_orientation, Tuple{pt, P}),
+            (GOG.coveredby, Tuple{pt, P}),
+            (GOG.within, Tuple{pt, P}),
+            (GOG.area, Tuple{P, F}),
+            (GOG.centroid, Tuple{P, F}),
+            (GOG.signed_distance, Tuple{pt, P, F}),
+            (GOG._intersection_point, Tuple{F, NTuple{2, pt}, NTuple{2, pt}}),
+            (GOG._find_hinge_intersection, Tuple{F, pt, pt, pt, pt, Int, Int, Int}),
+            (GOG._find_cross_intersection, Tuple{F, pt, pt, pt, pt, ext, ext}),
+            (GOG._nearest_endpoint, Tuple{F, pt, pt, pt, pt}),
+            (GOG.intersection_points!, Tuple{Array{Float32, 3}, Int, P, P, F}),
+            (Subzero.get_intersection_points!, Tuple{Array{Float32, 3}, Int, P, P}),
+        )
+            @test float64_values(f, types) == 0
+        end
     end
 
     @testset "Intersection points and matching vertices with $FT" for FT in (Float64, Float32)
@@ -352,7 +403,7 @@ Float32 polygons they may differ by round-off.
         @test all(i -> isequal(GOG.area(apolys[i], FT), GO.area(gps[i], FT)), eachindex(polys))
         @test all(i -> isequal(GOG.centroid(apolys[i], FT), GO.centroid(gps[i], FT)), eachindex(polys))
         rng = Xoshiro(7)
-        same, n_on = trues(3), 0
+        same, n_on, near = true, 0, Float64[]
         for (p, r, gp) in zip(polys, apolys, gps), _ in 1:10
             k = rand(rng, eachindex(p))
             e1, e2 = p[k], p[mod1(k + 1, end)]
@@ -362,12 +413,13 @@ Float32 polygons they may differ by round-off.
             pt = (nextfloat(v[1], rand(rng, -2:2)), nextfloat(v[2], rand(rng, -2:2)))
             for q in (pt, Float64.(pt))
                 n_on += GOG._point_filled_curve_orientation(q, r) == GOG.point_on
-                same[1] &= isequal(GOG.coveredby(q, r), GO.coveredby(q, gp))
-                same[2] &= isequal(GOG.within(q, r), GO.within(q, gp))
-                same[3] &= isequal(GOG.signed_distance(q, r, FT), GO.signed_distance(q, gp, FT))
+                s, d = _same_point_tests(q, r, gp, FT)
+                same &= s
+                isnothing(d) || push!(near, d)
             end
         end
-        @test all(same)
+        @test same
+        @test all(<=(sqrt(eps(Float32))), near)
         @test n_on > 100
         points, idxs = zeros(1, 64, 2), zeros(Int, 1, 64)
         same_points, same_idxs, n_nonempty = true, true, 0

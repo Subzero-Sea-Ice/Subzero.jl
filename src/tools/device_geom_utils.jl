@@ -15,11 +15,12 @@ coveredby_poly(point, p::GOG.ArrayPolygon) = GOG.coveredby(point, p)
 
 #=
 Points where the edges of two polygons intersect, as `get_intersection_points(poly1, poly2)`:
-sorted and distinct. They're written to `out[k, 1:m, :]`, and the number of points m is
-returned, or -1 if `out` has too few columns for them.
+sorted and distinct, in the polygons' float type unless `T` is given. They're written to
+`out[k, 1:m, :]`, and the number of points m is returned, or -1 if `out` has too few columns
+for them.
 =#
 get_intersection_points!(out, k, poly1::GOG.ArrayPolygon, poly2::GOG.ArrayPolygon,
-    ::Type{T} = Float64) where T = GOG.intersection_points!(out, k, poly1, poly2, T)
+    ::Type{T} = eltype(poly1.coords)) where T = GOG.intersection_points!(out, k, poly1, poly2, T)
 
 #=
 Indices of the region's points that are within `atol` of each of the points
