@@ -94,3 +94,66 @@ function _seg_seg_orientation(a1::NTuple{2, T}, a2::NTuple{2, T}, b1::NTuple{2, 
     (_, (α, β)) = intr1
     return seg_val, α, β
 end
+
+#=
+Split the segment from `l_start` to `l_end` at every point where it meets `curve`, and report
+whether the pieces run inside and/or outside the filled curve, as GeometryOps'
+`_split_segment_interactions(Planar(), l_start, l_end, curve, in_curve, out_curve; exact)`:
+`in_curve` and `out_curve` come in with the interactions found so far and go out with this
+segment's added. It tests the midpoint of each piece.
+
+GeometryOps collects the intersection points into a vector, sorts and deduplicates them, and
+sorts them again by their distance from `l_start`. A kernel can't allocate that vector, so
+the points are found one after another instead, in the same order
+(`_next_segment_intersection`). That takes one pass over the curve per point, but the
+segment usually meets the curve at only one to three points.
+=#
+function _split_segment_interactions(l_start::NTuple{2, T}, l_end::NTuple{2, T},
+        curve::ArrayPolygon{<:AbstractArray{T}}, in_curve, out_curve; exact) where T
+    p_start = l_start
+    has_prev, key = false, (zero(T), l_start)
+    while true
+        found, next_key = _next_segment_intersection(l_start, l_end, curve, has_prev, key)
+        p_end = found ? next_key[2] : l_end
+        mid_val = _point_filled_curve_orientation((p_start .+ p_end) ./ 2, curve; exact)
+        if mid_val == point_in
+            in_curve = true
+        elseif mid_val == point_out
+            out_curve = true
+        end
+        found || break
+        p_start, has_prev, key = p_end, true, next_key
+    end
+    return in_curve, out_curve
+end
+
+#=
+The next point, after the one with key `prev` (or the first, if `has_prev` is false), where
+the segment from `l_start` to `l_end` meets `curve`. The points are ordered by the key
+`(distance from l_start, point)`, the order of GeometryOps' `_split_segment_interactions`:
+it sorts the points (lexicographically) and removes duplicates, then sorts them by their
+distance from `l_start`, keeping the order of points at the same distance. Returns whether
+there is a next point, and its key. The points are those of
+`GO.intersection_points(GI.Line([l_start, l_end]), curve)`, as in `intersection_points!`.
+=#
+function _next_segment_intersection(l_start::NTuple{2, T}, l_end::NTuple{2, T},
+        curve::ArrayPolygon{<:AbstractArray{T}}, has_prev, prev) where T
+    found, best = false, (zero(T), l_start)
+    for j in 1:(npoint(curve) - 1)
+        line_orient, (pt1, _), (pt2, _) = _intersection_point(T, (l_start, l_end),
+            (getpoint(curve, j), getpoint(curve, j + 1)); exact = True())
+        line_orient == line_out && continue
+        found, best = _keep_next(found, best, (_euclid_distance(T, pt1, l_start), pt1),
+            has_prev, prev)
+        if line_orient == line_over
+            found, best = _keep_next(found, best, (_euclid_distance(T, pt2, l_start), pt2),
+                has_prev, prev)
+        end
+    end
+    return found, best
+end
+
+# `key` if it comes after `prev` (when there is one) and before `best` (when there is one)
+_keep_next(found, best, key, has_prev, prev) =
+    (!has_prev || isless(prev, key)) && (!found || isless(key, best)) ? (true, key) :
+        (found, best)
