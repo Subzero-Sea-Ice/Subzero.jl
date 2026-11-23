@@ -1,7 +1,8 @@
 #=
 Tests of the GeometryOpsGPU submodule against GeometryOps (through Subzero's CPU geometry
-functions, which call it). With Float64 polygons the results must be the same, bit for bit;
-with Float32 polygons they may differ by round-off.
+functions, which call it). With Float64 polygons the results must be the same, bit for bit,
+except for `RotateTranslate`, which matches to round-off; with Float32 polygons they may
+differ by round-off.
 =#
 @testset "GeometryOpsGPU" begin
     GOG = Subzero.GeometryOpsGPU

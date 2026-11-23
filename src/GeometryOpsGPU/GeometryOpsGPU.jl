@@ -13,9 +13,11 @@ moved into GeometryOps one day:
   arguments instead of returning a new geometry. Internal helpers have the names of the
   GeometryOps helpers they follow. Functions without an equivalent say so.
 - Files are laid out as in GeometryOps' `src/` (`methods/`, `transformations/`, ...).
-- With Float64 polygons, results are the same as GeometryOps', bit for bit. With Float32
-  polygons, the maths is in Float32 throughout, even where GeometryOps converts to Float64,
-  so results can differ by round-off.
+- With Float64 polygons, results are the same as GeometryOps', bit for bit, except where a
+  function's documentation says otherwise: `RotateTranslate` rotates in another order than
+  CoordinateTransformations, so it matches to round-off. With Float32 polygons, the maths is
+  in Float32 throughout, even where GeometryOps converts to Float64, so results can differ by
+  round-off.
 
 The differences from GeometryOps:
 - Polygons are `ArrayPolygon`s, not any GeoInterface geometry, and have no holes.

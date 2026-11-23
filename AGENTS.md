@@ -157,6 +157,10 @@ over if/else flags.
 - Ported code must match the original (the CPU code on `main`, or the GeometryOps
   function it replaces) bit for bit with Float64 floes, which is how the original was
   run. With Float32 floes it doesn't have to: compare with a tolerance, or not at all.
+  The one exception so far is the rotation of floes (`GOG.RotateTranslate`, in
+  `timestep_floe_properties!`), which computes in another order than CoordinateTransformations
+  and matches to round-off, so the reference test in `test_update_floe.jl` uses a
+  tolerance. Document and test any other exception the same way.
 - With Float32 floes, use Float32 maths throughout. Don't promote to Float64 inside a
   function to copy the original's Float32 results (GeometryOps does this in places, e.g.
   its orientation tests and clipping). Float64 maths is slow on consumer GPUs and fails on
