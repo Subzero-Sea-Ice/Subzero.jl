@@ -56,3 +56,41 @@ function _point_polygon_process(point::NTuple{2, T}, p::ArrayPolygon{<:AbstractA
     orientation == point_on && return on_allow
     return in_allow
 end
+
+#= Whether the point is `point_on` the segment from `start` to `stop` (one of its ends),
+`point_in` it (any other of its points), or `point_out` of it, as
+`GO._point_segment_orientation(Planar(), point, start, stop)`. =#
+function _point_segment_orientation(point::NTuple{2, T}, start::NTuple{2, T},
+        stop::NTuple{2, T}) where T
+    x, y = point
+    x1, y1 = start
+    x2, y2 = stop
+    Δx_seg = x2 - x1
+    Δy_seg = y2 - y1
+    Δx_pt = x - x1
+    Δy_pt = y - y1
+    if (Δx_pt == 0 && Δy_pt == 0) || (Δx_pt == Δx_seg && Δy_pt == Δy_seg)
+        # the point is one of the segment's ends
+        return point_on
+    else
+        # on the segment if parallel to it and between its ends
+        on_line = _isparallel(Δx_seg, Δy_seg, Δx_pt, Δy_pt)
+        !on_line && return point_out
+        between_endpoints =
+            (x2 > x1 ? x1 <= x <= x2 : x2 <= x <= x1) &&
+            (y2 > y1 ? y1 <= y <= y2 : y2 <= y <= y1)
+        !between_endpoints && return point_out
+    end
+    return point_in
+end
+
+#= The kind of intersection (a `LineOrientation`) of the segments from a1 to a2 and from b1
+to b2, and the fractions α and β along them of its first point, as
+`GO._seg_seg_orientation(Planar(), a1, a2, b1, b2; exact)`. Unlike GeometryOps, which
+computes in Float64, it computes in the points' type. =#
+function _seg_seg_orientation(a1::NTuple{2, T}, a2::NTuple{2, T}, b1::NTuple{2, T},
+        b2::NTuple{2, T}; exact) where T
+    seg_val, intr1, _ = _intersection_point(T, (a1, a2), (b1, b2); exact)
+    (_, (α, β)) = intr1
+    return seg_val, α, β
+end
