@@ -11,15 +11,12 @@ exact)`: positive if c is to the left, negative if it's to the right, and 0 if c
 line. With `exact = True()`, AdaptivePredicates' `orient2p` decides exactly. With
 `exact = False()`, the cross product is computed directly, and is 0 if it's approximately
 zero (`isapprox`). Unlike GeometryOps, which converts the points to Float64, it computes in
-the points' type, so Float32 points use Float32 maths. =#
-orient(a, b, c; exact) = _orient(exact, a, b, c)
+the points' type, so Float32 points use Float32 maths. The points must all have the same
+type. =#
+orient(a::NTuple{2, T}, b::NTuple{2, T}, c::NTuple{2, T}; exact) where T =
+    _orient(exact, a, b, c)
 
-# `orient2p` needs all coordinates of the same type
-function _orient(::True, a, b, c)
-    T = float(promote_type(typeof(a[1]), typeof(a[2]), typeof(b[1]), typeof(b[2]),
-        typeof(c[1]), typeof(c[2])))
-    return AdaptivePredicates.orient2p((T(a[1]), T(a[2])), (T(b[1]), T(b[2])), (T(c[1]), T(c[2])))
-end
+_orient(::True, a, b, c) = AdaptivePredicates.orient2p(a, b, c)
 
 function _orient(::False, a, b, c)
     ax, ay = a[1] - c[1], a[2] - c[2]

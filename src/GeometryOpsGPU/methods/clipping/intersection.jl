@@ -10,20 +10,21 @@ all), as GeometryOps' `LineOrientation`.
 """
     intersection_points!(out, k, poly1::ArrayPolygon, poly2::ArrayPolygon, ::Type{T})
 
-Points where the edges of the two polygons intersect, in type `T`, sorted and distinct, as
+Points where the edges of the two polygons intersect, sorted and distinct, as
 `GO.intersection_points(poly1, poly2, T)`. Unlike that, they are written into
 `out[k, 1:m, :]` (point `l` is `(out[k, l, 1], out[k, l, 2])`), and the number of points
-`m` is returned, or -1 if `out` has too few columns for them.
+`m` is returned, or -1 if `out` has too few columns for them. `out` and `T` have the
+polygons' float type.
 """
-function intersection_points!(out, k, poly1::ArrayPolygon, poly2::ArrayPolygon, ::Type{T}) where T
+function intersection_points!(out::AbstractArray{T, 3}, k,
+        poly1::ArrayPolygon{<:AbstractArray{T}}, poly2::ArrayPolygon{<:AbstractArray{T}},
+        ::Type{T}) where T
     m = 0
     Extents.intersects(extent(poly1), extent(poly2)) || return m
     for i in 1:(npoint(poly1) - 1)
-        p1, p2 = getpoint(poly1, i), getpoint(poly1, i + 1)
-        a1, a2 = (T(p1[1]), T(p1[2])), (T(p2[1]), T(p2[2]))
+        a1, a2 = getpoint(poly1, i), getpoint(poly1, i + 1)
         for j in 1:(npoint(poly2) - 1)
-            q1, q2 = getpoint(poly2, j), getpoint(poly2, j + 1)
-            b1, b2 = (T(q1[1]), T(q1[2])), (T(q2[1]), T(q2[2]))
+            b1, b2 = getpoint(poly2, j), getpoint(poly2, j + 1)
             line_orient, (pt1, _), (pt2, _) = _intersection_point(T, (a1, a2), (b1, b2))
             line_orient == line_out && continue
             m = _insert_sorted_unique!(out, k, m, pt1)
@@ -69,7 +70,8 @@ kind of intersection (a `LineOrientation`) and two intersection points with thei
 along each edge, `(point, (α, β))`. The second is only used for `line_over` (collinear
 edges that overlap).
 =#
-function _intersection_point(::Type{T}, (a1, a2), (b1, b2)) where T
+function _intersection_point(::Type{T}, (a1, a2)::NTuple{2, NTuple{2, T}},
+        (b1, b2)::NTuple{2, NTuple{2, T}}) where T
     line_orient = line_out
     intr1 = ((zero(T), zero(T)), (zero(T), zero(T)))
     intr2 = intr1

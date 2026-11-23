@@ -15,9 +15,9 @@ coveredby_poly(point, p::GOG.ArrayPolygon) = GOG.coveredby(point, p)
 
 #=
 Points where the edges of two polygons intersect, as `get_intersection_points(poly1, poly2)`:
-sorted and distinct, in the polygons' float type unless `T` is given. They're written to
-`out[k, 1:m, :]`, and the number of points m is returned, or -1 if `out` has too few columns
-for them.
+sorted and distinct, in the polygons' float type, which `out` and `T` must have. They're
+written to `out[k, 1:m, :]`, and the number of points m is returned, or -1 if `out` has too
+few columns for them.
 =#
 get_intersection_points!(out, k, poly1::GOG.ArrayPolygon, poly2::GOG.ArrayPolygon,
     ::Type{T} = eltype(poly1.coords)) where T = GOG.intersection_points!(out, k, poly1, poly2, T)
@@ -32,7 +32,7 @@ is a tie; an index can appear more than once. Like that function:
 - if the first and last points are equal, the last isn't used, so a single point matches
   nothing.
 The indices are written to `out[k, 1:c]`, and their number c is returned, or -1 if `out` has
-too few columns for them.
+too few columns for them. `points` must have the region's float type.
 =#
 function which_vertices_match_points!(out, k, points, m, region::GOG.ArrayPolygon, atol = 1)
     FT = eltype(region.coords)

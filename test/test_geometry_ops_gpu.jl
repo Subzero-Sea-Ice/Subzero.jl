@@ -200,9 +200,7 @@ Float32 polygons they may differ by round-off.
         return coords, apolys
     end
     _gi_poly(p) = GI.Polygon([GI.LinearRing([p; [p[1]]])])
-    #= Test points for polygon p: its vertices, points along its edges, grid points, and
-    random points. Each is also returned as Float64 and as a Float64 midpoint `0.5 * (a + b)`,
-    as collisions compute them. =#
+    # A test point for polygon p: a vertex, a point along an edge, a grid point, or a random point
     function _geom_test_points(rng, p::Vector{Tuple{FT, FT}}, polys) where FT
         u = rand(rng)
         pt = if u < 0.3
@@ -211,11 +209,11 @@ Float32 polygons they may differ by round-off.
             (FT(250 * rand(rng, -4:4)), FT(125 * rand(rng, -10:10)))
         elseif u < 0.7
             v, w = rand(rng, p), rand(rng, p)
-            v .+ (rand(rng, 0:4) / 4) .* (w .- v)
+            v .+ FT(rand(rng, 0:4) / 4) .* (w .- v)
         else
             (FT(3e3 * rand(rng) - 1.5e3), FT(3e3 * rand(rng) - 1.5e3))
         end
-        return (pt, Float64.(pt), (0.5 * (pt[1] + pt[1]), 0.5 * (pt[2] + pt[2])))
+        return pt
     end
 
     #=
@@ -231,7 +229,7 @@ Float32 polygons they may differ by round-off.
     function _same_point_tests(q, r, gp, ::Type{FT}) where FT
         d, d_go = GOG.signed_distance(q, r, FT), GO.signed_distance(q, gp, FT)
         isequal(abs(d), abs(d_go)) || return false, nothing
-        if q isa NTuple{2, Float32} && GOG._point_filled_curve_orientation(q, r) == GOG.point_on
+        if FT == Float32 && GOG._point_filled_curve_orientation(q, r) == GOG.point_on
             ext = GOG.extent(r)
             return true, abs(d) / hypot(ext.X[2] - ext.X[1], ext.Y[2] - ext.Y[1])
         end
@@ -249,18 +247,23 @@ Float32 polygons they may differ by round-off.
         rng = Xoshiro(2)
         orientations = GOG.PointOrientation[]
         same, near = true, Float64[]
-        for _ in 1:5000
+        for _ in 1:15000
             i = rand(rng, eachindex(polys))
             r, gp = apolys[i], gps[i]
-            for pt in _geom_test_points(rng, polys[i], polys)
-                push!(orientations, GOG._point_filled_curve_orientation(pt, r))
-                s, d = _same_point_tests(pt, r, gp, FT)
-                same &= s
-                isnothing(d) || push!(near, d)
-            end
+            pt = _geom_test_points(rng, polys[i], polys)
+            push!(orientations, GOG._point_filled_curve_orientation(pt, r))
+            s, d = _same_point_tests(pt, r, gp, FT)
+            same &= s
+            isnothing(d) || push!(near, d)
         end
         @test same
         @test all(<=(sqrt(eps(Float32))), near)
+        # Points of another type than the polygon's aren't accepted
+        other = FT == Float64 ? Float32 : Float64
+        pt = other.(polys[1][1])
+        @test_throws MethodError GOG.coveredby(pt, apolys[1])
+        @test_throws MethodError GOG.signed_distance(pt, apolys[1], FT)
+        @test_throws MethodError GOG.area(apolys[1], other)
         # The points hit all three cases, including many points exactly on an edge
         @test count(==(GOG.point_on), orientations) > 1000
         @test count(==(GOG.point_in), orientations) > 1000
@@ -350,15 +353,15 @@ Float32 polygons they may differ by round-off.
         polys = _geom_test_polys(FT)
         _, apolys = _array_polys(polys)
         gps = _gi_poly.(polys)
-        points = zeros(1, 64, 2)
+        points = zeros(FT, 1, 64, 2)
         idxs = zeros(Int, 1, 64)
         same_points, same_idxs, n_nonempty = true, true, 0
         rng = Xoshiro(3)
         for _ in 1:3000
             i, j = rand(rng, eachindex(polys), 2)
             i == j && continue
-            ref = GO.intersection_points(gps[i], gps[j])
-            m = GOG.intersection_points!(points, 1, apolys[i], apolys[j], Float64)
+            ref = GO.intersection_points(gps[i], gps[j], FT)
+            m = GOG.intersection_points!(points, 1, apolys[i], apolys[j], FT)
             same_points &= isequal([(points[1, l, 1], points[1, l, 2]) for l in 1:m], ref)
             isempty(ref) && continue
             n_nonempty += 1
@@ -374,14 +377,14 @@ Float32 polygons they may differ by round-off.
         sq2 = [(FT(1), FT(-1)), (FT(3), FT(-1)), (FT(3), FT(1)), (FT(1), FT(1))]
         region = [(FT(1), FT(0)), (FT(2), FT(0)), (FT(2), FT(1)), (FT(1), FT(1))]
         _, (r1, r2, rr) = _array_polys([sq1, sq2, region])
-        pts = zeros(1, 2, 2)
-        @test GOG.intersection_points!(pts, 1, r1, r2, Float64) == 2
+        pts = zeros(FT, 1, 2, 2)
+        @test GOG.intersection_points!(pts, 1, r1, r2, FT) == 2
         @test pts[1, :, :] == [1 0; 2 1]
         idx = zeros(Int, 1, 2)
         @test Subzero.which_vertices_match_points!(idx, 1, pts, 2, rr) == 2
         @test idx[1, :] == [1, 3]
         # Too little room for the points or indices: -1
-        @test GOG.intersection_points!(zeros(1, 1, 2), 1, r1, r2, Float64) == -1
+        @test GOG.intersection_points!(zeros(FT, 1, 1, 2), 1, r1, r2, FT) == -1
         @test Subzero.which_vertices_match_points!(zeros(Int, 1, 1), 1, pts, 2, rr) == -1
         # Like which_vertices_match_points, a single point matches nothing; no points either
         @test Subzero.which_vertices_match_points!(idx, 1, pts, 1, rr) == 0
@@ -407,24 +410,22 @@ Float32 polygons they may differ by round-off.
         @test all(i -> isequal(GOG.centroid(apolys[i], FT), GO.centroid(gps[i], FT)), eachindex(polys))
         rng = Xoshiro(7)
         same, n_on, near = true, 0, Float64[]
-        for (p, r, gp) in zip(polys, apolys, gps), _ in 1:10
+        for (p, r, gp) in zip(polys, apolys, gps), _ in 1:20
             k = rand(rng, eachindex(p))
             e1, e2 = p[k], p[mod1(k + 1, end)]
             t = FT(rand(rng))
             on_edge = (e1[1] + t * (e2[1] - e1[1]), e1[2] + t * (e2[2] - e1[2]))
             v = rand(rng) < 0.5 ? e1 : on_edge
             pt = (nextfloat(v[1], rand(rng, -2:2)), nextfloat(v[2], rand(rng, -2:2)))
-            for q in (pt, Float64.(pt))
-                n_on += GOG._point_filled_curve_orientation(q, r) == GOG.point_on
-                s, d = _same_point_tests(q, r, gp, FT)
-                same &= s
-                isnothing(d) || push!(near, d)
-            end
+            n_on += GOG._point_filled_curve_orientation(pt, r) == GOG.point_on
+            s, d = _same_point_tests(pt, r, gp, FT)
+            same &= s
+            isnothing(d) || push!(near, d)
         end
         @test same
         @test all(<=(sqrt(eps(Float32))), near)
         @test n_on > 100
-        points, idxs = zeros(1, 64, 2), zeros(Int, 1, 64)
+        points, idxs = zeros(FT, 1, 64, 2), zeros(Int, 1, 64)
         same_points, same_idxs, n_nonempty = true, true, 0
         for i in eachindex(base), _ in 1:2
             j = rand(rng, eachindex(base))
@@ -435,8 +436,8 @@ Float32 polygons they may differ by round-off.
             d = sqrt(abs(GO.area(_gi_poly(base[i])))) * (rand(rng) - 0.5)
             pj = shifted(base[j], ci[1] - cj[1] + d, ci[2] - cj[2] + rand(rng) * d)
             _, (ri, rj) = _array_polys([polys[i], pj])
-            ref = GO.intersection_points(gps[i], _gi_poly(pj))
-            m = GOG.intersection_points!(points, 1, ri, rj, Float64)
+            ref = GO.intersection_points(gps[i], _gi_poly(pj), FT)
+            m = GOG.intersection_points!(points, 1, ri, rj, FT)
             same_points &= isequal([(points[1, l, 1], points[1, l, 2]) for l in 1:m], ref)
             isempty(ref) && continue
             n_nonempty += 1
@@ -447,29 +448,26 @@ Float32 polygons they may differ by round-off.
         @test same_idxs
         @test n_nonempty > 100
     end
-    function _geom_point_tests!(orient, sdist, i, s, v, ::Type{FT}, point, r) where FT
-        orient[i, s, v] = Int8(Subzero.GeometryOpsGPU._point_filled_curve_orientation(point, r)) +
+    function _geom_point_tests!(orient, sdist, i, s, ::Type{FT}, point, r) where FT
+        orient[i, s] = Int8(Subzero.GeometryOpsGPU._point_filled_curve_orientation(point, r)) +
             Int8(4) * Subzero.coveredby_poly(point, r) +
             Int8(8) * Subzero.GeometryOpsGPU.within(point, r)
-        sdist[i, s, v] = Subzero.dist_to_poly(point, r, FT)
+        sdist[i, s] = Subzero.dist_to_poly(point, r, FT)
         return
     end
     #= Kernel test: each floe computes its area and centroid, the point tests for its test
     points, and the intersection points and matching vertices with a partner floe =#
-    function _geom_kernel!(floes, i, pts, pts64, mids, orient, sdist, areas, cents, partner,
+    function _geom_kernel!(floes, i, pts, orient, sdist, areas, cents, partner,
             ipts, nipts, idxs, nidxs)
         FT = eltype(floes.area)
         r = Subzero._floe_poly(floes, i)
         areas[i] = Subzero.area_poly(r, FT)
         cents[i, 1], cents[i, 2] = Subzero.centroid_poly(r, FT)
-        # One call per point type: a loop over the three would be type-unstable for Float32
         for s in axes(pts, 2)
-            _geom_point_tests!(orient, sdist, i, s, 1, FT, (pts[i, s, 1], pts[i, s, 2]), r)
-            _geom_point_tests!(orient, sdist, i, s, 2, FT, (pts64[i, s, 1], pts64[i, s, 2]), r)
-            _geom_point_tests!(orient, sdist, i, s, 3, FT, (mids[i, s, 1], mids[i, s, 2]), r)
+            _geom_point_tests!(orient, sdist, i, s, FT, (pts[i, s, 1], pts[i, s, 2]), r)
         end
         rj = Subzero._floe_poly(floes, partner[i])
-        m = Subzero.get_intersection_points!(ipts, i, r, rj, Float64)
+        m = Subzero.get_intersection_points!(ipts, i, r, rj)
         nipts[i] = m
         nidxs[i] = m < 0 ? 0 : Subzero.which_vertices_match_points!(idxs, i, ipts, m, rj)
         return
@@ -483,18 +481,15 @@ Float32 polygons they may differ by round-off.
             for p in polys
         ])
         fwf = Subzero.FixedWidthFloes(floes)
-        n, ns = length(floes), 6
-        pts, pts64, mids = zeros(FT, n, ns, 2), zeros(n, ns, 2), zeros(n, ns, 2)
+        n, ns = length(floes), 18
+        pts = zeros(FT, n, ns, 2)
         for i in 1:n, s in 1:ns
-            p, p64, mid = _geom_test_points(rng, polys[i], polys)
-            pts[i, s, :] .= p
-            pts64[i, s, :] .= p64
-            mids[i, s, :] .= mid
+            pts[i, s, :] .= _geom_test_points(rng, polys[i], polys)
         end
         partner = Int32[mod1(i + rand(rng, 1:(n - 1)), n) for i in 1:n]
-        outputs() = (zeros(Int8, n, ns, 3), zeros(FT, n, ns, 3), zeros(FT, n), zeros(FT, n, 2),
-            zeros(n, 32, 2), zeros(Int32, n), zeros(Int32, n, 32), zeros(Int32, n))
-        args(out) = (pts, pts64, mids, out[1], out[2], out[3], out[4], partner, out[5:8]...)
+        outputs() = (zeros(Int8, n, ns), zeros(FT, n, ns), zeros(FT, n), zeros(FT, n, 2),
+            zeros(FT, n, 32, 2), zeros(Int32, n), zeros(Int32, n, 32), zeros(Int32, n))
+        args(out) = (pts, out[1], out[2], out[3], out[4], partner, out[5:8]...)
         # Reference: the same function called on the CPU without a kernel
         ref = outputs()
         for i in 1:n

@@ -3,7 +3,7 @@
 
 Centroid of the polygon as a tuple `(x, y)` of type `T`, as `GO.centroid(poly, T)`.
 """
-function centroid(p::ArrayPolygon, ::Type{T}) where T
+function centroid(p::ArrayPolygon{<:AbstractArray{T}}, ::Type{T}) where T
     xcentroid = zero(T)
     ycentroid = zero(T)
     area = zero(T)

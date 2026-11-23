@@ -9,7 +9,8 @@ or `point_out`, as GeometryOps' `PointOrientation`.
 #= Whether the point is in, on, or out of the polygon's ring, as
 `GO._point_filled_curve_orientation(point, ring; exact = False())`: a ray-crossing test
 that also detects points on an edge. =#
-function _point_filled_curve_orientation(point, p::ArrayPolygon)
+function _point_filled_curve_orientation(point::NTuple{2, T},
+        p::ArrayPolygon{<:AbstractArray{T}}) where T
     x, y = point
     n = npoint(p)
     n -= getpoint(p, 1) == getpoint(p, n) ? 1 : 0
@@ -45,7 +46,8 @@ end
 #= Whether the point's place relative to the polygon is allowed, as GeometryOps'
 `_point_polygon_process(point, polygon; in_allow, on_allow, out_allow, exact = False())`:
 a point outside the polygon's bounding box is outside, without the ray-crossing test. =#
-function _point_polygon_process(point, p::ArrayPolygon; in_allow, on_allow, out_allow)
+function _point_polygon_process(point::NTuple{2, T}, p::ArrayPolygon{<:AbstractArray{T}};
+        in_allow, on_allow, out_allow) where T
     x, y = point
     Extents.intersects(Extents.Extent(X = (x, x), Y = (y, y)), extent(p)) || return out_allow
     orientation = _point_filled_curve_orientation(point, p)

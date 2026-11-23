@@ -27,7 +27,8 @@ The differences from GeometryOps:
 - There's no manifold or algorithm argument: everything is planar. Edge intersections and
   the orientations that decide them are always exact (`exact = True()` in GeometryOps), and
   point-in-polygon tests are not (`exact = False()`), as in GeometryOps' defaults.
-- The float type `T` of a result has no default: pass it.
+- The float type `T` of a result has no default: pass it. It must be the polygon's float
+  type, and points `(x, y)` must have that type too: nothing converts between float types.
 
 This module doesn't use Subzero, so that it can become a package of its own. Subzero
 imports it as `GOG`, as it imports GeometryOps as `GO`.
