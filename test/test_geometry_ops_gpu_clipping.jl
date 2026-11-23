@@ -122,16 +122,47 @@ can't be passed to a kernel.
         @test GOG._build_b_list!(lists(5), a, a_idx, 2, Float64, poly_b) == -1
     end
 
+    #= With Float32 polygons, clipping in Float32 must use Float32 maths only, so that it can
+    run on GPUs without Float64, such as Apple GPUs (Metal) and some Intel GPUs: no
+    intermediate value in these functions, or in the functions inlined into them, is a
+    Float64 (see "No Float64 maths with Float32" in test_geometry_ops_gpu.jl) =#
+    @testset "No Float64 maths when clipping in Float32" begin
+        float64_values(f, types) = count(==(Float64), only(Base.code_typed(f, types))[1].ssavaluetypes)
+        P = GOG.ArrayPolygon{Array{Float32, 3}}
+        pt = NTuple{2, Float32}
+        L = typeof(GOG.ClipLists(GOG.ClipLists(Float32, 1, 8), 1))
+        N, I = fieldtype(L, :a), fieldtype(L, :a_idx)
+        Rg = typeof(GOG.PolyRegions(GOG.PolyRegions(Float32, 1, 1, 8), 1))
+        F = Type{Float32}
+        for (f, types) in (
+            (GOG.intersection!, Tuple{Rg, L, P, P}),
+            (Subzero.intersect_polys!, Tuple{Rg, L, P, P}),
+            (GOG._build_a_list!, Tuple{N, I, F, P, P}),
+            (GOG._build_b_list!, Tuple{N, N, I, Int, F, P}),
+            (GOG._classify_crossing!, Tuple{N, Int, N, Int}),
+            (GOG._get_side, Tuple{pt, pt, pt, pt}),
+            (GOG._flag_ent_exit!, Tuple{N, Int, P}),
+            (GOG._pt_off_edge_status, Tuple{N, Int, P}),
+            (GOG._trace_polynodes!, Tuple{Rg, N, Int, N, Int, I, Int}),
+            (GOG._find_non_cross_orientation, Tuple{N, Int, N, Int, P, P}),
+            (GOG._remove_collinear_points!, Tuple{Rg, Int}),
+        )
+            @test float64_values(f, types) == 0
+        end
+    end
+
     #= Kernel test: each floe builds the lists of itself and a partner floe in its rows of
-    the lists, clipping in Float64 as intersect_polys does =#
+    the lists, clipping in the floes' type =#
     function _build_lists_kernel!(floes, i, a_nodes, b_nodes, a_indices, counts, partner)
         a = Subzero.GeometryOpsGPU._PolyNodes(a_nodes, i)
         b = Subzero.GeometryOpsGPU._PolyNodes(b_nodes, i)
         a_idx = Subzero.GeometryOpsGPU._IndexList(a_indices, i)
+        FT = eltype(floes.area)
         poly_a, poly_b = Subzero._floe_poly(floes, i), Subzero._floe_poly(floes, partner[i])
-        na, n_idx, nbi = Subzero.GeometryOpsGPU._build_a_list!(a, a_idx, Float64, poly_a, poly_b)
+        na, n_idx, nbi = Subzero.GeometryOpsGPU._build_a_list!(a, a_idx, FT, poly_a, poly_b)
         counts[i, 1], counts[i, 2], counts[i, 3] = na, n_idx, nbi
-        counts[i, 4] = na < 0 ? 0 : Subzero.GeometryOpsGPU._build_b_list!(b, a, a_idx, n_idx, Float64, poly_b)
+        counts[i, 4] = na < 0 ? 0 :
+            Subzero.GeometryOpsGPU._build_b_list!(b, a, a_idx, n_idx, FT, poly_b)
         return
     end
     @testset "Building the lists on $backend with floes $FT" for backend in test_backends(),
@@ -148,8 +179,8 @@ can't be passed to a kernel.
         # partners include the floe itself
         partner = Int32[rand(rng) < 0.1 ? i : rand(rng, 1:n) for i in 1:n]
         capacity = 64
-        outputs() = (GOG._PolyNodes(Float64, n, capacity),
-            GOG._PolyNodes(Float64, n, capacity), GOG._IndexList(n, capacity),
+        outputs() = (GOG._PolyNodes(FT, n, capacity),
+            GOG._PolyNodes(FT, n, capacity), GOG._IndexList(n, capacity),
             zeros(Int32, n, 4))
         ref = outputs()
         for i in 1:n
@@ -174,12 +205,33 @@ can't be passed to a kernel.
     _regions(out, n) = [[GOG.getpoint(GOG.region(out, m), j)
         for j in 1:GOG.npoint(GOG.region(out, m))] for m in 1:n]
     _go_regions(polys) = [collect(GI.getpoint(GI.getexterior(r))) for r in polys]
+    # Area of a ring of points (x, y), in Float64, so that large Float32 coordinates don't
+    # lose the area to cancellation
+    _area64(pts) = abs(sum(j -> Float64(pts[j][1]) * Float64(pts[j + 1][2]) -
+        Float64(pts[j + 1][1]) * Float64(pts[j][2]), 1:(length(pts) - 1); init = 0.0)) / 2
+    #=
+    Whether the regions of polygons p and q from clipping in Float32 are close to `expected`,
+    the regions from `intersect_polys`, which clips in Float64: the same number of regions,
+    with a total area within 0.2% of the smaller polygon's area. Float32 has about 7 digits:
+    at coordinates of 1e6 m, floats are 6 cm apart, which moves the vertices of the regions
+    by as much. A polygon clipped with itself isn't compared, because GeometryOps' result is
+    degenerate for some, e.g. two slivers instead of the whole polygon, and floes are never
+    clipped with themselves.
+    =#
+    function _close_to_expected(regions, expected, p, q)
+        p == q && return true
+        length(regions) == length(expected) || return false
+        scale = min(_area64([p; [p[1]]]), _area64([q; [q[1]]]))
+        return abs(sum(_area64, regions; init = 0.0) - sum(_area64, expected; init = 0.0)) <=
+            2e-3 * scale
+    end
 
     #= Clip polygons p and q (vectors of (x, y), not closed) in T with GeometryOps and with
     the device functions. Returns whether the node lists after all steps of
     `GO._build_ab_list` are the same, whether the traced regions are the same, whether the
-    result of `intersect_polys!` is the same as `intersect_polys` (only for T = Float64, the
-    type that `intersect_polys` clips in), and what the pair tests (for counting cases). =#
+    result of `intersect_polys!` is the same as `intersect_polys`, and what the pair tests
+    (for counting cases). `intersect_polys` always clips in Float64, so in Float32 the result
+    is only compared approximately (`_close_to_expected`). =#
     function _compare_clipping(::Type{T}, p, q) where T
         ring_a, ring_b = GI.LinearRing([p; [p[1]]]), GI.LinearRing([q; [q[1]]])
         a_list, b_list, a_idx_list = GO._build_ab_list(go_alg, T, ring_a, ring_b,
@@ -204,21 +256,18 @@ can't be passed to a kernel.
         n_traced = GOG._trace_polynodes!(out, l.a, na, l.b, nb, l.a_idx, n_cross)
         same_traced = isequal(_regions(out, n_traced), _go_regions(traced))
 
-        result = nothing
-        same_result = true
-        if T == Float64
-            FT = eltype(eltype(p))
-            result = _go_regions(Subzero.intersect_polys(_gi_poly(p), _gi_poly(q), FT))
-            out = regions()
-            n = Subzero.intersect_polys!(out, lists(), poly_a, poly_b)
-            same_result = n >= 0 && isequal(_regions(out, n), result)
-        end
+        FT = eltype(eltype(p))
+        result = _go_regions(Subzero.intersect_polys(_gi_poly(p), _gi_poly(q), FT))
+        out = regions()
+        n = Subzero.intersect_polys!(out, lists(), poly_a, poly_b)
+        same_result = n >= 0 && (T == Float64 ? isequal(_regions(out, n), result) :
+            _close_to_expected(_regions(out, n), result, p, q))
         cases = (;
             chain = any(n -> n.endpoint != GO.not_endpoint, a_list),
             # the boundaries don't cross, but one polygon is inside the other
-            nested = isempty(traced) && !isnothing(result) && !isempty(result),
-            several = !isnothing(result) && length(result) > 1,
-            collinear_removed = !isnothing(result) &&
+            nested = isempty(traced) && !isempty(result),
+            several = length(result) > 1,
+            collinear_removed =
                 sum(length, result; init = 0) < sum(r -> GI.npoint(r), traced; init = 0),
         )
         return same_lists, same_traced, same_result, cases
@@ -266,11 +315,9 @@ can't be passed to a kernel.
         end
         @test all(same)
         @test counts[:chain] > 100
-        if T == Float64
-            @test counts[:nested] > 100
-            @test counts[:several] > 50
-            @test counts[:collinear_removed] > 30
-        end
+        @test counts[:nested] > 100
+        @test counts[:several] > 50
+        @test counts[:collinear_removed] > 30
     end
 
     @testset "Clipping: too little room" begin
@@ -321,18 +368,22 @@ can't be passed to a kernel.
         # partners include the floe itself
         partner = Int32[rand(rng) < 0.1 ? i : rand(rng, 1:n) for i in 1:n]
         capacity, max_polys = 64, 8
-        outputs() = (GOG.ClipLists(Float64, n, capacity),
-            GOG.PolyRegions(Float64, n, max_polys, capacity), zeros(Int32, n))
+        # clipping in the floes' type
+        outputs() = (GOG.ClipLists(FT, n, capacity),
+            GOG.PolyRegions(FT, n, max_polys, capacity), zeros(Int32, n))
         ref = outputs()
         for i in 1:n
             _intersect_kernel!(fwf, i, ref..., partner)
         end
-        # the reference is the same as intersect_polys on the floes' polygons
+        #= the reference is the same as intersect_polys on the floes' polygons (approximately
+        in Float32, where intersect_polys still clips in Float64) =#
         @test all(>=(0), ref[3])  # the capacity is enough
         @test all(1:n) do i
             expected = _go_regions(Subzero.intersect_polys(floes.poly[i],
                 floes.poly[partner[i]], FT))
-            isequal(_regions(GOG.PolyRegions(ref[2], i), ref[3][i]), expected)
+            got_i = _regions(GOG.PolyRegions(ref[2], i), ref[3][i])
+            FT == Float64 ? isequal(got_i, expected) :
+                _close_to_expected(got_i, expected, polys[i], polys[partner[i]])
         end
         dev = Subzero.adapt(backend, outputs())
         Subzero.launch_per_floe!(_intersect_kernel!, backend, Subzero.adapt(backend, fwf),
