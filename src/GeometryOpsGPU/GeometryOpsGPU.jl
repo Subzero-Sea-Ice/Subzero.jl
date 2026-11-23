@@ -23,19 +23,32 @@ The differences from GeometryOps:
 - Polygons are `ArrayPolygon`s, not any GeoInterface geometry, and have no holes.
   `ArrayPolygon`s are GeoInterface polygons, though, so GeometryOps accepts them on the host.
 - Results are written into preallocated arrays rather than returned as new geometries.
-- There's no manifold or algorithm argument: everything is planar.
+- There's no manifold or algorithm argument: everything is planar. Edge intersections and
+  the orientations that decide them are always exact (`exact = True()` in GeometryOps), and
+  point-in-polygon tests are not (`exact = False()`), as in GeometryOps' defaults.
+- The float type `T` of a result has no default: pass it.
 
 This module doesn't use Subzero, so that it can become a package of its own. Subzero
 imports it as `GOG`, as it imports GeometryOps as `GO`.
 """
 module GeometryOpsGPU
 
+import AdaptivePredicates
 import Extents
 import GeoInterface as GI
 
 include("types.jl")
 include("geointerface.jl")
-include("transformations/transform.jl")
+include("utils/utils.jl")
+include("methods/clipping/predicates.jl")
+include("methods/area.jl")
+include("methods/centroid.jl")
+include("methods/geom_relations/geom_geom_processors.jl")
+include("methods/geom_relations/coveredby.jl")
+include("methods/geom_relations/within.jl")
 include("methods/geom_relations/interiors_intersect.jl")
+include("methods/distance.jl")
+include("methods/clipping/intersection.jl")
+include("transformations/transform.jl")
 
 end

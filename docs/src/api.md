@@ -196,6 +196,16 @@ GeometryOpsGPU
 GeometryOpsGPU.ArrayPolygon
 GeometryOpsGPU.npoint
 GeometryOpsGPU.getpoint
+GeometryOpsGPU.extent
+GeometryOpsGPU.area
+GeometryOpsGPU.centroid
+GeometryOpsGPU.distance
+GeometryOpsGPU.signed_distance
+GeometryOpsGPU.PointOrientation
+GeometryOpsGPU.coveredby
+GeometryOpsGPU.within
+GeometryOpsGPU.LineOrientation
+GeometryOpsGPU.intersection_points!
 GeometryOpsGPU.transform!
 GeometryOpsGPU.Translate
 GeometryOpsGPU.RotateTranslate
