@@ -25,7 +25,8 @@ function intersection_points!(out::AbstractArray{T, 3}, k,
         a1, a2 = getpoint(poly1, i), getpoint(poly1, i + 1)
         for j in 1:(npoint(poly2) - 1)
             b1, b2 = getpoint(poly2, j), getpoint(poly2, j + 1)
-            line_orient, (pt1, _), (pt2, _) = _intersection_point(T, (a1, a2), (b1, b2))
+            line_orient, (pt1, _), (pt2, _) =
+                _intersection_point(T, (a1, a2), (b1, b2); exact = True())
             line_orient == line_out && continue
             m = _insert_sorted_unique!(out, k, m, pt1)
             m < 0 && return m
@@ -65,13 +66,14 @@ end
 
 #=
 Intersection of the edges (a1, a2) and (b1, b2), whose points are tuples of type T, as
-`GO._intersection_point(Planar(), T, (a1, a2), (b1, b2); exact = True())`. Returns the
-kind of intersection (a `LineOrientation`) and two intersection points with their fractions
-along each edge, `(point, (α, β))`. The second is only used for `line_over` (collinear
-edges that overlap).
+`GO._intersection_point(Planar(), T, (a1, a2), (b1, b2); exact)`. Returns the kind of
+intersection (a `LineOrientation`) and two intersection points with their fractions along
+each edge, `(point, (α, β))`. The second is only used for `line_over` (collinear edges that
+overlap). `exact` (`True()` or `False()`) is passed on to the orientation tests: the
+clipping and `intersection_points!` use `True()`, `disjoint` uses `False()`.
 =#
 function _intersection_point(::Type{T}, (a1, a2)::NTuple{2, NTuple{2, T}},
-        (b1, b2)::NTuple{2, NTuple{2, T}}) where T
+        (b1, b2)::NTuple{2, NTuple{2, T}}; exact) where T
     line_orient = line_out
     intr1 = ((zero(T), zero(T)), (zero(T), zero(T)))
     intr2 = intr1
@@ -79,11 +81,11 @@ function _intersection_point(::Type{T}, (a1, a2)::NTuple{2, NTuple{2, T}},
     a_ext = Extents.Extent(X = minmax(a1[1], a2[1]), Y = minmax(a1[2], a2[2]))
     b_ext = Extents.Extent(X = minmax(b1[1], b2[1]), Y = minmax(b1[2], b2[2]))
     Extents.intersects(a_ext, b_ext) || return no_intr_result
-    a1_orient = Predicates.orient(b1, b2, a1; exact = True())
-    a2_orient = Predicates.orient(b1, b2, a2; exact = True())
+    a1_orient = Predicates.orient(b1, b2, a1; exact)
+    a2_orient = Predicates.orient(b1, b2, a2; exact)
     a1_orient != 0 && a1_orient == a2_orient && return no_intr_result
-    b1_orient = Predicates.orient(a1, a2, b1; exact = True())
-    b2_orient = Predicates.orient(a1, a2, b2; exact = True())
+    b1_orient = Predicates.orient(a1, a2, b1; exact)
+    b2_orient = Predicates.orient(a1, a2, b2; exact)
     b1_orient != 0 && b1_orient == b2_orient && return no_intr_result
     if a1_orient == a2_orient == b1_orient == b2_orient == 0
         line_orient, intr1, intr2 =
