@@ -257,8 +257,8 @@ Returns `CLIP_TOO_SMALL` if `lists` or `out` is too small, and `CLIP_FAILED` whe
 GeometryOps throws an error.
 
 It's `@noinline` because of what looks like a compiler bug on AMD GPUs (AMDGPU.jl 2.12): a
-kernel that inlined it and also called other large functions threw "Unknown exception" once
-two or more threads ran, while the CPU backends were right. The function is large, so
+kernel that inlined it and also called other large functions threw a GPU kernel exception (an
+`InexactError`) once two or more threads ran, while the CPU backends were right. The function is large, so
 inlining it gains little anyway.
 """
 @noinline function intersection!(out::PolyRegions{<:AbstractArray{T, 3}},
