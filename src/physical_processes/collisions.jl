@@ -510,8 +510,12 @@ TODO: this has three problems, to be fixed:
   to rounding with Float32 coordinates from about 1e5 m.
 - If the normals cancel out, e.g. for a narrow floe across a wider one, the direction is NaN
   (0 / 0). `calc_normal_force` then returns `GOG.CLIP_FAILED`.
+
+It's `@noinline` because of what looks like a compiler bug on AMD GPUs (see
+`GOG.intersection!`): in a kernel where some threads of a workgroup took this path and others
+didn't, it threw an `InexactError` unless both functions were `@noinline`.
 =#
-function _many_intersect_normal_force(::Type{T}, force_dir,
+@noinline function _many_intersect_normal_force(::Type{T}, force_dir,
         region::GOG.ArrayPolygon{<:AbstractArray{T}}, poly::GOG.ArrayPolygon{<:AbstractArray{T}},
         force_factor) where T
     x1, y1 = zero(T), zero(T)
