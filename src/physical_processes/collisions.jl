@@ -364,7 +364,7 @@ one row per pair (`PairForces`), using scratch space with one row per pair (a
 polygons as `GOG.ArrayPolygon`s, so that they work for floes and domain elements alike.
 =#
 
-"""
+#=
     CollisionWorkspace(FT, nrows, max_points; max_ipoints = 16, max_regions = 4)
     CollisionWorkspace(workspace, k)
 
@@ -390,7 +390,7 @@ Fields:
 - `moved`: the first polygon, moved in the direction of a normal force (`moved[k, :, :]`)
 - `Δl`: for each force, the mean length between the intersection points of its region
   (`Δl[k, r]`), which the friction needs
-"""
+=#
 struct CollisionWorkspace{L<:GOG.ClipLists, R<:GOG.PolyRegions, A3<:AbstractArray{<:Any, 3},
         I2<:AbstractMatrix{Int32}, A2<:AbstractMatrix}
     lists::L
@@ -424,7 +424,7 @@ CollisionWorkspace(w::CollisionWorkspace, k) = CollisionWorkspace(GOG.ClipLists(
     GOG.PolyRegions(w.regions, k), GOG.PolyRegions(w.new_regions, k), w.ipoints, w.vertex_idx,
     w.moved, w.Δl, Int(k))
 
-"""
+#=
     PairForces(FT, nrows, max_forces)
     PairForces(forces, k)
 
@@ -433,7 +433,7 @@ forces per pair: force `r` of the pair in row `k` is `force[k, r, :]`, it acts a
 `point[k, r, :]`, and it comes from an overlap region with area `overlap[k, r]`. Forces that
 are zero are included. The first form makes the arrays on the CPU (move them to a device
 with `adapt`); the second refers to row `k` of the same arrays.
-"""
+=#
 struct PairForces{A3<:AbstractArray{<:Any, 3}, A2<:AbstractMatrix}
     force::A3
     point::A3
@@ -477,8 +477,8 @@ function _calc_friction_force(iu, iv, ju, jv, nx::FT, ny::FT, Δl, consts, Δt) 
     udiff = iu - ju
     vdiff = iv - jv
     vnorm = sqrt(udiff^2 + vdiff^2)
-    xdir = FT(0)
-    ydir = FT(0)
+    xdir = zero(FT)
+    ydir = zero(FT)
     if udiff != 0 || vdiff != 0
         xdir = udiff/vnorm
         ydir = vdiff/vnorm
@@ -498,8 +498,8 @@ end
 The direction of the normal force on the overlap region `region` of `poly` and another
 polygon, for a region with other than two intersection points: the sum of the normals of the
 region's edges that are on `poly`, each pointing into the region and as long as its edge,
-normalised. Returns the mean length of those edges, Δl, and the direction, which is
-`force_dir` unless Δl > 0.1.
+normalised. Returns the mean length of those edges, Δl, and the direction, which is (0, 0)
+unless Δl > 0.1.
 
 TODO: this has three problems, to be fixed:
 - The edges on `poly` are those whose midpoints are less than 1e-8 from it. That tolerance is
@@ -513,11 +513,13 @@ TODO: this has three problems, to be fixed:
 
 It's `@noinline` because of what looks like a compiler bug on AMD GPUs (see
 `GOG.intersection!`): in a kernel where some threads of a workgroup took this path and others
-didn't, it threw an `InexactError` unless both functions were `@noinline`.
+didn't, it threw a GPU kernel exception (an `InexactError`) unless both functions were
+`@noinline`.
 =#
-@noinline function _many_intersect_normal_force(::Type{T}, force_dir,
+@noinline function _many_intersect_normal_force(::Type{T},
         region::GOG.ArrayPolygon{<:AbstractArray{T}}, poly::GOG.ArrayPolygon{<:AbstractArray{T}},
         force_factor) where T
+    force_dir = (zero(T), zero(T))
     x1, y1 = zero(T), zero(T)
     Δl, n_pts = zero(T), 0
     Fn_tot = (zero(T), zero(T))
@@ -543,7 +545,7 @@ didn't, it threw an `InexactError` unless both functions were `@noinline`.
             Fn = (s * -Δy, s * Δx)
             Δl += mag
             n_pts += 1
-            Fn_tot = (Fn_tot[1] + Fn[1], Fn_tot[2] + Fn[2])
+            Fn_tot = Fn_tot .+ Fn
         end
         x1, y1 = x2, y2
     end
@@ -593,12 +595,12 @@ function calc_normal_force(ws::CollisionWorkspace, p1::GOG.ArrayPolygon,
             force_dir = (-Δy/Δl, Δx/Δl)
         end
     elseif m != 0  # another number of intersection points
-        Δl, force_dir = _many_intersect_normal_force(FT, force_dir, region, p1, force_factor)
+        Δl, force_dir = _many_intersect_normal_force(FT, region, p1, force_factor)
     end
     # Reverse the direction if moving p1 in it makes the overlap larger
     if Δl > FT(0.1)
         # Moving p1 by NaN makes the clipping fail
-        (isnan(force_dir[1]) || isnan(force_dir[2])) && return force_dir, Δl, GOG.CLIP_FAILED
+        any(isnan, force_dir) && return force_dir, Δl, GOG.CLIP_FAILED
         GOG.npoint(p1) > size(ws.moved, 2) && return force_dir, Δl, GOG.CLIP_TOO_SMALL
         p1new = _translate_poly!(GOG.ArrayPolygon(ws.moved, k, 0), p1, force_dir[1],
             force_dir[2])
@@ -607,12 +609,11 @@ function calc_normal_force(ws::CollisionWorkspace, p1::GOG.ArrayPolygon,
         for r in 1:n_new
             new_region = GOG.region(ws.new_regions, r)
             if check_intersects(new_region, region) && area_poly(new_region, FT)/area > 1
-                force_dir = (force_dir[1] * -1, force_dir[2] * -1)
+                force_dir = .-force_dir
             end
         end
     end
-    force = (force_dir[1] * area * force_factor, force_dir[2] * area * force_factor)
-    return force, Δl, 0
+    return force_dir .* area .* force_factor, Δl, 0
 end
 
 #=
