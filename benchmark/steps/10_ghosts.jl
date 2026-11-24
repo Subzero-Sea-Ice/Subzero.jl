@@ -12,6 +12,18 @@ function ghosts!(floes, domain)
     return
 end
 
+# The periodic domain of the input simulation, as `make_model(floes, n).domain`, in the float
+# type FT. The kernels need it in the floes' float type.
+function ghost_domain(FT, n)
+    d = input()
+    grid = RegRectilinearGrid(FT; x0 = 0, xf = ntiles(n) * d["Lx"], y0 = 0, yf = d["Ly"],
+        Δx = d["Δgrid"], Δy = d["Δgrid"])
+    return Domain(;
+        north = PeriodicBoundary(North, FT; grid), south = PeriodicBoundary(South, FT; grid),
+        east = PeriodicBoundary(East, FT; grid), west = PeriodicBoundary(West, FT; grid),
+    )
+end
+
 register_step!(;
     title = "`add_ghosts!` and removing the ghosts",
     # Adding and removing the ghosts leaves the floes as they were, so there's nothing to reset
@@ -26,7 +38,7 @@ register_step!(;
     GhostWorkspace is used for all samples, so nothing is allocated on the device. =#
     current = function (ctx, backend, FT)
         n = ctx.n
-        domain = make_model(load_floes(0), n).domain
+        domain = ghost_domain(FT, n)
         src = adapt(backend, to_float(FT, Subzero.FixedWidthFloes(load_floes(n))))
         d = adapt(backend, deepcopy(src))
         workspace = Subzero.GhostWorkspace(d)
