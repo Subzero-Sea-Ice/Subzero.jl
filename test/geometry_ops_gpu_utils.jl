@@ -87,9 +87,27 @@ of one function, this sees everything the kernel calls, inlined or not.
 =#
 function _float64_kernels(f)
     jobs = keys(KA.POCL.@device_code_typed f())
-    llvm(job) = sprint(io -> KA.POCL.GPUCompiler.code_llvm(io, job; dump_module = true))
-    return unique!([_kernel_name(job) for job in jobs if
-        occursin(r"\bdouble\b|\bfpext\b", llvm(job))])
+    return unique!([_kernel_name(job) for job in jobs if _computes_in_float64(job)])
+end
+
+# Whether the final LLVM IR of a compilation job has a `double` or an `fpext`
+_computes_in_float64(job) = occursin(r"\bdouble\b|\bfpext\b",
+    sprint(io -> KA.POCL.GPUCompiler.code_llvm(io, job; dump_module = true)))
+
+#= Whether the first kernel that `launch()` launches on the CPU backend computes in Float64,
+as `_float64_kernels` checks, but without compiling the kernel to machine code or running it:
+generating its LLVM IR takes seconds, where POCL can take minutes to compile a large kernel.
+The kernel must not have been compiled already. =#
+struct _StopCompile <: Exception end
+function _kernel_computes_in_float64(launch)
+    job = Ref{Any}()
+    try
+        KA.POCL.GPUCompiler.with_compile_hook(launch, j -> (job[] = j; throw(_StopCompile())))
+    catch e
+        e isa _StopCompile || rethrow()
+    end
+    isassigned(job) || error("no kernel was compiled: it may have been compiled already")
+    return _computes_in_float64(job[])
 end
 
 #= Run `launch()`. With Float32 on the CPU backend, also check that the kernels it launches
