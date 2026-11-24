@@ -85,16 +85,18 @@ points, and some steps of the clipping, in Float64.
         Subzero.PairForces(out, k), Subzero.CollisionWorkspace(ws, k), fwf, i, j, consts, Δt,
         max_overlap)
 
-    # Regions whose force direction comes from _many_intersect_normal_force
-    function _n_regions_many_points(floes, i, j)
+    #= The overlap regions of floes i and j from the CPU functions, each with the number of
+    intersection points m that `calc_normal_force` finds in it (0 if the floes' edges
+    intersect at fewer than two points, when there are no forces). The force direction comes
+    from `_many_intersect_normal_force` where m isn't 0 or 2. =#
+    function _regions_and_points(floes, i, j)
         FT = eltype(floes.area)
         ipoints = Subzero.get_intersection_points(floes.poly[i], floes.poly[j])
-        length(ipoints) >= 2 || return 0
-        count(Subzero.intersect_polys(floes.poly[i], floes.poly[j], FT)) do r
-            m = length(Subzero.which_vertices_match_points(ipoints, r))
-            m != 0 && m != 2
-        end
+        regions = Subzero.intersect_polys(floes.poly[i], floes.poly[j], FT)
+        length(ipoints) >= 2 || return [(r, 0) for r in regions]
+        return [(r, length(Subzero.which_vertices_match_points(ipoints, r))) for r in regions]
     end
+    _many_points(m) = m != 0 && m != 2
 
     @testset "Pairs of floes with Float64" begin
         FT = Float64
@@ -104,14 +106,16 @@ points, and some steps of the clipping, in Float64.
         fwf = Subzero.FixedWidthFloes(floes)
         pairs = _test_pairs(length(floes))
         ws, out = _buffers(fwf, length(pairs))
-        same_rows, same_interactions = true, true
+        # pairs whose forces differ from the CPU functions' and floe_floe_interaction!'s
+        different_rows, different_interactions = Tuple{Int, Int}[], Tuple{Int, Int}[]
         n_fuse, n_forces, n_many = 0, 0, 0
         for (k, (i, j)) in enumerate(pairs)
             n, fuse = _pair_run(out, ws, fwf, k, i, j, consts, max_overlap)
             @test n >= 0
             # with the CPU functions
             cpu_fuse, cpu_rows... = _cpu_pair_forces(floes, i, j, consts, max_overlap)
-            same_rows &= fuse == cpu_fuse && isequal(_device_rows(out, k, n), cpu_rows)
+            fuse == cpu_fuse && isequal(_device_rows(out, k, n), cpu_rows) ||
+                push!(different_rows, (i, j))
             # with floe_floe_interaction! itself, which leaves out forces that are zero
             cpu_floes = deepcopy(floes[[i, j]])
             Subzero.floe_floe_interaction!(Subzero.get_floe(cpu_floes, 1), 1,
@@ -119,16 +123,17 @@ points, and some steps of the clipping, in Float64.
             ninters = cpu_floes.num_inters[1]
             inters = cpu_floes.interactions[1][1:ninters, :]
             kept = [r for r in 1:n if out.force[k, r, 1] != 0 || out.force[k, r, 2] != 0]
-            same_interactions &= (cpu_floes.status[1].tag == Subzero.fuse) == fuse &&
+            (cpu_floes.status[1].tag == Subzero.fuse) == fuse &&
                 isequal(inters[:, Subzero.xforce:Subzero.yforce], out.force[k, kept, :]) &&
                 isequal(inters[:, Subzero.xpoint:Subzero.ypoint], out.point[k, kept, :]) &&
-                isequal(inters[:, Subzero.overlap], out.overlap[k, kept])
+                isequal(inters[:, Subzero.overlap], out.overlap[k, kept]) ||
+                push!(different_interactions, (i, j))
             n_fuse += fuse
             n_forces += n
-            n > 0 && (n_many += _n_regions_many_points(floes, i, j))
+            n > 0 && (n_many += count(((_, m),) -> _many_points(m), _regions_and_points(floes, i, j)))
         end
-        @test same_rows
-        @test same_interactions
+        @test isempty(different_rows)
+        @test isempty(different_interactions)
         # The test covers floes that fuse, many forces, and regions with many intersections
         @test n_fuse > 3
         @test n_forces > 50
@@ -164,15 +169,13 @@ points, and some steps of the clipping, in Float64.
         Δ_two, Δ_many = Float64[], Float64[]
         for (k, (i, j)) in enumerate(pairs)
             results64[k][1] > 0 || continue
-            ipoints = Subzero.get_intersection_points(floes64.poly[i], floes64.poly[j])
-            regions = Subzero.intersect_polys(floes64.poly[i], floes64.poly[j], Float64)
+            regions = _regions_and_points(floes64, i, j)
             for r in 1:results64[k][1]
                 f64, f32 = out64.force[k, r, :], Float64.(out32.force[k, r, :])
                 Δ = iszero(f64) ? (iszero(f32) ? 0.0 : Inf) : hypot((f32 .- f64)...) / hypot(f64...)
                 # the region of this force: the one with its area
-                region = regions[argmin([abs(Subzero.area_poly(x, Float64) - out64.overlap[k, r])
-                    for x in regions])]
-                m = length(Subzero.which_vertices_match_points(ipoints, region))
+                _, m = regions[argmin([abs(Subzero.area_poly(x, Float64) - out64.overlap[k, r])
+                    for (x, _) in regions])]
                 push!(m == 2 ? Δ_two : Δ_many, Δ)
             end
         end
@@ -188,25 +191,21 @@ points, and some steps of the clipping, in Float64.
         FT = Float64
         floes = _collision_test_floes(FT)
         fwf = Subzero.FixedWidthFloes(floes)
-        n_tested, same = 0, true
-        for (i, j) in _test_pairs(length(floes))
-            ipoints = Subzero.get_intersection_points(floes.poly[i], floes.poly[j])
-            length(ipoints) >= 2 || continue
-            for region in Subzero.intersect_polys(floes.poly[i], floes.poly[j], FT)
-                m = length(Subzero.which_vertices_match_points(ipoints, region))
-                (m == 0 || m == 2) && continue
-                cpu_dir = zeros(FT, 2)
-                cpu_Δl = Subzero._many_intersect_normal_force!(FT, cpu_dir, region,
-                    floes.poly[i], FT(1e6))
-                ring = [(GI.x(p), GI.y(p)) for p in GI.getpoint(GI.getexterior(region))][1:end-1]
-                _, (dev_region,) = _array_polys([ring])
-                Δl, dir = Subzero._many_intersect_normal_force(FT, (zero(FT), zero(FT)),
-                    dev_region, Subzero._floe_poly(fwf, i), FT(1e6))
-                same &= isequal((Δl, dir), (cpu_Δl, (cpu_dir[1], cpu_dir[2])))
-                n_tested += 1
-            end
+        # pairs with a region whose Δl or direction differs from the CPU function's
+        n_tested, different = 0, Tuple{Int, Int}[]
+        for (i, j) in _test_pairs(length(floes)), (region, m) in _regions_and_points(floes, i, j)
+            _many_points(m) || continue
+            cpu_dir = zeros(FT, 2)
+            cpu_Δl = Subzero._many_intersect_normal_force!(FT, cpu_dir, region, floes.poly[i],
+                FT(1e6))
+            ring = [(GI.x(p), GI.y(p)) for p in GI.getpoint(GI.getexterior(region))][1:end-1]
+            _, (dev_region,) = _array_polys([ring])
+            Δl, dir = Subzero._many_intersect_normal_force(FT, dev_region,
+                Subzero._floe_poly(fwf, i), FT(1e6))
+            isequal((Δl, dir), (cpu_Δl, (cpu_dir[1], cpu_dir[2]))) || push!(different, (i, j))
+            n_tested += 1
         end
-        @test same
+        @test isempty(different)
         @test n_tested > 10
     end
 
@@ -295,11 +294,10 @@ points, and some steps of the clipping, in Float64.
         _gog_launch!(_pair_forces_kernel!, backend, npairs, Subzero.adapt(backend, fwf),
             Subzero.adapt(backend, pairs), dev..., consts, Δt, max_overlap)
         got = Subzero.adapt(Array, dev)
-        @test got[3] == ref[3]
-        @test all(1:npairs) do k
-            n = ref[3][k, 1]
-            isequal(_device_rows(got[2], k, n), _device_rows(ref[2], k, n))
-        end
+        # pairs whose results differ from those on the CPU without a kernel
+        different = [Tuple(pairs[k, :]) for k in 1:npairs if got[3][k, :] != ref[3][k, :] ||
+            !isequal(_device_rows(got[2], k, ref[3][k, 1]), _device_rows(ref[2], k, ref[3][k, 1]))]
+        @test isempty(different)
         @test sum(ref[3][:, 1]) > 50
     end
 end
