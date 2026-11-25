@@ -106,6 +106,8 @@ struct dev_Ocean{FT<:AbstractFloat, M<:AbstractArray{FT, 2}, MI<:AbstractArray{I
     scells_τx::M
     scells_τy::M
     scells_npoints::MI
+    scells_area::M # [i, k]: area of floe i (shifted) in its k-th cell
+    scells_key::VI # length B: sort key per slot, typemax(Int) if unused
     τx::M
     τy::M
     si_frac::M
