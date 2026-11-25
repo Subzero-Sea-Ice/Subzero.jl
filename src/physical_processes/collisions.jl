@@ -360,8 +360,8 @@ end
 Collision forces between pairs of floes in a `FixedWidthFloes`, one pair at a time, so that a
 GPU kernel can compute many pairs at once. The functions write their results to buffers with
 one row per pair (`PairForces`), using scratch space with one row per pair (a
-`CollisionWorkspace`), instead of adding them to the floes' interactions. They take the
-polygons as `GOG.ArrayPolygon`s, so that they work for floes and domain elements alike.
+`CollisionWorkspace`), so that the results of all pairs can be combined afterwards. They take
+the polygons as `GOG.ArrayPolygon`s, so that they work for both floes and domain elements.
 =#
 
 #=
@@ -664,8 +664,8 @@ end
 The collision forces on floe i from floe j: a normal force and friction for each region
 where they overlap enough. They are written to row `ws.k` of `out` (see `PairForces`),
 using row `ws.k` of `ws` (see `CollisionWorkspace`), so that a kernel can compute many pairs
-at once; floe i's interactions aren't changed. `max_overlap` is the fraction of either
-floe's area that the floes can overlap before they should fuse.
+at once. The `floes` are only read, not modified. `max_overlap` is the fraction of either floe's area that
+the floes can overlap before they should fuse.
 
 Returns the number of forces n and whether the floes should fuse (then n is 0), or a
 negative code and `false` if the workspace is too small (`GOG.CLIP_TOO_SMALL`) or the
