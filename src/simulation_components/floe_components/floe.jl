@@ -83,7 +83,6 @@ struct FixedWidthFloes{
     IT2<:AbstractArray{Int32, 2},
     IT1<:AbstractArray{Int32, 1},
     UT1<:AbstractArray{UInt8, 1},
-    UTt<:AbstractArray{StatusTag, 1}
 }
     # Number of floes in use
     n_floes::Int
@@ -204,10 +203,10 @@ function FixedWidthFloes(
         padded(floes.height),
         padded(floes.mass),
         padded(floes.moment),
+        padded(floes.rmax),
         n_subfloe_points,
         x_subfloe_points,
         y_subfloe_points,
-        padded(floes.rmax),
         padded(floes.α),
         padded(floes.u),
         padded(floes.v),
@@ -235,8 +234,6 @@ function FixedWidthFloes(
         num_ghosts,
         ghosts,
         zeros(UInt8, capacity),
-        # StatusTag has no zero value, so spare rows are `active`
-        copyto!(fill(active, capacity), StatusTag[s.tag for s in floes.status]),
     )
 end
 
@@ -297,7 +294,7 @@ function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedW
         floes.stress_accum[i] .= @view fwf.stress_accum[i, :, :]
         floes.stress_instant[i] .= @view fwf.stress_instant[i, :, :]
         floes.strain[i] .= @view fwf.strain[i, :, :]
-        floes.status[i].tag = fwf.tag[i]
+        floes.status[i].tag = StatusTag(fwf.status[i])
     end
     @views begin
         floes.height .= fwf.height[1:n]

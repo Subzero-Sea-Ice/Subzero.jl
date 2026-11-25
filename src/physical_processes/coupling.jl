@@ -514,7 +514,7 @@ function one_way_coupling(
         grid_idx,
     )
     if npoints == 0
-        floes.tag[i] = remove
+        floes.status[i] = Int32(remove)
     else
         # Add coriolis stress to total stress - same for every point
         xcoriolis = (floes.mass[i]/floes.area[i]) * consts.f * floes.v[i]
