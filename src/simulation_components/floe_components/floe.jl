@@ -8,12 +8,15 @@ const FLOE_DEF = "`floe::Floe`: singular floe within the simulation"
     # Physical Properties -------------------------------------------------
     poly::Polys{FT}         # polygon that represents the floe's shape
     centroid::Vector{FT}    # center of mass of floe (might not be in floe!)
+    coords::PolyVec{FT}     # floe coordinates
     height::FT              # floe height (m)
     area::FT                # floe area (m^2)
     mass::FT                # floe mass (kg)
     rmax::FT                # distance of vertix farthest from centroid (m)
     moment::FT              # mass moment of intertia
     angles::Vector{FT}      # interior angles of floe in degrees
+    bonds::Vector{Int} = Vector{Int}()     # Indices of neighboring floes
+    bond_break_mode :: Vector{Int} = Vector{Int}()  
     # Monte Carlo Points ---------------------------------------------------
     x_subfloe_points::Vector{FT}        # x-coordinates for integration with ocean/atmos centered at origin
     y_subfloe_points::Vector{FT}        # y-coordinates for integration with ocean/atmos centered at origin
@@ -35,12 +38,29 @@ const FLOE_DEF = "`floe::Floe`: singular floe within the simulation"
     # Forces/Collisions ----------------------------------------------------
     fxOA::FT = 0.0          # force from ocean and atmos in x direction
     fyOA::FT = 0.0          # force from ocean and atmos in y direction
+    fxA::FT = 0.0           # force from atmos in x direction
+    fyA::FT = 0.0           # force from atmos in y direction
+    fxO::FT = 0.0           # force from ocean in x direction
+    fyO::FT = 0.0           # force from ocean in y direction
+    fxP::FT = 0.0           # force from ocean pressure gradient in x direction
+    fyP::FT = 0.0           # force from ocean pressure gradient in y direction
+    fxC::FT = 0.0           # force from coriolis in x direction
+    fyC::FT = 0.0           # force from coriolis in y direction
     trqOA::FT = 0.0         # torque from ocean and Atmos
     hflx_factor::FT = 0.0   # heat flux factor can be multiplied by floe height
                             #   to get the heatflux
     overarea::FT = 0.0      # total overlap with other floe
     collision_force::Matrix{FT} = zeros(1, 2)
     collision_trq::FT = 0.0
+    bond_force::Matrix{FT} = zeros(1, 2)  # bond force aggregate
+    bond_trq::FT = 0.0                    # bond torque aggregate
+    ind_bond_force_xy::Vector{Vector{FT}} = Vector{Vector{FT}}()
+    ind_bond_force_nt::Vector{Vector{FT}} = Vector{Vector{FT}}() 
+    ind_bond_stiff_nt::Vector{Vector{FT}} = Vector{Vector{FT}}()
+    ind_bond_normal_old::Vector{Vector{FT}} = Vector{Vector{FT}}()
+    ind_bond_bm::Vector{FT} = Vector{FT}() 
+    ind_bond_prop::Vector{Vector{FT}} = Vector{Vector{FT}}()
+    stress_bond::Matrix{FT} = zeros(2, 2) # stress in a floe due to bonds
     interactions::Matrix{FT} = zeros(0, 7)
     num_inters::Int = 0
     stress_accum::Matrix{FT} = zeros(2, 2)
@@ -211,6 +231,22 @@ The fifth catagory is **timesteping values**. These are values from the previous
 | p_dαdt                | previous timestep angular-velocity in [rad/s] | Float64 or Float32|
 | p_dξdt                | previous timestep time angular acceleration in [rad/s^2] | Float64 or Float32|
 """
+
+# in floe.jl (or floe_utils.jl)
+function _init_bond_fields(::Type{FT}, nedges::Int) where FT
+    return (
+        bonds               = zeros(Int, nedges),
+        bond_break_mode     = zeros(Int, nedges),
+        ind_bond_force_xy   = [zeros(FT, 2) for _ in 1:nedges],
+        ind_bond_force_nt   = [zeros(FT, 2) for _ in 1:nedges],
+        ind_bond_stiff_nt   = [zeros(FT, 2) for _ in 1:nedges],
+        ind_bond_normal_old = [zeros(FT, 2) for _ in 1:nedges],
+        ind_bond_bm         = zeros(FT, nedges),
+        ind_bond_prop       = [zeros(FT, 3) for _ in 1:nedges],
+    )
+end
+
+
 function Floe{FT}(shape, height; floe_settings = FloeSettings(), rng = Xoshiro(), kwargs...) where FT
     poly = _correct_floe_poly(FT, shape)
     # Floe physical properties
@@ -220,11 +256,15 @@ function Floe{FT}(shape, height; floe_settings = FloeSettings(), rng = Xoshiro()
     moment = _calc_moment_inertia(FT, poly, centroid, height; ρi = floe_settings.ρi)
     rmax = _calc_max_radius(poly, centroid, FT)
     angles = angles_poly(poly, FT)
+    coords = find_poly_coords(poly, FT)
+    nedges = length(coords[1]) - 1          # exterior ring, closing point repeated
+    bond_fields = _init_bond_fields(FT, nedges)
     # Generate Monte Carlo points
     status = Status()
     x_subfloe_points, y_subfloe_points, status = generate_subfloe_points(floe_settings.subfloe_point_generator, poly, centroid, area, status, rng)
     # Generate status
-    return Floe{FT}(; poly, height, centroid, area, mass, rmax, moment, angles, status, x_subfloe_points, y_subfloe_points, kwargs...)
+    return Floe{FT}(; poly, height, centroid, coords, area, mass, rmax, moment, angles, status,
+                x_subfloe_points, y_subfloe_points, bond_fields..., kwargs...)
 end
 
 # if no type is provided, it will default to Float64 - not a argument as this should not be user facing!

@@ -1,6 +1,7 @@
 module Subzero
 
 # Use the README as the module docs
+
 @doc let
     path = joinpath(dirname(@__DIR__), "README.md")
     include_dependency(path)
@@ -11,6 +12,7 @@ import Base.@kwdef # this is being exported as of version 1.9
 import Base.show
 import GeometryOps as GO
 import GeometryOps.GeoInterface as GI
+import GeometryBasics as GB
 import StaticArrays as SA
 using CoordinateTransformations, Dates, Extents, 
     Interpolations, JLD2, LinearAlgebra, Logging, Measures, NCDatasets,
@@ -62,9 +64,11 @@ include("simulation_components/constants.jl")
 include("simulation_components/simulation.jl")
 # Physical Processes
 include("physical_processes/fractures.jl")
+include("physical_processes/bond_fractures.jl")
 include("physical_processes/update_floe.jl")
 include("physical_processes/coupling.jl")
 include("physical_processes/collisions.jl")
+include("physical_processes/bonds.jl")
 include("physical_processes/simplification.jl")
 include("physical_processes/ridge_raft.jl")
 include("physical_processes/welding.jl")

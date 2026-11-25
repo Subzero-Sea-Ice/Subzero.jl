@@ -65,7 +65,7 @@ end
 GI.crstrait(::Polys) = GI.ProjectedTrait()
 GI.crstrait(::MultiPolys) = GI.ProjectedTrait()
 GI.crstrait(::StaticQuadrilateral) = GI.ProjectedTrait()
-
+find_poly_coords(poly, ::Type{FT}) where {FT<:AbstractFloat} = GI.coordinates(poly)
 # find the intersection of two polygons and return as a list of polygons
 intersect_polys(p1, p2, ::Type{FT} = Float64; kwargs...) where FT = GO.intersection(p1, p2, FT; target = GI.PolygonTrait(), fix_multipoly = nothing)
 # find the difference of two polygons and return as a list of polygons
@@ -214,7 +214,7 @@ Outputs:
         user will be warned. 
 =#
 function _generate_voronoi_coords(::Type{FT}, desired_points::Int, Δx, Δy, xmin, ymin,
-    domain_poly, rng, min_to_warn::Int; max_tries::Int = 10,
+    domain_poly, rng, min_to_warn::Int; max_tries::Int = 10, lloyd_iters::Int = 0,
 ) where {FT <: AbstractFloat}
     xpoints = Vector{Float64}()
     ypoints = Vector{Float64}()
@@ -251,9 +251,16 @@ function _generate_voronoi_coords(::Type{FT}, desired_points::Int, Δx, Δy, xmi
         clip_vertices = (1, 2, 3, 4, 1)
         clip_polygon = (clip_points, clip_vertices)
         try
-            GO.voronoi(tuple.(xpoints, ypoints), FT; clip_polygon)
-        catch
-            @info "Voronoi failed - floe to fracture likely really small." tstep = tstep
+            pts = tuple.(FT.(xpoints), FT.(ypoints))
+            cells = GO.voronoi(pts, FT; clip_polygon)
+            # Lloyd relaxation: move each site to the centroid of its cell, then re-tessellate
+            for _ in 1:lloyd_iters
+                pts = [Tuple(centroid_poly(p, FT)) for p in cells]
+                cells = GO.voronoi(pts, FT; clip_polygon)
+            end
+            cells
+        catch err
+            @info "Voronoi failed - floe to fracture likely really small." exception = err
             Polys{FT}[]
         end
     else

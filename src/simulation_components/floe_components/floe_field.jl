@@ -194,6 +194,8 @@ function _initialize_floe_field!(
             floe_settings, rng,
         )
     end
+    floe_arr.id .= range(1, length(floe_arr))
+    calculate_bonds!(floe_arr)
 end
 
 const FLOE_CONC_STR = "Concentrations per cell in a VoronoiTesselationFieldGenerator must be between 0 and 1. Values less than zero will be set to 0 and those greater than 1 will be set to 1."
@@ -204,13 +206,18 @@ struct VoronoiTesselationFieldGenerator{FT} <: AbstractFloeFieldGenerator{FT}
     concentrations::Matrix{FT}
     hmean::FT
     Δh::FT
+    lloyd_iters::Int
 
-    function VoronoiTesselationFieldGenerator{FT}(nfloes, concentrations, hmean, Δh) where FT
+    function VoronoiTesselationFieldGenerator{FT}(nfloes, concentrations, hmean, Δh, lloyd_iters = 0) where FT
         if !all(0 .<= concentrations .<= 1)
             @warn FLOE_CONC_STR
         end
+        if lloyd_iters < 0
+            @warn "lloyd_iters must be non-negative. Setting to 0."
+            lloyd_iters = 0
+        end
         clamped_concentrations = clamp.(concentrations, 0, 1)
-        new{FT}(nfloes, clamped_concentrations, hmean, Δh)
+        new{FT}(nfloes, clamped_concentrations, hmean, Δh, lloyd_iters)
     end
 end
 
@@ -266,7 +273,8 @@ VoronoiTesselationFieldGenerator:
   ∟Height range: 0.25
 ```
 """
-VoronoiTesselationFieldGenerator(::Type{FT} = Float64; nfloes, concentrations, hmean, Δh, kwargs...) where FT = VoronoiTesselationFieldGenerator{FT}(nfloes, concentrations[:, :], hmean, Δh)
+VoronoiTesselationFieldGenerator(::Type{FT} = Float64; nfloes, concentrations, hmean, Δh, lloyd_iters = 0, kwargs...) where FT =
+    VoronoiTesselationFieldGenerator{FT}(nfloes, concentrations[:, :], hmean, Δh, lloyd_iters)
 
 # Pretty printing for VoronoiTesselationFieldGenerator
 function Base.show(io::IO, generator::VoronoiTesselationFieldGenerator{FT}; digits = 5) where FT
@@ -275,11 +283,13 @@ function Base.show(io::IO, generator::VoronoiTesselationFieldGenerator{FT}; digi
     concentration_summary = "Requested concentrations $(generator.concentrations)"
     mean_height_summary = "Mean height: $(round(mean(generator.hmean); digits))"
     variance_height_summary = "Height range: $(round(mean(generator.Δh); digits))"
+    lloyd_summary = "Lloyd iterations: $(generator.lloyd_iters)"
     print(io, overall_summary, "\n",
         "  ⊢", total_number_summary, "\n",
         "  ⊢", concentration_summary, "\n",
         "  ⊢", mean_height_summary, "\n",
-        "  ∟", variance_height_summary)
+        "  ∟", variance_height_summary, "\n",
+        "  ∟", lloyd_summary)
 end
 
 #=
@@ -292,7 +302,7 @@ function initialize_floe_field(
     ::Type{FT}, nfloes::Int, concentrations, domain, hmean, Δh;
     kwargs...
 ) where FT
-    generator = VoronoiTesselationFieldGenerator(FT; nfloes, concentrations, hmean, Δh)
+    generator = VoronoiTesselationFieldGenerator(FT; nfloes, concentrations, hmean, Δh, lloyd_iters)
     return initialize_floe_field(FT; generator, domain, kwargs...)
 end
 
@@ -350,7 +360,7 @@ function _initialize_floe_field!(
                 # Generate coords with voronoi tesselation that fill the whole open space
                 ncells = ceil(Int, generator.nfloes * ((open_area) / total_covered_water_area))
                 floe_poly_list = _generate_voronoi_coords(FT, ncells, collen, rowlen, xmin, ymin,
-                    open_cell_mpoly, rng, ncells,
+                    open_cell_mpoly, rng, ncells; lloyd_iters = generator.lloyd_iters,
                 )
                 # determine which polygons to keep to meet concentration c
                 if !isempty(floe_poly_list)
@@ -380,6 +390,9 @@ function _initialize_floe_field!(
             end
         end
     end
+    # Initialize floe IDs
+    floe_arr.id .= range(1, length(floe_arr))
+    calculate_bonds!(floe_arr)
 end
 
 function Base.show(io::IO, floes::StructArray{Floe{FT}}; digits = 5) where FT

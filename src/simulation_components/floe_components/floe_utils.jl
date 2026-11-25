@@ -54,6 +54,7 @@ function _translate_floe!(::Type{FT}, floe, Δx, Δy) where FT
     floe.centroid[1] += Δx
     floe.centroid[2] += Δy
     floe.poly = _translate_poly(FT, floe.poly, Δx, Δy)
+    floe.coords = find_poly_coords(floe.poly, FT)
     return
 end
 
@@ -65,6 +66,7 @@ function _move_floe!(::Type{FT}, floe, Δx, Δy, Δα) where FT
     floe.centroid[2] += Δy
     # move polygon
     floe.poly = _move_poly(FT, floe.poly, Δx, Δy, Δα, cx, cy)::Polys{FT}
+    floe.coords = find_poly_coords(floe.poly, FT)
     return 
 end
 
@@ -79,12 +81,15 @@ function deepcopy_floe(floe::LazyRow{Floe{FT}}) where {FT}
     f = Floe{FT}(
         poly = poly,
         centroid = copy(floe.centroid),
+        coords = find_poly_coords(poly, FT),
         height = floe.height,
         area = floe.area,
         mass = floe.mass,
         rmax = floe.rmax,
         moment = floe.moment,
         angles = copy(floe.angles),
+        bonds = copy(floe.bonds),
+        bond_break_mode = copy(floe.bond_break_mode),
         x_subfloe_points = copy(floe.x_subfloe_points),
         y_subfloe_points = copy(floe.y_subfloe_points),
         α = floe.α,
@@ -98,11 +103,28 @@ function deepcopy_floe(floe::LazyRow{Floe{FT}}) where {FT}
         ghosts = copy(floe.ghosts),
         fxOA= floe.fxOA,
         fyOA = floe.fyOA,
+        fxA = floe.fxA,
+        fyA = floe.fyA,
+        fxO = floe.fxO,
+        fyO = floe.fyO,
+        fxP = floe.fxP,
+        fyP = floe.fyP,
+        fxC = floe.fxC,
+        fyC = floe.fyC,
         trqOA = floe.trqOA,
         hflx_factor = floe.hflx_factor,
         overarea = floe.overarea,
         collision_force = copy(floe.collision_force),
         collision_trq = floe.collision_trq,
+        bond_force = copy(floe.bond_force),
+        bond_trq = floe.bond_trq,
+        stress_bond = copy(floe.stress_bond),
+        ind_bond_force_nt = deepcopy(floe.ind_bond_force_nt),
+        ind_bond_force_xy = deepcopy(floe.ind_bond_force_xy),
+        ind_bond_stiff_nt = deepcopy(floe.ind_bond_stiff_nt),
+        ind_bond_normal_old = deepcopy(floe.ind_bond_normal_old),
+        ind_bond_bm = copy(floe.ind_bond_bm),
+        ind_bond_prop = deepcopy(floe.ind_bond_prop),
         stress_accum = copy(floe.stress_accum),
         stress_instant = copy(floe.stress_instant),
         strain = copy(floe.strain),
@@ -159,10 +181,86 @@ function _correct_floe_poly(::Type{FT}, coords::PolyVec) where FT
     poly = make_polygon(coords, FT)
     return _correct_floe_poly(FT, poly)
 end
-
+function signed_area_ring(ring)   # ring: vector of (x, y) or [x, y]
+    s = 0.0
+    for i in 1:length(ring)-1     # closing point repeats the first, so stop one early
+        s += ring[i][1] * ring[i+1][2] - ring[i+1][1] * ring[i][2]
+    end
+    return s / 2
+end
 # ensure provided polygon points are of the right type and that the polygon has no holes
 function _correct_floe_poly(::Type{FT}, poly::Polys) where FT
     poly = get_tuple_poly(poly, FT)
     rmholes!(poly)
+    # enforce CCW on the exterior ring
+    coords = find_poly_coords(poly, FT)
+    if signed_area_ring(coords[1]) < 0
+        reverse!(coords[1])       # closed ring: reversing the whole thing keeps first == last
+        poly = make_polygon(coords, FT)
+    end
     return poly
+end
+
+struct BoundingBox
+    xmin::Float64
+    xmax::Float64
+    ymin::Float64
+    ymax::Float64
+end
+
+function compute_bbox(poly_coords::Vector{Vector{Float64}})
+    xs = [c[1] for c in poly_coords]
+    ys = [c[2] for c in poly_coords]
+    BoundingBox(minimum(xs), maximum(xs), minimum(ys), maximum(ys))
+end
+
+function bbox_intersect(b1::BoundingBox, b2::BoundingBox; atol=1e-8)
+    return !(
+        (b1.xmax <= b2.xmin - atol) ||  (b1.xmin >= b2.xmax + atol) ||
+        (b1.ymax <= b2.ymin - atol) ||  (b1.ymin >= b2.ymax + atol))
+end
+
+# Do two edges (a→b on floe i, c→d on floe j) coincide within tolerance?
+# With both floes CCW, a shared edge is traversed in opposite directions: a≈d and b≈c.
+@inline function _edges_match(a, b, c, d, rtol)
+    tol = rtol * 0.5 * (hypot(b[1] - a[1], b[2] - a[2]) + hypot(d[1] - c[1], d[2] - c[2]))
+    return abs(a[1] - d[1]) ≤ tol && abs(a[2] - d[2]) ≤ tol &&
+           abs(b[1] - c[1]) ≤ tol && abs(b[2] - c[2]) ≤ tol
+end
+
+# Bond every pair of matching edges between floes i and j
+function _bond_shared_edges!(floe_arr, i, j, ring_i, ring_j, rtol)
+    bonds_i, bonds_j = floe_arr.bonds[i], floe_arr.bonds[j]
+    for ei in 1:length(ring_i) - 1
+        bonds_i[ei] != 0 && continue
+        a, b = ring_i[ei], ring_i[ei + 1]
+        for ej in 1:length(ring_j) - 1
+            bonds_j[ej] != 0 && continue
+            if _edges_match(a, b, ring_j[ej], ring_j[ej + 1], rtol)
+                bonds_i[ei] = floe_arr.id[j]
+                bonds_j[ej] = floe_arr.id[i]
+                break
+            end
+        end
+    end
+    return
+end
+
+function calculate_bonds!(floe_arr; rtol = 1e-3, bbox_atol = 1e-8)
+    n = length(floe_arr)
+    rings  = [floe_arr.coords[i][1] for i in 1:n]   # exterior rings, built once
+    bboxes = [compute_bbox(r) for r in rings]       # built once
+    foreach(b -> fill!(b, 0), floe_arr.bonds)       # start clean
+    # Sweep along x: only compare floes whose x-ranges overlap
+    order = sortperm(bboxes; by = b -> b.xmin)
+    for a in 1:n
+        i = order[a]
+        for b in a + 1:n
+            j = order[b]
+            bboxes[j].xmin > bboxes[i].xmax + bbox_atol && break   # all later floes are further right
+            bbox_intersect(bboxes[i], bboxes[j]; atol = bbox_atol) || continue
+            _bond_shared_edges!(floe_arr, i, j, rings[i], rings[j], rtol)
+        end
+    end
+    return floe_arr
 end

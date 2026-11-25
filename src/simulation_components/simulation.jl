@@ -58,13 +58,15 @@ Only keyword arguments are used!
     verbose::Bool = false                   # String output printed during run
     name::String = "sim"                    # Simulation name for printing/saving
     # Timesteps ----------------------------------------------------------------
-    Δt::Int                     # Simulation timestep (seconds)
-    nΔt::Int                    # Total timesteps simulation runs for
+    Δt::FT = 10                        # Simulation timestep (seconds)
+    nΔt::Int = 7500                     # Total timesteps simulation runs for
     # Physical Processes -------------------------------------------------------
-    floe_settings::FloeSettings{FT, PT, ST}
-    coupling_settings::CouplingSettings = CouplingSettings()
+    floe_settings::FloeSettings{FT, PT, ST} = FloeSettings()
+    coupling_settings::CouplingSettings{FT} = CouplingSettings()
     collision_settings::CollisionSettings{FT} = CollisionSettings()
-    fracture_settings::FractureSettings{CT} = FractureSettings()
+    bond_settings::BondSettings{FT} = BondSettings()
+    fracture_settings::FractureSettings{FT,CT} = FractureSettings()
+    bond_fracture_settings::Bond_FractureSettings{FT} = Bond_FractureSettings()
     simp_settings::SimplificationSettings{FT} = SimplificationSettings()
     ridgeraft_settings::RidgeRaftSettings{FT} = RidgeRaftSettings()
     weld_settings::WeldSettings{FT} = WeldSettings()
@@ -115,6 +117,18 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
                 spinlock,
             )
         end
+        # Bonds 
+        if sim.bond_settings.bonds_on
+            timestep_bonds!(
+                sim.model.floes,
+                sim.model.domain,
+                sim.consts,
+                sim.Δt,
+                sim.Δt*tstep,
+                sim.bond_settings,
+            )
+        end
+      
         pieces_buffer = StructArray{Floe{Float64}}(undef, 0)
         # Ridge and raft floes that meet overlap conditions
         if (
@@ -178,6 +192,14 @@ function timestep_sim!(sim, tstep, start_tstep = 0)
                     sim.floe_settings,
                     sim.Δt,
                 )
+        end
+        # Bond breakage
+        if sim.bond_settings.bonds_on 
+            bond_fracture_floes!(
+                sim.model.floes,
+                sim.bond_fracture_settings,
+                sim.bond_settings,
+            )
         end
 
         # Weld floes
