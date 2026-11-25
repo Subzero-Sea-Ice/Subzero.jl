@@ -540,10 +540,10 @@ function thermodynamic_growth!(floes::FixedWidthFloes, i)
 end
 
 # Update ice coordinates of floe i with velocities and rotation
-function update_ice_coordinates!(floes::FixedWidthFloes, i, Δt)
-    Δx = 1.5Δt*floes.u[i] - 0.5Δt*floes.p_dxdt[i]
-    Δy = 1.5Δt*floes.v[i] - 0.5Δt*floes.p_dydt[i]
-    Δα = 1.5Δt*floes.ξ[i] - 0.5Δt*floes.p_dαdt[i]
+function update_ice_coordinates!(floes::FixedWidthFloes{FT}, i, Δt) where FT
+    Δx = FT(1.5)*Δt*floes.u[i] - FT(0.5)*Δt*floes.p_dxdt[i]
+    Δy = FT(1.5)*Δt*floes.v[i] - FT(0.5)*Δt*floes.p_dydt[i]
+    Δα = FT(1.5)*Δt*floes.ξ[i] - FT(0.5)*Δt*floes.p_dαdt[i]
     floes.α[i] += Δα
 
     _move_floe!(floes, i, Δx, Δy, Δα)
@@ -574,14 +574,14 @@ function update_velocities!(floes::FixedWidthFloes{FT}, i, Δt, maximum_ξ) wher
         dudt = frac*dudt
         dvdt = frac*dvdt
     end
-    floes.u[i] += 1.5Δt*dudt-0.5Δt*floes.p_dudt[i]
-    floes.v[i] += 1.5Δt*dvdt-0.5Δt*floes.p_dvdt[i]
+    floes.u[i] += FT(1.5)*Δt*dudt-FT(0.5)*Δt*floes.p_dudt[i]
+    floes.v[i] += FT(1.5)*Δt*dvdt-FT(0.5)*Δt*floes.p_dvdt[i]
     floes.p_dudt[i] = dudt
     floes.p_dvdt[i] = dvdt
 
     dξdt = (floes.trqOA[i] + floes.collision_trq[i])/floes.moment[i]
     dξdt = frac*dξdt
-    ξ = floes.ξ[i] + 1.5Δt*dξdt-0.5Δt*floes.p_dξdt[i]
+    ξ = floes.ξ[i] + FT(1.5)*Δt*dξdt-FT(0.5)*Δt*floes.p_dξdt[i]
     if abs(ξ) > maximum_ξ
         floes.flags[i] |= FLAG_ξ_SHRUNK
         ξ = sign(ξ) * maximum_ξ

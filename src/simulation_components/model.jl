@@ -67,6 +67,24 @@ struct Model{FT, GT, DT, FLT}
     end
 end
 
+struct dev_Model{
+    G<:dev_RegRectilinearGrid,
+    O<:dev_Ocean,
+    A<:dev_Atmos,
+    D<:dev_Domain,
+}
+    grid::G
+    ocean::O
+    atmos::A
+    domain::D
+    #Floes are not implemented while porting the code to GPU
+    # floes::FixedWidthFloes
+end
+
+
+Adapt.@adapt_structure dev_Model
+
+
 """
     Model{FT, GT, DT, FLT} 
 

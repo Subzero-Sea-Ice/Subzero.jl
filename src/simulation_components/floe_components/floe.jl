@@ -60,14 +60,19 @@ end
 Floe fields stored as plain arrays so that they can be moved to the GPU with `adapt`.
 The first index of every array is the floe index. The arrays have room for
 `capacity(floes)` floes, of which the first `n_floes` are in use, so that the number of
-floes can change without allocating new arrays (see `set_n_floes`). The spare rows are zero
-until they are used. Ragged fields are padded:
+floes can change without allocating new arrays (see `set_n_floes`). The spare rows of new
+arrays are zero; rows that were in use keep their values when the number of floes goes down
+(e.g. in `remove_ghosts!`). Ragged fields are padded:
 - `poly[i, j, d]` is coordinate `d` of vertex `j` of floe `i`'s exterior ring, for
   `j in 1:n_points[i]` (the last vertex repeats the first); padding is zero.
 - `interactions[i, k, c]` is column `c` of interaction `k` of floe `i`, for
   `k in 1:num_inters[i]`; padding is zero.
+- `ghosts[i, k]` is the index of ghost `k` of floe `i`, for `k in 1:num_ghosts[i]`; padding
+  is zero. There are at least `MAX_GHOSTS` columns.
 - `collision_force[i, d]`, `stress_accum[i, r, c]`, `stress_instant[i, r, c]`, and
   `strain[i, r, c]` hold the floe's small vector/matrix fields.
+`status` is the tag of the floe's `Status` as an integer (`Int32(active)`, ...). Its
+`fuse_idx` isn't stored. Zero spare rows have status 0, which isn't a valid tag.
 `flags` is a per-floe bit field that kernels can set to report events to the host.
 =#
 struct FixedWidthFloes{
@@ -75,6 +80,7 @@ struct FixedWidthFloes{
     AT3<:AbstractArray{FT, 3},
     AT2<:AbstractArray{FT, 2},
     AT1<:AbstractArray{FT, 1},
+    IT2<:AbstractArray{Int32, 2},
     IT1<:AbstractArray{Int32, 1},
     UT1<:AbstractArray{UInt8, 1},
 }
@@ -88,6 +94,11 @@ struct FixedWidthFloes{
     height::AT1
     mass::AT1
     moment::AT1
+    rmax::AT1
+    #Monte Carlo points
+    subfloe_points::IT1
+    x_subfloe_points::AT2
+    y_subfloe_points::AT2
     # Velocity/orientation
     α::AT1
     u::AT1
@@ -113,9 +124,21 @@ struct FixedWidthFloes{
     p_dvdt::AT1
     p_dξdt::AT1
     p_dαdt::AT1
+    # Status and ghosts
+    status::IT1
+    ghost_id::IT1
+    num_ghosts::IT1
+    ghosts::IT2
     # Events reported by kernels
     flags::UT1
 end
+
+#=
+The most ghosts a floe can have. `add_ghosts!` gives a floe that crosses the east or west
+boundary one ghost. Then a floe that crosses the north or south boundary gets a ghost of
+itself and of each of its ghosts, so a floe in a corner has 3.
+=#
+const MAX_GHOSTS = 3
 
 Adapt.@adapt_structure FixedWidthFloes
 
@@ -136,6 +159,12 @@ function FixedWidthFloes(
     n_points = padded(Int32[GI.npoint(GI.getexterior(p)) for p in floes.poly])
     max_points = isempty(floes) ? 0 : Int(maximum(n_points))
     poly = zeros(FT, capacity, max_points, 2)
+
+    n_subfloe_points = padded(Int32[length(x) for x in floes.x_subfloe_points])
+    max_mc_points = isempty(floes) ? 0 : Int(maximum(n_subfloe_points))
+    x_subfloe_points = zeros(FT, capacity, max_mc_points)
+    y_subfloe_points = zeros(FT, capacity, max_mc_points)
+
     centroid = zeros(FT, capacity, 2)
     collision_force = zeros(FT, capacity, 2)
     num_inters = padded(Int32.(floes.num_inters))
@@ -144,7 +173,14 @@ function FixedWidthFloes(
     stress_accum = zeros(FT, capacity, 2, 2)
     stress_instant = zeros(FT, capacity, 2, 2)
     strain = zeros(FT, capacity, 2, 2)
+    num_ghosts = padded(Int32.(length.(floes.ghosts)))
+    max_ghosts = max(MAX_GHOSTS, isempty(floes) ? 0 : Int(maximum(num_ghosts)))
+    ghosts = zeros(Int32, capacity, max_ghosts)
     for i in 1:nfloes
+        n = n_subfloe_points[i]
+        x_subfloe_points[i, 1:n] .= floes.x_subfloe_points[i]
+        y_subfloe_points[i, 1:n] .= floes.y_subfloe_points[i]
+
         for (j, point) in enumerate(GI.getpoint(GI.getexterior(floes.poly[i])))
             poly[i, j, 1], poly[i, j, 2] = get_tuple_point(point, FT)
         end
@@ -156,6 +192,7 @@ function FixedWidthFloes(
         stress_accum[i, :, :] .= floes.stress_accum[i]
         stress_instant[i, :, :] .= floes.stress_instant[i]
         strain[i, :, :] .= floes.strain[i]
+        ghosts[i, 1:num_ghosts[i]] .= floes.ghosts[i]
     end
     return FixedWidthFloes(
         nfloes,
@@ -166,6 +203,10 @@ function FixedWidthFloes(
         padded(floes.height),
         padded(floes.mass),
         padded(floes.moment),
+        padded(floes.rmax),
+        n_subfloe_points,
+        x_subfloe_points,
+        y_subfloe_points,
         padded(floes.α),
         padded(floes.u),
         padded(floes.v),
@@ -188,6 +229,10 @@ function FixedWidthFloes(
         padded(floes.p_dvdt),
         padded(floes.p_dξdt),
         padded(floes.p_dαdt),
+        padded(Int32[Int32(s.tag) for s in floes.status]),
+        padded(Int32.(floes.ghost_id)),
+        num_ghosts,
+        ghosts,
         zeros(UInt8, capacity),
     )
 end
@@ -211,6 +256,26 @@ function set_n_floes(floes::FixedWidthFloes, n)
 end
 
 #=
+A copy of `floes` with room for `capacity` floes, on the same device. The floes in use are
+copied and the new spare rows are zero. This allocates new arrays, so only use it when
+`floes` is full.
+=#
+function with_capacity(floes::FixedWidthFloes, capacity)
+    n = floes.n_floes
+    capacity >= n || throw(ArgumentError(
+        "capacity ($capacity) is smaller than the number of floes in use ($n)"))
+    fields = ntuple(Val(fieldcount(typeof(floes)))) do k
+        field = getfield(floes, k)
+        field isa AbstractArray || return field
+        new = similar(field, (capacity, size(field)[2:end]...))
+        fill!(new, 0)
+        selectdim(new, 1, 1:n) .= selectdim(field, 1, 1:n)
+        return new
+    end
+    return FixedWidthFloes(fields...)
+end
+
+#=
 Copy the fields that `timestep_floe_properties!` changes from `fixed_width_floes` back into
 `floes`. `fixed_width_floes` must be on the CPU (use `adapt(Array, fixed_width_floes)`), and
 have as many floes in use as `floes` has floes.
@@ -229,6 +294,7 @@ function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedW
         floes.stress_accum[i] .= @view fwf.stress_accum[i, :, :]
         floes.stress_instant[i] .= @view fwf.stress_instant[i, :, :]
         floes.strain[i] .= @view fwf.strain[i, :, :]
+        floes.status[i].tag = StatusTag(fwf.status[i])
     end
     @views begin
         floes.height .= fwf.height[1:n]
@@ -238,6 +304,10 @@ function update_floes!(floes::StructArray{<:Floe{FT}}, fixed_width_floes::FixedW
         floes.u .= fwf.u[1:n]
         floes.v .= fwf.v[1:n]
         floes.ξ .= fwf.ξ[1:n]
+        floes.fxOA .= fwf.fxOA[1:n]
+        floes.fyOA .= fwf.fyOA[1:n]
+        floes.trqOA .= fwf.trqOA[1:n]
+        floes.hflx_factor .= fwf.hflx_factor[1:n]
         floes.p_dxdt .= fwf.p_dxdt[1:n]
         floes.p_dydt .= fwf.p_dydt[1:n]
         floes.p_dudt .= fwf.p_dudt[1:n]

@@ -955,3 +955,327 @@ function add_ghosts!(
     add_floe_ghosts!(elems, domain.north, domain.south)
     return
 end
+
+#=
+Adding ghosts to floes on a device (`FixedWidthFloes`).
+
+The ghosts are added after the floes in use, in the order of their parents: first the ghosts
+through the east/west boundaries, then those through the north/south boundaries, which also
+makes ghosts of the first ones. The ghosts are added after the currently active floes.
+
+Each pass:
+1. `_count_ghosts!`: per floe, the number of ghosts it needs.
+2. A scan of these counts, which gives each floe the rows of its new ghosts.
+3. `_plan_ghosts!`: per floe, the source row, ghost id, and shift of each of its ghosts.
+4. `_ghost_values_kernel!`: one thread per value of each ghost, which copies (and shifts)
+   that value from the source row. One thread per floe would copy a few hundred values one
+   after another, which is slow on a GPU, where there are often only a few hundred ghosts.
+5. `_link_ghosts!`: per floe, add its ghosts to its list of ghosts, and swap places with its
+   last ghost if its centroid is outside of the domain.
+=#
+
+#=
+Scratch memory for adding ghosts to floes with the capacity of `floes`, on the same device:
+the number of new ghosts per floe, its inclusive scan, AcceleratedKernels' scratch memory
+for the scan, a host buffer for the total, and per new ghost its source row, ghost id, and
+shift. Make it once and pass it to `add_ghosts!` so that it doesn't allocate device memory.
+=#
+struct GhostWorkspace{IT1, AT1, W}
+    counts::IT1
+    offsets::IT1
+    scan::W
+    total::Vector{Int32}
+    sources::IT1
+    ghost_ids::IT1
+    shifts::AT1
+end
+
+function GhostWorkspace(floes::FixedWidthFloes)
+    counts = similar(floes.num_ghosts)
+    offsets = similar(counts)
+    scan = AK.workspace(AK.accumulate!, +, offsets, counts)
+    return GhostWorkspace(counts, offsets, scan, zeros(Int32, 1), similar(counts),
+        similar(counts), similar(floes.rmax))
+end
+
+"""
+    add_ghosts!(floes::FixedWidthFloes, domain, backend; workspace = nothing)
+
+Add ghosts of the floes that pass through periodic boundaries of `domain` on `backend`.
+The ghosts are added after the floes in use, and their indices are stored in the `ghosts`
+of their parents.
+
+Returns the floes with the ghosts in use (see `set_n_floes`) and the workspace that fits
+them (`nothing` if none was given and none was needed). `workspace` is a `GhostWorkspace`
+for the capacity of `floes`, made if not given. This waits for the kernels to finish,
+because the number of ghosts is needed on the host.
+
+The returned floes share the arrays of `floes` unless they had to be made larger (see
+`with_capacity`). Either way, replace `floes` with the returned floes, and pass the returned
+workspace to the next call, so that it isn't made again. If the arrays are made larger in
+the north/south pass, the arrays of `floes` are left half-updated, with only the east/west
+ghosts.
+
+The floes must not have ghosts yet (call `remove_ghosts!` first): `ghosts` has room for
+`MAX_GHOSTS` ghosts per floe, which is the most a floe without ghosts can get, and the kernels
+don't check it.
+"""
+function add_ghosts!(floes::FixedWidthFloes, domain::Domain, backend; workspace = nothing)
+    floes, workspace = add_floe_ghosts!(floes, domain.east, domain.west, backend, workspace)
+    return add_floe_ghosts!(floes, domain.north, domain.south, backend, workspace)
+end
+
+# No ghosts through boundaries that aren't periodic
+add_floe_ghosts!(floes::FixedWidthFloes{FT}, ::AbstractBoundary, ::AbstractBoundary, backend,
+    workspace) where FT = floes, workspace
+
+#=
+Add the ghosts through `max_boundary` (north or east) and `min_boundary` (south or west).
+Writes into `floes`, but returns the floes with the ghosts in use, which may have new,
+larger arrays (see `with_capacity`), and the workspace that fits them.
+=#
+function add_floe_ghosts!(
+    floes::FixedWidthFloes{FT},
+    max_boundary::PeriodicBoundary,
+    min_boundary::PeriodicBoundary,
+    backend,
+    workspace,
+) where FT
+    n = floes.n_floes
+    n == 0 && return floes, workspace
+    axis = _ghost_axis(max_boundary)
+    min_val, max_val = min_boundary.val, max_boundary.val
+    min_ext = GI.extent(min_boundary.poly)
+    max_ext = GI.extent(max_boundary.poly)
+    workspace = _ghost_workspace(workspace, floes)
+    total = _count_ghosts(floes, axis, min_val, max_val, min_ext, max_ext, backend, workspace)
+    total == 0 && return floes, workspace
+    if n + total > capacity(floes)
+        # rare: make room for the ghosts and 25% more, and count again with a new workspace
+        floes = with_capacity(floes, n + total + cld(n + total, 4))
+        workspace = GhostWorkspace(floes)
+        _count_ghosts(floes, axis, min_val, max_val, min_ext, max_ext, backend, workspace)
+    end
+    L = max_val - min_val
+    ws = workspace
+    launch_per_floe!(_plan_ghosts!, backend, floes, ws.counts, ws.offsets, ws.sources,
+        ws.ghost_ids, ws.shifts, axis, L, min_val)
+    _ghost_values_kernel!(backend, (256, 1))(floes, n, ws.sources, ws.ghost_ids, ws.shifts,
+        axis; ndrange = (total, _values_per_floe(floes)))
+    launch_per_floe!(_link_ghosts!, backend, floes, ws.counts, ws.offsets, axis, L, min_val,
+        max_val)
+    KernelAbstractions.synchronize(backend)
+    return set_n_floes(floes, n + total), workspace
+end
+
+#=
+The coordinate that crosses the boundary: 1 (x) for east/west, 2 (y) for north/south.
+It is passed to the kernels as a number.
+=#
+_ghost_axis(::PeriodicBoundary{<:Union{East, West}}) = 1
+_ghost_axis(::PeriodicBoundary{<:Union{North, South}}) = 2
+
+# The given workspace if it fits the capacity of floes, else a new one
+function _ghost_workspace(workspace, floes)
+    if isnothing(workspace) || length(workspace.counts) != capacity(floes)
+        return GhostWorkspace(floes)
+    end
+    return workspace
+end
+
+#=
+Count the ghosts each floe needs into `workspace.counts` and scan them into
+`workspace.offsets`. Returns the total number of ghosts. The counts of the spare rows are
+zero, so the last element of the scan is the total.
+=#
+function _count_ghosts(floes, axis, min_val, max_val, min_ext, max_ext, backend, workspace)
+    fill!(workspace.counts, 0)
+    launch_per_floe!(_count_ghosts!, backend, floes, workspace.counts, axis, min_val, max_val,
+        min_ext, max_ext)
+    # the scan may run on the host's threads, so the kernel must have finished
+    KernelAbstractions.synchronize(backend)
+    AK.accumulate!(+, workspace.offsets, workspace.counts; workspace = workspace.scan)
+    last = length(workspace.offsets)
+    copyto!(workspace.total, 1, workspace.offsets, last, 1)
+    return Int(workspace.total[1])
+end
+
+#=
+The number of ghosts that floe `i` needs: if an active parent floe overlaps the boundary
+that it may cross, it needs a ghost of itself and of each of its ghosts.
+Every vertex is within `rmax` of the centroid, so a floe can only overlap a boundary if its
+centroid is within `rmax` of it. Therefore a quick test is performed to exclude some
+polygons from the (more expensive) intersection test.
+
+Note that a floe that is wider than the domain (i.e. crosses both boundaries) would not
+be handled properly (although it would not be realistic, in any case).
+=#
+function _count_ghosts!(floes::FixedWidthFloes, i, counts, axis, min_val, max_val, min_ext, max_ext)
+    (floes.status[i] == Int32(active) && floes.ghost_id[i] == 0) || return
+    c = floes.centroid[i, axis]
+    r = floes.rmax[i]
+    if c - r < min_val
+        GOG.interiors_intersect(_floe_poly(floes, i), min_ext) || return
+    elseif c + r > max_val
+        GOG.interiors_intersect(_floe_poly(floes, i), max_ext) || return
+    else
+        return
+    end
+    counts[i] = floes.num_ghosts[i] + Int32(1)
+    return
+end
+
+#=
+Plan the ghosts of floe `i` in the rows that the scan gave it: copies
+of its ghosts (in order), then of itself, translated by the domain size `L` to the other
+side of the domain, with ghost ids that follow those of floe i's ghosts. Ghost j (row
+`n_floes + j`) is a copy of row `sources[j]`, shifted by `shifts[j]` along `axis`.
+=#
+function _plan_ghosts!(floes::FixedWidthFloes, i, counts, offsets, sources, ghost_ids, shifts, axis, L, min_val)
+    nnew = counts[i]
+    nnew == 0 && return
+    before = offsets[i] - nnew
+    # through the min boundary, the ghost is on the max side of the domain, and vice versa
+    shift = floes.centroid[i, axis] - floes.rmax[i] < min_val ? L : -L
+    nghosts = floes.num_ghosts[i]
+    # Int32, as the index arrays: the stores don't convert
+    for k in Int32(1):nnew
+        j = before + k
+        sources[j] = k <= nghosts ? floes.ghosts[i, k] : Int32(i)
+        ghost_ids[j] = nghosts + k
+        shifts[j] = shift
+    end
+    return
+end
+
+#=
+Write value v of ghost j: one thread per value, so that a ghost's values are written at the
+same time, not one after another.
+=#
+@kernel function _ghost_values_kernel!(floes, n, sources, ghost_ids, shifts, axis)
+    j, v = @index(Global, NTuple)
+    @inline _ghost_value!(floes, n + j, sources[j], v, axis, shifts[j], ghost_ids[j])
+end
+
+#=
+Fields that a ghost does not copy from its parent: a new ghost has no interactions,
+no damage (?) and no ghosts of its own, and flags are for the events of the floe itself.
+
+TODO: Check if it is correct for a new ghost to have no damage - this seems to be how
+the original CPU version of Subzero did it.
+=#
+const _GHOST_ZEROED_FIELDS = (:num_inters, :interactions, :damage, :num_ghosts, :ghosts, :flags)
+
+#=
+Value v of row dst, the ghost of row src: the values of a row are numbered field by field,
+in the order of the fields of `FixedWidthFloes`, and within a field in memory order. The
+value is copied from src, and shifted by `shift` along `axis` for the centroid and the
+vertices of the polygon (`src + shift`, as `_translate_floe!`), except for the fields in
+`_GHOST_ZEROED_FIELDS`, which are zero, and the ghost id. Generated, so that the field and
+what to do with it are known at compile time.
+=#
+@generated function _ghost_value!(floes::FixedWidthFloes, dst, src, v, axis, shift, ghost_id)
+    body = Expr(:block, Expr(:meta, :inline), :(first = 0))
+    for (k, name) in enumerate(fieldnames(floes))
+        fieldtype(floes, k) <: AbstractArray || continue
+        value = if name in _GHOST_ZEROED_FIELDS
+            :(zero(eltype(a)))
+        elseif name == :ghost_id
+            :(ghost_id)
+        elseif name == :centroid
+            :(_element(a, src, e) + (e == axis ? shift : zero(shift)))
+        elseif name == :poly
+            # e is vertex p, coordinate d; the padding after the last vertex stays zero
+            quote
+                p, d = mod1(e, size(a, 2)), cld(e, size(a, 2))
+                p <= floes.n_points[src] ?
+                    _element(a, src, e) + (d == axis ? shift : zero(shift)) :
+                    _element(a, src, e)
+            end
+        else
+            :(_element(a, src, e))
+        end
+        push!(body.args, quote
+            a = getfield(floes, $k)
+            len = _row_length(a)
+            if first < v <= first + len
+                e = v - first
+                _set_element!(a, dst, e, $value)
+                return
+            end
+            first += len
+        end)
+    end
+    push!(body.args, :(return))
+    return body
+end
+
+# Number of values in a row of an array of a FixedWidthFloes, and element e of row i, with
+# the elements of a row in memory order
+_row_length(a::AbstractArray{<:Any, 1}) = 1
+_row_length(a::AbstractArray{<:Any, 2}) = size(a, 2)
+_row_length(a::AbstractArray{<:Any, 3}) = size(a, 2) * size(a, 3)
+_element(a::AbstractArray{<:Any, 1}, i, e) = a[i]
+_element(a::AbstractArray{<:Any, 2}, i, e) = a[i, e]
+_element(a::AbstractArray{<:Any, 3}, i, e) = a[i, mod1(e, size(a, 2)), cld(e, size(a, 2))]
+_set_element!(a::AbstractArray{<:Any, 1}, i, e, x) = (a[i] = x; nothing)
+_set_element!(a::AbstractArray{<:Any, 2}, i, e, x) = (a[i, e] = x; nothing)
+_set_element!(a::AbstractArray{<:Any, 3}, i, e, x) =
+    (a[i, mod1(e, size(a, 2)), cld(e, size(a, 2))] = x; nothing)
+
+# Number of values in a row of floes, over all fields
+_values_per_floe(floes::FixedWidthFloes) = sum(fieldnames(FixedWidthFloes)) do name
+    field = getfield(floes, name)
+    field isa AbstractArray ? _row_length(field) : 0
+end
+
+#=
+Add the new ghosts of floe i to its list of ghosts. If floe i's centroid is outside of the
+domain, swap places with its last new ghost, the copy of floe i, so that the floe in use is
+the one inside the domain. Note that this "swap" is a swap of coordinates, not an exchange
+of rows in the Floes array.
+=#
+function _link_ghosts!(floes::FixedWidthFloes, i, counts, offsets, axis, L, min_val, max_val)
+    nnew = counts[i]
+    nnew == 0 && return
+    # rows of the new ghosts: before + 1, ..., before + nnew, as Int32 like the index arrays
+    before = Int32(floes.n_floes) + offsets[i] - nnew
+    nghosts = floes.num_ghosts[i]
+    for k in Int32(1):nnew
+        floes.ghosts[i, nghosts + k] = before + k
+    end
+    floes.num_ghosts[i] = nghosts + nnew
+    c = floes.centroid[i, axis]
+    if c < min_val
+        _translate_floe!(floes, i, _along_axis(axis, L)...)
+        _translate_floe!(floes, before + nnew, _along_axis(axis, -L)...)
+    elseif max_val < c
+        _translate_floe!(floes, i, _along_axis(axis, -L)...)
+        _translate_floe!(floes, before + nnew, _along_axis(axis, L)...)
+    end
+    return
+end
+
+# A translation by Δ along an axis (1 = x, 2 = y), as (Δx, Δy)
+_along_axis(axis, Δ) = axis == 1 ? (Δ, zero(Δ)) : (zero(Δ), Δ)
+
+#=
+Remove the ghosts that `add_ghosts!` added: keep the first: `n_init_floes`
+floes, which are the floes without ghosts, and empty their lists of ghosts. Floes that
+swapped places with a ghost keep their new place.
+
+Returns the floes without ghosts, which share the arrays of `floes`: replace `floes` with
+them. The kernel is launched asynchronously. The rows of the ghosts keep their values (they
+aren't zero and their status isn't 0), so fill them before using them.
+=#
+function remove_ghosts!(floes::FixedWidthFloes, n_init_floes, backend)
+    floes = set_n_floes(floes, n_init_floes)
+    launch_per_floe!(_clear_ghosts!, backend, floes)
+    return floes
+end
+
+function _clear_ghosts!(floes::FixedWidthFloes, i)
+    floes.num_ghosts[i] = Int32(0)
+    _zero_row!(floes.ghosts, i)
+    return
+end

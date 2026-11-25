@@ -50,7 +50,13 @@ let missing_pkgs = filter(pkg -> !haskey(Pkg.project().dependencies, pkg), TEST_
         )
         # The test environment only has `[compat]` entries for the test target, so take
         # the version bounds from Project.toml
-        compat = Pkg.TOML.parsefile(joinpath(subzero_dir, "Project.toml"))["compat"]
+        compat = get(Pkg.TOML.parsefile(joinpath(subzero_dir, "Project.toml")), "compat", Dict())
+        no_compat = filter(pkg -> !haskey(compat, pkg), missing_pkgs)
+        isempty(no_compat) || error(
+            "Project.toml has no `[compat]` entry for $(join(no_compat, ", ")). The tests take ",
+            "the versions of the GPU packages to install from there, so add one with the ",
+            "versions the tests should use, as `$(first(no_compat)) = \"<versions>\"`.",
+        )
         Pkg.add([
             Pkg.PackageSpec(; name = pkg, version = Pkg.Types.semver_spec(compat[pkg]))
             for pkg in missing_pkgs

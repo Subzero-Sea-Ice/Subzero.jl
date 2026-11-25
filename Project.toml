@@ -4,6 +4,7 @@ version = "0.1.1"
 authors = ["Skylar Gering"]
 
 [deps]
+AcceleratedKernels = "6a4ca0a5-0e36-4168-a932-d9be78d558f1"
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
@@ -36,6 +37,7 @@ SubzeroMatExt = ["MAT", "GeoInterface"]
 
 [compat]
 AMDGPU = "2.8"
+AcceleratedKernels = "0.5.12"
 Adapt = "4.7.0"
 CUDA = "6.3.1"
 CairoMakie = "0.12, 0.13, 0.15"

@@ -35,6 +35,25 @@ struct Domain{FT, NB, SB, EB, WB, TT}
     end
 end
 
+struct dev_Domain{FT<:AbstractFloat,
+    NB<:AbstractBoundary{North, FT},
+    SB<:AbstractBoundary{South, FT},
+    EB<:AbstractBoundary{East, FT},
+    WB<:AbstractBoundary{West, FT},
+    #TODO to be implemented
+    # StructArray{TopographyElement{FT}} where FT
+    #     struct TopographyElement{FT}<:AbstractDomainElement{FT}
+    #         poly::Polys{FT}
+    #             const Polys{T} = GI.Polygon -> specific GeometryOps type ...
+    #topography<:TopographyField{FT}
+    }
+    north::NB
+    south::SB
+    east::EB
+    west::WB
+end
+Adapt.@adapt_structure dev_Domain
+
 """
     Domain{FT, NB, SB, EB, WB, TT} 
 
