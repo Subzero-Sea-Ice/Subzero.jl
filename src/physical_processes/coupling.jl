@@ -321,6 +321,29 @@ function check_cell_bounds(
     return xmin, xmax, ymin, ymax
 end
 
+function center_cell_bounds(
+    xidx::Int,
+    yidx::Int,
+    ns_bound,
+    ew_bound,
+) where FT
+    xmin = (xidx - 1.5) * grid.Δx + grid.x0
+    xmax = xmin + grid.Δx
+    ymin = (yidx - 1.5) * grid.Δy + grid.y0
+    ymax = ymin + grid.Δy
+    # Check if cell extends beyond boundaries and if non-periodic, trim it to
+    # fit within grid
+    return xmin, xmax, ymin, ymax = check_cell_bounds(
+        xmin,
+        xmax,
+        ymin,
+        ymax,
+        grid,
+        ns_bound,
+        ew_bound,
+    )
+end
+
 #=
     center_cell_poly(...)
 
@@ -349,21 +372,7 @@ function center_cell_poly(
     ns_bound,
     ew_bound,
 ) where FT
-    xmin = (xidx - 1.5) * grid.Δx + grid.x0
-    xmax = xmin + grid.Δx
-    ymin = (yidx - 1.5) * grid.Δy + grid.y0
-    ymax = ymin + grid.Δy
-    #= Check if cell extends beyond boundaries and if non-periodic, trim cell to
-    fit within grid. =#
-    xmin, xmax, ymin, ymax = check_cell_bounds(
-        xmin,
-        xmax,
-        ymin,
-        ymax,
-        grid,
-        ns_bound,
-        ew_bound,
-    )
+    xmin, xmax, ymin, ymax = center_cell_bounds(xidx, yidx, grid, ns_bound, ew_bound)
     return _make_bounding_box_polygon(FT, xmin, xmax, ymin, ymax)
 end
 
@@ -633,6 +642,65 @@ function calc_one_way_coupling!(
     )
 end
 
+
+
+function ice_area_in_cells!(floes::FixedWidthFloes, i, grid, ocean, domain, B, S)
+    for k in 1:grid.floe_loc_n_cells[i]
+        cx = grid.floe_loc_cell_x[i, k]
+        cy = grid.floe_loc_cell_y[i, k]
+        xmin, xmax, ymin, ymax = center_cell_bounds(cx, cy, grid, domain.north, domain.east)
+        A = _area_in_rectangle(floes, i, grid.floe_loc_Δx[i, k], grid.floe_loc_Δy[i, k],
+            xmin, xmax, ymin, ymax)
+        ocean.scells_area[i, k] = A
+        if A > 0
+            c = cx + (cy - 1) * (grid.Nx + 1)
+            ocean.scells_key[(i - 1) * S + k] = (c - 1) * B + (i - 1) * S + k
+        end
+    end
+    return
+end
+
+function ocean_stress_in_cell!(ocean, ix, iy, grid, atmos, B, S, consts, ρi, Δt)
+    FT = eltype(ocean.τx)
+    keys = ocean.scells_key
+    c = ix + (iy - 1) * (grid.Nx + 1)
+    τx, τy, si_frac = zero(FT), zero(FT), zero(FT)
+    idx = _first_key_at_least(keys, (c - 1) * B + 1)
+    while idx <= length(keys) && keys[idx] <= c * B
+        r = keys[idx] - 1
+        i, k = (r % B) ÷ S + 1, r % S + 1
+        A = ocean.scells_area[i, k]
+        τx += (ocean.scells_τx[i, k] / ocean.scells_npoints[i, k]) * A
+        τy += (ocean.scells_τy[i, k] / ocean.scells_npoints[i, k]) * A
+        si_frac += A
+        idx += 1
+    end
+    if si_frac > 0
+        τx /= si_frac
+        τy /= si_frac
+        si_frac /= grid.Δx * grid.Δy
+    end
+    Δu = atmos.u[ix, iy] - ocean.u[ix, iy]
+    Δv = atmos.v[ix, iy] - ocean.v[ix, iy]
+    norm = sqrt(Δu^2 + Δv^2)
+    ocean.τx[ix, iy] = τx + consts.ρa * consts.Cd_ao * (1 - si_frac) * norm * Δu
+    ocean.τy[ix, iy] = τy + consts.ρa * consts.Cd_ao * (1 - si_frac) * norm * Δv
+    ocean.si_frac[ix, iy] = si_frac
+    ocean.hflx_factor[ix, iy] = Δt * consts.k / (ρi * consts.L) *
+        (ocean.temp[ix, iy] - atmos.temp[ix, iy])
+    return
+end
+
+# first index of sorted `keys` with keys[idx] ≥ v (length(keys) + 1 if none)
+function _first_key_at_least(keys, v)
+    lo, hi = 1, length(keys) + 1
+    while lo < hi
+        mid = (lo + hi) >>> 1
+        keys[mid] < v ? (lo = mid + 1) : (hi = mid)
+    end
+    return lo
+end
+
 """
     calc_two_way_coupling!(...)
 
@@ -653,67 +721,51 @@ fields and sea ice fraction.
 - None. Update's ocean's stress fields and heatflux factor field. 
 """
 function calc_two_way_coupling!(
-    floes::StructArray{Floe{FT}},
-    grid::RegRectilinearGrid,
+    dev_floes::FixedWidthFloes{FT},
+    i,
+    grid,
     atmos,
     ocean,
     domain,
     floe_settings,
     consts,
     Δt,
+    backend,
 ) where {FT}
-    # Determine force from floe on each grid cell it is in
-    cell_area = grid.Δx * grid.Δy
-    Threads.@threads for cartidx in CartesianIndices(ocean.scells)
-        ocean.τx[cartidx] = FT(0)
-        ocean.τy[cartidx] = FT(0)
-        ocean.si_frac[cartidx] = FT(0)
-        τocn = ocean.scells[cartidx]
-        floe_locations = grid.floe_locations[cartidx]
-        if !isempty(floe_locations.floeidx)
-            # Coordinates of grid cell
-            cell_poly = center_cell_poly(
-                FT,
-                cartidx[1],
-                cartidx[2],
-                grid,
-                domain.north,
-                domain.east
-            )
-            for i in eachindex(floe_locations.floeidx)
-                floe_poly = _translate_poly(FT,
-                    floes.poly[floe_locations.floeidx[i]],
-                    floe_locations.Δx[i],
-                    floe_locations.Δy[i],
-                )::Polys{FT}
-                floe_area_in_cell = sum(
-                    area_poly.(intersect_polys(cell_poly, floe_poly), FT)
-                )
-                if floe_area_in_cell > 0
-                    # Add forces and area to ocean fields
-                    ocean.τx[cartidx] += (τocn.τx[i]/τocn.npoints[i]) * floe_area_in_cell
-                    ocean.τy[cartidx] += (τocn.τy[i]/τocn.npoints[i]) * floe_area_in_cell
-                    ocean.si_frac[cartidx] += floe_area_in_cell
-                end
-            end
-            if ocean.si_frac[cartidx] > 0
-                # Divide by total floe area in cell to get ocean stress
-                ocean.τx[cartidx] /= ocean.si_frac[cartidx]
-                ocean.τy[cartidx] /= ocean.si_frac[cartidx]
-                # Divide by cell area to get sea-ice fraction
-                ocean.si_frac[cartidx] /= cell_area
-            end
-        end
-        Δu_AO = atmos.u[cartidx] - ocean.u[cartidx]
-        Δv_AO = atmos.v[cartidx] - ocean.v[cartidx]
-        ocn_frac = 1 - ocean.si_frac[cartidx]
-        norm = sqrt(Δu_AO^2 + Δv_AO^2)
-        ocean.τx[cartidx] += consts.ρa * consts.Cd_ao * ocn_frac * norm * Δu_AO
-        ocean.τy[cartidx] += consts.ρa * consts.Cd_ao * ocn_frac * norm * Δv_AO
-        # Not sure this is where the heatflux should be??
-        ocean.hflx_factor[cartidx] = Δt * consts.k/(floe_settings.ρi*consts.L) *
-            (ocean.temp[cartidx] - atmos.temp[cartidx])
-    end
+
+    launch_per_floe!(two_way_coupling,
+        backend,
+        dev_floes,
+        grid,
+        atmos,
+        ocean,
+        domain,
+        floe_settings,
+        consts,
+        Δt,
+        backend,
+    )
+    return
+end
+
+function calc_two_way_coupling!(
+    dev_floes::FixedWidthFloes,
+    grid,
+    atmos,
+    ocean,
+    domain,
+    floe_settings,
+    consts,
+    Δt,
+    backend
+)
+    S = size(ocean.scells_area, 2)
+    B = length(ocean.scells_key)
+    fill!(ocean.scells_key, typemax(Int))                                  # stage 0
+    launch_per_floe!(ice_area_in_cells!, backend, dev_floes, grid, ocean, domain, B, S)  # stage 1
+    sort_keys!(ocean.scells_key, backend)                                   # stage 2 (section 6)
+    launch_per_cell!(ocean_stress_in_cell!, backend, ocean, grid, atmos, B, S,
+        consts, floe_settings.ρi, Δt)                                       # stage 3
     return
 end
 
@@ -746,7 +798,7 @@ function timestep_coupling!(
     backend,
 )
     empty!.(model.grid.floe_locations)
-    if coupling_settings.two_way_coupling_on && backend == CPU()
+    if coupling_settings.two_way_coupling_on
         empty!.(model.ocean.scells)
     end
     calc_one_way_coupling!(
@@ -759,17 +811,17 @@ function timestep_coupling!(
         consts,
         backend,
     )
-    if coupling_settings.two_way_coupling_on && backend == CPU()
-        #TODO copy the dev_model into model to fix the current logic
+    if coupling_settings.two_way_coupling_on
         calc_two_way_coupling!(
-            model.floes,
-            model.grid,
-            model.atmos,
-            model.ocean,
-            model.domain,
+            dev_floes,
+            dev_model.grid,
+            dev_model.atmos,
+            dev_model.ocean,
+            dev_model.domain,
             floe_settings,
             consts,
             Δt,
+            backend,
         )
     end
     return
