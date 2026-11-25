@@ -277,8 +277,8 @@ points, and some steps of the clipping, in Float64.
     The Float32 kernel is tested on GPUs only (not on CI) to try to get the test time
     less than ~hours... =#
     _kernel_float_types(backend) =
-        backend isa Union{typeof(Subzero.KernelAbstractions.CPU()), JLArrays.JLBackend} ?
-            (Float64,) : (Float64, Float32)
+        backend isa JLArrays.JLBackend ? () :
+        backend isa typeof(Subzero.KernelAbstractions.CPU()) ? (Float64,) : (Float64, Float32)
     @testset "Kernels on $backend with $FT" for backend in test_backends(),
             FT in _kernel_float_types(backend)
         floes = _collision_test_floes(FT)
