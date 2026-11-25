@@ -65,7 +65,7 @@ end
 GI.crstrait(::Polys) = GI.ProjectedTrait()
 GI.crstrait(::MultiPolys) = GI.ProjectedTrait()
 GI.crstrait(::StaticQuadrilateral) = GI.ProjectedTrait()
-
+find_poly_coords(poly, ::Type{FT}) where {FT<:AbstractFloat} = GI.coordinates(poly)
 # find the intersection of two polygons and return as a list of polygons
 intersect_polys(p1, p2, ::Type{FT} = Float64; kwargs...) where FT = GO.intersection(p1, p2, FT; target = GI.PolygonTrait(), fix_multipoly = nothing)
 # find the difference of two polygons and return as a list of polygons
@@ -213,72 +213,21 @@ Outputs:
         the domain_coords. If less polygons than min_to_warn are generated, the
         user will be warned. 
 =#
-# function _generate_voronoi_coords(::Type{FT}, desired_points::Int, Δx, Δy, xmin, ymin,
-#     domain_poly, rng, min_to_warn::Int; max_tries::Int = 10,
-# ) where {FT <: AbstractFloat}
-#     xpoints = Vector{Float64}()
-#     ypoints = Vector{Float64}()
-#     area_frac = area_poly(domain_poly, FT) / (Δx * Δy)
-#     # Increase the number of points based on availible percent of bounding box
-#     npoints = ceil(Int, desired_points / area_frac)
-#     current_points = 0
-#     tries = 0
-#     while current_points < desired_points && tries <= max_tries
-#         x = (rand(rng, npoints) .* Δx) .+ xmin
-#         y = (rand(rng, npoints) .* Δy) .+ ymin
-#         # Check which of the scaled and translated points are within the domain coords
-#         in_idx = [coveredby_poly((x[i], y[i]), domain_poly) for i in eachindex(x)]
-#         current_points += sum(in_idx)
-#         tries += 1
-#         append!(xpoints, x[in_idx])
-#         append!(ypoints, y[in_idx])
-#     end
-#     # If we generated too many cells, remove extra
-#     if current_points > desired_points
-#         xpoints = xpoints[1:desired_points]
-#         ypoints = ypoints[1:desired_points]
-#         current_points = desired_points
-#     end
-#     # Warn if we didn't generate enough cells
-#     if current_points < min_to_warn
-#         @warn "Only $current_points floes were able to be generated in \
-#             $max_tries tries during voronoi tesselation."
-#     end
-#     # Make voronoi cells into floes
-#     polys = if current_points > 2
-#         xmax, ymax = xmin + Δx, ymin + Δy
-#         clip_points = GO.tuples(((xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)), FT)
-#         clip_vertices = (1, 2, 3, 4, 1)
-#         clip_polygon = (clip_points, clip_vertices)
-#         try
-#             GO.voronoi(tuple.(xpoints, ypoints), FT; clip_polygon)
-#         catch
-#             @info "Voronoi failed - floe to fracture likely really small." tstep = tstep
-#             Polys{FT}[]
-#         end
-#     else
-#         Polys{FT}[]
-#     end
-#     return polys
-# end
-
 function _generate_voronoi_coords(::Type{FT}, desired_points::Int, Δx, Δy, xmin, ymin,
-     domain_poly, rng, min_to_warn::Int; max_tries::Int = 10,
+    domain_poly, rng, min_to_warn::Int; max_tries::Int = 10, lloyd_iters::Int = 0,
 ) where {FT <: AbstractFloat}
-    xpoints = Vector{FT}()
-    ypoints = Vector{FT}()
+    xpoints = Vector{Float64}()
+    ypoints = Vector{Float64}()
     area_frac = area_poly(domain_poly, FT) / (Δx * Δy)
-    # Increase the number of points based on available percent of bounding box
+    # Increase the number of points based on availible percent of bounding box
     npoints = ceil(Int, desired_points / area_frac)
     current_points = 0
     tries = 0
     while current_points < desired_points && tries <= max_tries
         x = (rand(rng, npoints) .* Δx) .+ xmin
         y = (rand(rng, npoints) .* Δy) .+ ymin
-        # Check which points are within the domain
-        in_idx = [
-            coveredby_poly((x[i], y[i]), domain_poly) for i in eachindex(x)
-    ]
+        # Check which of the scaled and translated points are within the domain coords
+        in_idx = [coveredby_poly((x[i], y[i]), domain_poly) for i in eachindex(x)]
         current_points += sum(in_idx)
         tries += 1
         append!(xpoints, x[in_idx])
@@ -290,47 +239,28 @@ function _generate_voronoi_coords(::Type{FT}, desired_points::Int, Δx, Δy, xmi
         ypoints = ypoints[1:desired_points]
         current_points = desired_points
     end
-
-    # Warn if insufficient points were generated
+    # Warn if we didn't generate enough cells
     if current_points < min_to_warn
         @warn "Only $current_points floes were able to be generated in \
-            $max_tries tries during voronoi tessellation."
+            $max_tries tries during voronoi tesselation."
     end
-
-    # Generate Voronoi cells with Lloyd relaxation
+    # Make voronoi cells into floes
     polys = if current_points > 2
         xmax, ymax = xmin + Δx, ymin + Δy
+        clip_points = GO.tuples(((xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)), FT)
+        clip_vertices = (1, 2, 3, 4, 1)
+        clip_polygon = (clip_points, clip_vertices)
         try
-            points = [Pt2(xpoints[i], ypoints[i]) for i in 1:current_points]
-            # Lloyd relaxation
-            if lloyd_iterations > 0
-                rectangle = Rectangle( Pt2(xmin, ymin), Pt2(xmax, ymax),)
-                for iter in 1:lloyd_iterations
-                    diagram = voronoicells(points, rectangle)
-                    new_points = Pt2[]
-                    for cell in diagram.Cells
-                        if isempty(cell)
-                            continue
-                        end
-                        xs = [p[1] for p in cell]
-                        ys = [p[2] for p in cell]
-                        cx = mean(xs)
-                        cy = mean(ys)
-                        push!(new_points, Pt2(cx, cy))
-                    end
-                    points = new_points
-                end
+            pts = tuple.(FT.(xpoints), FT.(ypoints))
+            cells = GO.voronoi(pts, FT; clip_polygon)
+            # Lloyd relaxation: move each site to the centroid of its cell, then re-tessellate
+            for _ in 1:lloyd_iters
+                pts = [Tuple(centroid_poly(p, FT)) for p in cells]
+                cells = GO.voronoi(pts, FT; clip_polygon)
             end
-            # Convert points into the format expected by GO.voronoi
-            final_x = [p[1] for p in points]
-            final_y = [p[2] for p in points]
-            # Clip Voronoi polygons to the original rectangular bounds
-            clip_points = GO.tuples(( (xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax),),FT,)
-            clip_vertices = (1, 2, 3, 4, 1)
-            clip_polygon = (clip_points, clip_vertices)
-            GO.voronoi(tuple.(final_x, final_y), FT; clip_polygon,)
+            cells
         catch err
-            @info "Voronoi generation failed - floe may be too small." exception = err
+            @info "Voronoi failed - floe to fracture likely really small." exception = err
             Polys{FT}[]
         end
     else

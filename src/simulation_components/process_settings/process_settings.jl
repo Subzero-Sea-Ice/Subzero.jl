@@ -1,4 +1,4 @@
-export CouplingSettings, CollisionSettings, FractureSettings
+export CouplingSettings, CollisionSettings, FractureSettings, BondSettings, Bond_FractureSettings
 export SimplificationSettings, RidgeRaftSettings, WeldSettings
 
 """
@@ -31,7 +31,7 @@ julia> CouplingSettings(Δd = 2, two_way_coupling_on = true)
 CouplingSettings(true, 10, 2, true)
 ```
 """
-@kwdef struct CouplingSettings
+@kwdef struct CouplingSettings{FT<:AbstractFloat}
     coupling_on::Bool = true
     Δt::FT = 10
     Δd::Int = 1

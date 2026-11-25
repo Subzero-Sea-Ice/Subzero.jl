@@ -53,7 +53,7 @@ atmos = Atmos(; u = 0.0, v = 0.0, temp = -1.0, grid)
 
 # ## Floe Creation
 floe_settings = FloeSettings(subfloe_point_generator = SubGridPointsGenerator(; grid, npoint_per_cell = 2))
-floe_generator = VoronoiTesselationFieldGenerator(; nfloes = 50, concentrations = [0.75], hmean, Δh)
+floe_generator = VoronoiTesselationFieldGenerator(; nfloes = 50, concentrations = [1.0], hmean, Δh)
 floe_arr = initialize_floe_field(FT; generator = floe_generator, domain, rng = Xoshiro(1), floe_settings)
 
 # ## Model Creation

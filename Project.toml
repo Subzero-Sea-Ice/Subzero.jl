@@ -1,12 +1,13 @@
 name = "Subzero"
 uuid = "21f28ab0-737f-4f26-8d5f-51b5b12fb6de"
-version = "0.1.1"
 authors = ["Skylar Gering"]
+version = "0.1.1"
 
 [deps]
 CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Extents = "411431e0-e8b7-467b-b5e0-f676ba4f2910"
+GeometryBasics = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
 GeometryOps = "3251bfac-6a57-4b6d-aa61-ac1fef2975ab"
 Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
@@ -38,6 +39,7 @@ CoordinateTransformations = "0.6"
 Extents = "0.1"
 GeoInterface = "1.6.0"
 GeoInterfaceMakie = "0.1"
+GeometryBasics = "0.5.13"
 GeometryOps = "0.1.31 - 0.1"
 Interpolations = "0.14, 0.15, 0.16"
 JLD2 = "0.4, 0.5, 0.6"
