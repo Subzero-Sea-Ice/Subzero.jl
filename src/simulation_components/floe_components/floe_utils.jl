@@ -144,6 +144,63 @@ function _edge_through_rectangle(x1, y1, x2, y2, xmin, xmax, ymin, ymax)
     return xmin < xm < xmax && ymin < ym < ymax
 end
 
+#=
+Area of the intersection of floe i's polygon, translated by Δx and Δy, with the rectangle
+`xmin ≤ x ≤ xmax`, `ymin ≤ y ≤ ymax`. Same result as
+`sum(area_poly.(intersect_polys(rectangle, _translate_poly(FT, poly, Δx, Δy)), FT))`, but
+written as scalar operations, without GeometryOps, so it can be called from a GPU kernel.
+
+The intersection is never built. By Green's theorem, its area is the integral of
+g(x) dh(y) around the polygon's boundary, with g(x) = clamp(x, xmin, xmax) - xmin and
+h(y) = clamp(y, ymin, ymax): ∂g/∂x * ∂h/∂y is 1 inside the rectangle and 0 outside. That
+integral is the sum of one term per edge (see `_edge_area_in_rectangle`). Its sign depends
+on the polygon's orientation, so the absolute value is returned. This works for concave
+polygons and for intersections in several pieces. The maths is done in the floes'
+precision FT.
+=#
+function _area_in_rectangle(floes::FixedWidthFloes{FT}, i, Δx, Δy, xmin, xmax, ymin, ymax) where FT
+    xmin, xmax, ymin, ymax, Δx, Δy = FT(xmin), FT(xmax), FT(ymin), FT(ymax), FT(Δx), FT(Δy)
+    a = zero(FT)
+    # the ring is closed, so edge j goes from vertex j to vertex j + 1
+    for j in 1:(floes.n_points[i] - 1)
+        a += _edge_area_in_rectangle(
+            floes.poly[i, j, 1] + Δx, floes.poly[i, j, 2] + Δy,
+            floes.poly[i, j + 1, 1] + Δx, floes.poly[i, j + 1, 2] + Δy,
+            xmin, xmax, ymin, ymax)
+    end
+    return abs(a)
+end
+
+#=
+Integral of g(x) dh(y) along the edge from (x1, y1) to (x2, y2), with
+g(x) = clamp(x, xmin, xmax) - xmin and h(y) = clamp(y, ymin, ymax). Summed over the edges of
+a closed ring, these integrals give the signed area of the ring inside the rectangle (see
+`_area_in_rectangle`).
+
+With the edge written as (x1, y1) + t * (dx, dy) for 0 ≤ t ≤ 1, dh is zero outside the
+band ymin < y < ymax. So only the part of the edge inside the band, t0 ≤ t ≤ t1, counts,
+and a horizontal edge contributes nothing. Along that part, g changes slope only where x
+crosses xmin or xmax, at s1 ≤ s2. On each of the at most three pieces in between, g is
+linear in t, so the trapezoid rule (g(ta) + g(tb)) / 2 * (tb - ta) * dy is exact.
+=#
+function _edge_area_in_rectangle(x1, y1, x2, y2, xmin, xmax, ymin, ymax)
+    dx, dy = x2 - x1, y2 - y1
+    dy == 0 && return zero(dx)
+    # part of the edge inside ymin ≤ y ≤ ymax
+    ta, tb = (ymin - y1) / dy, (ymax - y1) / dy
+    t0, t1 = max(zero(dx), min(ta, tb)), min(one(dx), max(ta, tb))
+    t0 >= t1 && return zero(dx)
+    # where x crosses xmin and xmax, clamped to [t0, t1]
+    s1, s2 = t1, t1
+    if dx != 0
+        sa, sb = (xmin - x1) / dx, (xmax - x1) / dx
+        s1, s2 = clamp(min(sa, sb), t0, t1), clamp(max(sa, sb), t0, t1)
+    end
+    g(t) = clamp(x1 + t * dx, xmin, xmax) - xmin
+    piece(ta, tb) = (g(ta) + g(tb)) / 2 * (tb - ta) * dy
+    return piece(t0, s1) + piece(s1, s2) + piece(s2, t1)
+end
+
 
 #= 
 Deepcopy of a floe by creating a new floe and deep copying all fields.
