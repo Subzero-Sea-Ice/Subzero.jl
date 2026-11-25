@@ -124,6 +124,8 @@ function adapt_Ocean(ocean::Ocean,
     scells_τx = zeros(FT, capacity, max_mc_points)
     scells_τy = zeros(FT, capacity, max_mc_points)
     scells_npoints = zeros(Int, capacity, max_mc_points)
+    scells_area = zeros(FT, capacity, max_mc_points)
+    scells_key  = fill(typemax(Int), capacity * max_mc_points)
     return dev_Ocean(
         copy(ocean.u),
         copy(ocean.v),
@@ -132,6 +134,8 @@ function adapt_Ocean(ocean::Ocean,
         scells_τx, 
         scells_τy,
         scells_npoints,
+        scells_area,
+        scells_key,
         copy(ocean.τx),
         copy(ocean.τy),
         copy(ocean.si_frac),
