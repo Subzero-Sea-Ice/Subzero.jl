@@ -37,9 +37,11 @@ end
     @testset "CPU and $backend give the same result" for backend in gpu_backends
         sims = [make_simulation(Subzero.KernelAbstractions.CPU()), make_simulation(backend)]
         with_logger(NullLogger()) do
-            for sim in sims, tstep in 0:sim.nΔt
+            for sim in sims
                 dev_model = Subzero.adapt_model(sim.model, sim.backend)
-                timestep_sim!(sim, dev_model, tstep)
+                for tstep in 0:sim.nΔt
+                    timestep_sim!(sim, dev_model, tstep)
+                end
             end
         end
         cpu_floes, gpu_floes = (sim.model.floes for sim in sims)
