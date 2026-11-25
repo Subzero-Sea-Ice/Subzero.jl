@@ -272,10 +272,13 @@ points, and some steps of the clipping, in Float64.
             _gog_launch!(_pair_forces_kernel!, Subzero.KernelAbstractions.CPU(), npairs, args...))
     end
 
-    #= Only Float64 on the CPU backend (POCL): POCL takes minutes to compile this kernel, so
-    the Float32 kernel is tested on the other backends only (JLBackend runs on CI) =#
+    #= Only Float64 on the CPU backend (POCL) and JLBackend: POCL seems to take a very long
+    time to compile this kernel (and JLBackend triggers compilation through POCL too).
+    The Float32 kernel is tested on GPUs only (not on CI) to try to get the test time
+    less than ~hours... =#
     _kernel_float_types(backend) =
-        backend isa typeof(Subzero.KernelAbstractions.CPU()) ? (Float64,) : (Float64, Float32)
+        backend isa Union{typeof(Subzero.KernelAbstractions.CPU()), JLArrays.JLBackend} ?
+            (Float64,) : (Float64, Float32)
     @testset "Kernels on $backend with $FT" for backend in test_backends(),
             FT in _kernel_float_types(backend)
         floes = _collision_test_floes(FT)
