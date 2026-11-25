@@ -53,3 +53,16 @@ function launch_per_floe!(f, backend, floes, args...; workgroup_size = 512)
     per_floe_kernel!(backend, workgroup_size)(f, floes, args, ndrange = floes.n_floes)
     return
 end
+
+#=
+a per-cell launcher that mirrors launch_per_floe
+=#
+@kernel function per_cell_kernel!(f, ocean, args)
+    ix, iy = @index(Global, NTuple)
+    f(ocean, ix, iy, args...)
+end
+
+function launch_per_cell!(f, backend, ocean, args...; workgroup_size = (16, 16))
+    per_cell_kernel!(backend, workgroup_size)(f, ocean, args, ndrange = size(ocean.u))
+    return
+end
