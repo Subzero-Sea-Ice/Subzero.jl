@@ -959,9 +959,9 @@ end
 #=
 Adding ghosts to floes on a device (`FixedWidthFloes`).
 
-The ghosts are added after the floes in use, in the order of their parents: first the ghosts
-through the east/west boundaries, then those through the north/south boundaries, which also
-makes ghosts of the first ones. The ghosts are added after the currently active floes.
+The ghosts are added after the floes in use (i.e. currently active floes), in the order
+of their parents: first the ghosts through the east/west boundaries, then those through
+the north/south boundaries, which also makes ghosts of the first ones.
 
 Each pass:
 1. `_count_ghosts!`: per floe, the number of ghosts it needs.
@@ -1264,8 +1264,8 @@ end
 _along_axis(axis, Δ) = axis == 1 ? (Δ, zero(Δ)) : (zero(Δ), Δ)
 
 #=
-Remove the ghosts that `add_ghosts!` added: keep the first: `n_init_floes`
-floes, which are the floes without ghosts, and empty their lists of ghosts. Floes that
+Remove the ghosts that `add_ghosts!` added: keep the first `n_init_floes` floes, which
+are the floes without ghosts, and empty their lists of ghosts. Floes that
 swapped places with a ghost keep their new place.
 
 Returns the floes without ghosts, which share the arrays of `floes`: replace `floes` with
