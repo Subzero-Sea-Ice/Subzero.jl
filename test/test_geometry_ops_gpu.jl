@@ -1,7 +1,7 @@
 #=
-Tests of the GeometryOpsGPU submodule against GeometryOps (directly, or through Subzero's CPU
-geometry functions, which call it). With Float64 polygons the results must be the same, bit
-for bit; with Float32 polygons they may differ by round-off.
+Tests of the GeometryOpsGPU submodule against GeometryOps, which accepts `ArrayPolygon`s as
+GeoInterface polygons. With Float64 polygons the results must be the same, bit for bit; with
+Float32 polygons they may differ by round-off.
 =#
 @testset "GeometryOpsGPU" begin
     GOG = Subzero.GeometryOpsGPU
@@ -110,10 +110,17 @@ for bit; with Float32 polygons they may differ by round-off.
         end
         return floes, length(edge_cases), rects
     end
-    overlaps_go(floes, i, ext, FT) = !isempty(Subzero.intersect_polys(floes.poly[i],
-        Subzero._make_bounding_box_polygon(FT, ext.X..., ext.Y...), FT))
+    # The rectangle `ext` as a GeoInterface polygon, for GeometryOps
+    gi_rect(ext) = (((x1, x2), (y1, y2)) = (ext.X, ext.Y);
+        GI.Polygon([GI.LinearRing([(x1, y1), (x1, y2), (x2, y2), (x2, y1), (x1, y1)])]))
+    # Whether the interiors of floe i and the rectangle overlap, by GeometryOps, as the
+    # docstring of interiors_intersect describes it
+    function overlaps_go(fwf, i, ext)
+        p, rect = Subzero._floe_poly(fwf, i), gi_rect(ext)
+        return GO.intersects(p, rect) && !GO.touches(p, rect)
+    end
     intersects(fwf, i, ext) = GOG.interiors_intersect(Subzero._floe_poly(fwf, i), ext)
-    @testset "interiors_intersect matches intersect_polys with $FT" for FT in (Float64, Float32)
+    @testset "interiors_intersect matches GeometryOps with $FT" for FT in (Float64, Float32)
         floes, n_edge_cases, rects = _overlap_test_floes(FT)
         fwf = Subzero.FixedWidthFloes(floes)
         east = GI.extent(PeriodicBoundary(East, FT; x0 = 0, xf = 1e4, y0 = 0, yf = 1e4).poly)
@@ -123,7 +130,7 @@ for bit; with Float32 polygons they may differ by round-off.
         # (rectangle, floe) pairs where the two differ. In Float32 they may differ by
         # round-off, but don't for these floes.
         mismatches = [(rect, i) for rect in [east; rects], i in eachindex(floes)
-            if intersects(fwf, i, rect) != overlaps_go(floes, i, rect, FT)]
+            if intersects(fwf, i, rect) != overlaps_go(fwf, i, rect)]
         @test isempty(mismatches)
     end
     # Bounds of another type than the polygon's aren't accepted
@@ -142,7 +149,8 @@ for bit; with Float32 polygons they may differ by round-off.
             FT in (Float64, Float32)
         floes, _, rects = _overlap_test_floes(FT)
         marks(ext) = _launch_on(mark_overlap!, backend, Subzero.FixedWidthFloes(floes), ext).flags[1:length(floes)]
-        expected(ext) = [overlaps_go(floes, i, ext, FT) ? 0x01 : 0x00 for i in eachindex(floes)]
+        fwf = Subzero.FixedWidthFloes(floes)
+        expected(ext) = [overlaps_go(fwf, i, ext) ? 0x01 : 0x00 for i in eachindex(floes)]
         # rectangles for which the kernel's result differs
         @test isempty(_failing(ext -> marks(ext) == expected(ext), rects))
     end
