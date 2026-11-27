@@ -144,9 +144,12 @@ over if/else flags.
   GeometryOps has the function, `!` when it writes into its arguments, polygons as
   `GOG.ArrayPolygon`s, and files laid out as in GeometryOps' `src/`. It must not use
   Subzero, so that it can become a package of its own. Test it against GeometryOps in
-  `test/test_geometry_ops_gpu.jl`. GeometryOps is fine on the CPU.
+  `test/test_geometry_ops_gpu.jl` (the clipping in `test_geometry_ops_gpu_clipping.jl`).
+  These tests must not use Subzero either: put their helpers in
+  `test/geometry_ops_gpu_utils.jl`. GeometryOps is fine on the CPU.
   Subzero's own geometry functions (`area_poly`, `get_intersection_points!`, ...) have
-  methods for `GOG.ArrayPolygon`s in `src/tools/device_geom_utils.jl`, which call GOG.
+  methods for `GOG.ArrayPolygon`s in `src/tools/device_geom_utils.jl`, which call GOG, and
+  are tested in `test/test_device_geom_utils.jl`.
   `intersect_polys!` clips with `GOG.intersection!`, which writes the overlap regions of two
   polygons to a `GOG.PolyRegions`, using node lists in a `GOG.ClipLists`; both are
   fixed-size buffers with one row per pair of polygons.
