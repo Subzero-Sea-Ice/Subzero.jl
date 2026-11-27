@@ -7,6 +7,8 @@ differ by round-off.
 @testset "GeometryOpsGPU" begin
     GOG = Subzero.GeometryOpsGPU
     Extent = Subzero.Extents.Extent
+    # The points of a GeoInterface polygon's exterior ring, as tuples
+    gi_points(p) = [(GI.x(q), GI.y(q)) for q in GI.getpoint(GI.getexterior(p))]
 
     @testset "ArrayPolygon" begin
         coords = zeros(2, 4, 2)
@@ -19,6 +21,11 @@ differ by round-off.
         GOG.transform!(GOG.Translate(1.0, 2.0), p)
         @test [GOG.getpoint(p, j) for j in 1:4] == [(1.0, 2.0), (2.0, 2.0), (2.0, 3.0), (1.0, 2.0)]
         @test all(iszero, coords[1, :, :])
+        # it's a GeoInterface polygon without holes, which GeometryOps accepts
+        @test GI.testgeometry(p)
+        @test GI.nhole(p) == 0
+        @test gi_points(p) == [GOG.getpoint(p, j) for j in 1:4]
+        @test GO.area(p) == 0.5
     end
 
     # transform! changes the polygon in place and leaves the padding after its points alone

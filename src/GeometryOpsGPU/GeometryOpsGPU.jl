@@ -21,6 +21,7 @@ moved into GeometryOps one day:
 
 The differences from GeometryOps:
 - Polygons are `ArrayPolygon`s, not any GeoInterface geometry, and have no holes.
+  `ArrayPolygon`s are GeoInterface polygons, though, so GeometryOps accepts them on the host.
 - Results are written into preallocated arrays rather than returned as new geometries.
 - There's no manifold or algorithm argument: everything is planar.
 
@@ -30,8 +31,10 @@ imports it as `GOG`, as it imports GeometryOps as `GO`.
 module GeometryOpsGPU
 
 import Extents
+import GeoInterface as GI
 
 include("types.jl")
+include("geointerface.jl")
 include("transformations/transform.jl")
 include("methods/geom_relations/interiors_intersect.jl")
 
