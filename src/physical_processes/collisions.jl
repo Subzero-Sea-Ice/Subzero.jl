@@ -999,11 +999,12 @@ function GhostWorkspace(floes::FixedWidthFloes)
 end
 
 """
-    add_ghosts!(floes::FixedWidthFloes, domain, backend; workspace = nothing)
+    add_ghosts!(floes::FixedWidthFloes{FT}, domain::Domain{FT}, backend; workspace = nothing)
 
 Add ghosts of the floes that pass through periodic boundaries of `domain` on `backend`.
 The ghosts are added after the floes in use, and their indices are stored in the `ghosts`
-of their parents.
+of their parents. `domain` must have the float type of the floes, as the kernels don't
+convert its values.
 
 Returns the floes with the ghosts in use (see `set_n_floes`) and the workspace that fits
 them (`nothing` if none was given and none was needed). `workspace` is a `GhostWorkspace`
@@ -1020,7 +1021,8 @@ The floes must not have ghosts yet (call `remove_ghosts!` first): `ghosts` has r
 `MAX_GHOSTS` ghosts per floe, which is the most a floe without ghosts can get, and the kernels
 don't check it.
 """
-function add_ghosts!(floes::FixedWidthFloes, domain::Domain, backend; workspace = nothing)
+function add_ghosts!(floes::FixedWidthFloes{FT}, domain::Domain{FT}, backend;
+    workspace = nothing) where FT
     floes, workspace = add_floe_ghosts!(floes, domain.east, domain.west, backend, workspace)
     return add_floe_ghosts!(floes, domain.north, domain.south, backend, workspace)
 end

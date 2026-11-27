@@ -144,5 +144,14 @@ end
         # No floes
         empty_floes = Subzero.adapt(backend, Subzero.FixedWidthFloes(floes[1:0]))
         @test Subzero.add_ghosts!(empty_floes, domains.both, backend)[1].n_floes == 0
+        # A domain in another float type is an error on the host, not in the kernels
+        OT = FT == Float64 ? Float32 : Float64
+        other_grid = RegRectilinearGrid(OT; x0 = 0.0, xf = 1e4, y0 = 0.0, yf = 1e4, Δx = 1e3, Δy = 1e3)
+        other = Domain(; north = PeriodicBoundary(North, OT; grid = other_grid),
+            south = PeriodicBoundary(South, OT; grid = other_grid),
+            east = PeriodicBoundary(East, OT; grid = other_grid),
+            west = PeriodicBoundary(West, OT; grid = other_grid))
+        @test_throws MethodError Subzero.add_ghosts!(
+            Subzero.adapt(backend, Subzero.FixedWidthFloes(floes)), other, backend)
     end
 end
