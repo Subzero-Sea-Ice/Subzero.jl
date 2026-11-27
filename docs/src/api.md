@@ -206,6 +206,10 @@ GeometryOpsGPU.coveredby
 GeometryOpsGPU.within
 GeometryOpsGPU.LineOrientation
 GeometryOpsGPU.intersection_points!
+GeometryOpsGPU.intersection!
+GeometryOpsGPU.ClipLists
+GeometryOpsGPU.PolyRegions
+GeometryOpsGPU.region
 GeometryOpsGPU.transform!
 GeometryOpsGPU.Translate
 GeometryOpsGPU.RotateTranslate

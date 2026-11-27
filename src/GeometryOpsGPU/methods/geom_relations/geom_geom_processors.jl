@@ -7,10 +7,11 @@ or `point_out`, as GeometryOps' `PointOrientation`.
 @enum PointOrientation point_in=1 point_on=2 point_out=3
 
 #= Whether the point is in, on, or out of the polygon's ring, as
-`GO._point_filled_curve_orientation(point, ring; exact = False())`: a ray-crossing test
-that also detects points on an edge. =#
+`GO._point_filled_curve_orientation(point, ring; exact)`: a ray-crossing test that also
+detects points on an edge. `exact` is `False()` unless given, as for GeometryOps'
+point-in-polygon tests; the clipping uses `True()`. =#
 function _point_filled_curve_orientation(point::NTuple{2, T},
-        p::ArrayPolygon{<:AbstractArray{T}}) where T
+        p::ArrayPolygon{<:AbstractArray{T}}; exact = False()) where T
     x, y = point
     n = npoint(p)
     n -= getpoint(p, 1) == getpoint(p, n) ? 1 : 0
@@ -22,7 +23,7 @@ function _point_filled_curve_orientation(point::NTuple{2, T},
         v2 = ye - y
         if !((v1 < 0 && v2 < 0) || (v1 > 0 && v2 > 0))
             u1, u2 = xs - x, xe - x
-            f = Predicates.orient((xs, ys), (xe, ye), (x, y); exact = False())
+            f = Predicates.orient((xs, ys), (xe, ye), (x, y); exact)
             if v2 > 0 && v1 ≤ 0
                 f == 0 && return point_on
                 f > 0 && (k += 1)

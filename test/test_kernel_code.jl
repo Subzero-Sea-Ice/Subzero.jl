@@ -11,7 +11,7 @@ It doesn't see what LLVM does afterwards: on CUDA, the exact check is that the P
 `__local_depot` (`CUDA.@device_code_ptx`).
 
 With Float32 floes, the kernels must also not compute in Float64 (see `_float64_kernels` in
-`test/utils.jl`).
+`test/geometry_ops_gpu_utils.jl`).
 =#
 
 # The type of argument `a` of a statement in the optimized code `ci`

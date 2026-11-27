@@ -142,26 +142,5 @@ function _make_timestep_test_floes(::Type{FT}, floe_settings; n = 10) where FT
     return floes
 end
 
-# The name of the kernel of a compilation job, or for `per_floe_kernel!`, the per-floe function
-function _kernel_name(job)
-    types = job.source.specTypes.parameters
-    kernel = string(nameof(types[1].instance))
-    # per_floe_kernel!(ctx, f, floes, args): name it after f
-    if occursin("per_floe_kernel", kernel)
-        kernel = string(nameof(types[3].instance))
-    end
-    return kernel
-end
-
-#=
-The kernels that `f()` launches on the CPU backend whose final LLVM IR has a `double` or an
-`fpext`, i.e. that compute in Float64. Unlike counting the Float64 values in the typed code
-of one function, this sees everything the kernel calls, inlined or not.
-=#
-function _float64_kernels(f)
-    jobs = keys(Subzero.KernelAbstractions.POCL.@device_code_typed f())
-    llvm(job) = sprint(io -> Subzero.KernelAbstractions.POCL.GPUCompiler.code_llvm(io, job;
-        dump_module = true))
-    return unique!([_kernel_name(job) for job in jobs if
-        occursin(r"\bdouble\b|\bfpext\b", llvm(job))])
-end
+# The test helpers of GeometryOpsGPU, which the device geometry tests of Subzero use too
+include("geometry_ops_gpu_utils.jl")
