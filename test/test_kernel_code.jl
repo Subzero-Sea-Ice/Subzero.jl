@@ -1,13 +1,16 @@
 #=
-The kernels must not copy the floes into each thread's memory. If a function that takes the
-floes, or one of their arrays, isn't inlined into the kernel, the GPU compiler passes them to
-it by reference, and so first copies the whole `FixedWidthFloes` (over 1 kB) into each thread's
-local memory. That made the kernels several times slower on CUDA.
+Checks of the compiled code of the kernels. The kernels must not copy the floes into each
+thread's memory. If a function that takes the floes, or one of their arrays, isn't inlined
+into the kernel, the GPU compiler passes them to it by reference, and so first copies the
+whole `FixedWidthFloes` (over 1 kB) into each thread's local memory. That made the kernels
+several times slower on CUDA.
 
 The test compiles the kernels for the CPU backend (POCL), which uses the same Julia-level
 inlining as the GPU backends, and looks at their optimized Julia IR. So it runs without a GPU.
 It doesn't see what LLVM does afterwards: on CUDA, the exact check is that the PTX has no
 `__local_depot` (`CUDA.@device_code_ptx`).
+
+With Float32 floes, the kernels must also not compute in Float64 (see `_float64_kernels`).
 =#
 
 # The type of argument `a` of a statement in the optimized code `ci`
@@ -41,15 +44,52 @@ function _not_inlined_calls(f)
             any(a -> _holds_array(_argtype(a, ci)), stmt.args[3:end]) && push!(calls, name)
         end
         isempty(calls) && continue
-        types = job.source.specTypes.parameters
-        kernel = string(nameof(types[1].instance))
-        # per_floe_kernel!(ctx, f, floes, args): name it after f
-        if occursin("per_floe_kernel", kernel)
-            kernel = string(nameof(types[3].instance))
-        end
-        result[kernel] = unique!(calls)
+        result[_kernel_name(job)] = unique!(calls)
     end
     return result
+end
+
+# The name of the kernel of a compilation job, or for `per_floe_kernel!`, the per-floe function
+function _kernel_name(job)
+    types = job.source.specTypes.parameters
+    kernel = string(nameof(types[1].instance))
+    # per_floe_kernel!(ctx, f, floes, args): name it after f
+    if occursin("per_floe_kernel", kernel)
+        kernel = string(nameof(types[3].instance))
+    end
+    return kernel
+end
+
+#=
+The kernels that `f()` launches on the CPU backend whose final LLVM IR has a `double` or an
+`fpext`, i.e. that compute in Float64. Unlike counting the Float64 values in the typed code
+of one function, this sees everything the kernel calls, inlined or not.
+=#
+function _float64_kernels(f)
+    jobs = keys(Subzero.KernelAbstractions.POCL.@device_code_typed f())
+    llvm(job) = sprint(io -> Subzero.KernelAbstractions.POCL.GPUCompiler.code_llvm(io, job;
+        dump_module = true))
+    return unique!([_kernel_name(job) for job in jobs if
+        occursin(r"\bdouble\b|\bfpext\b", llvm(job))])
+end
+
+# Functions that launch every kernel of the floe update and of both ghost passes
+_timestep_run(FT, backend) = let floe_settings = FloeSettings(FT)
+    floes = Subzero.FixedWidthFloes(_make_timestep_test_floes(FT, floe_settings))
+    () -> Subzero.timestep_floe_properties!(floes, 10, floe_settings; backend)
+end
+function _ghosts_run(FT, backend)
+    grid = RegRectilinearGrid(FT; x0 = 0.0, xf = 1e4, y0 = 0.0, yf = 1e4, Δx = 1e3, Δy = 1e3)
+    domain = Domain(; north = PeriodicBoundary(North, FT; grid),
+        south = PeriodicBoundary(South, FT; grid), east = PeriodicBoundary(East, FT; grid),
+        west = PeriodicBoundary(West, FT; grid))
+    floes = _ghost_test_floes(FT)
+    # with room for the ghosts, so that every kernel of both passes runs
+    fwf = Subzero.FixedWidthFloes(floes; capacity = 2length(floes))
+    return function ()
+        ghosted, _ = Subzero.add_ghosts!(fwf, domain, backend)
+        Subzero.remove_ghosts!(ghosted, length(floes), backend)
+    end
 end
 
 @testset "Kernels inline the functions that take the floes" begin
@@ -58,22 +98,17 @@ end
     thermodynamic_growth!, update_ice_coordinates! and update_velocities!, so on CUDA each
     thread copies the floes into local memory. To be fixed in a separate PR. =#
     @testset "timestep_floe_properties! with $FT" for FT in (Float64, Float32)
-        floe_settings = FloeSettings(FT)
-        floes = Subzero.FixedWidthFloes(_make_timestep_test_floes(FT, floe_settings))
-        @test_broken isempty(_not_inlined_calls(
-            () -> Subzero.timestep_floe_properties!(floes, 10, floe_settings; backend)))
+        @test_broken isempty(_not_inlined_calls(_timestep_run(FT, backend)))
     end
     @testset "add_ghosts! and remove_ghosts! with $FT" for FT in (Float64, Float32)
-        grid = RegRectilinearGrid(FT; x0 = 0.0, xf = 1e4, y0 = 0.0, yf = 1e4, Δx = 1e3, Δy = 1e3)
-        domain = Domain(; north = PeriodicBoundary(North, FT; grid),
-            south = PeriodicBoundary(South, FT; grid), east = PeriodicBoundary(East, FT; grid),
-            west = PeriodicBoundary(West, FT; grid))
-        floes = _ghost_test_floes(FT)
-        # with room for the ghosts, so that every kernel of both passes runs
-        fwf = Subzero.FixedWidthFloes(floes; capacity = 2length(floes))
-        @test isempty(_not_inlined_calls(function ()
-            ghosted, _ = Subzero.add_ghosts!(fwf, domain, backend)
-            Subzero.remove_ghosts!(ghosted, length(floes), backend)
-        end))
+        @test isempty(_not_inlined_calls(_ghosts_run(FT, backend)))
     end
+end
+
+@testset "Kernels with Float32 floes do no Float64 maths" begin
+    backend = Subzero.KernelAbstractions.CPU()
+    @test isempty(_float64_kernels(_timestep_run(Float32, backend)))
+    @test isempty(_float64_kernels(_ghosts_run(Float32, backend)))
+    # the check finds Float64 maths: with Float64 floes, every kernel that computes has some
+    @test "timestep_floe!" in _float64_kernels(_timestep_run(Float64, backend))
 end

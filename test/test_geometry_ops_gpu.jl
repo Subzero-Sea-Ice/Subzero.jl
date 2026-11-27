@@ -127,11 +127,6 @@ differ by round-off.
         floes, _, rects = _overlap_test_floes(Float32)
         fwf = Subzero.FixedWidthFloes(floes)
         @test_throws MethodError intersects(fwf, 1, Extent(X = (1e4, 1.5e4), Y = (-5e3, 1.5e4)))
-        # With Float32 polygons the maths is in Float32: no intermediate value is a Float64
-        float64_values(f, types) = count(==(Float64), only(Base.code_typed(f, types))[1].ssavaluetypes)
-        @test float64_values(GOG._interiors_intersect_rect,
-            Tuple{typeof(Subzero._floe_poly(fwf, 1)), Float32, Float32, Float32, Float32}) == 0
-        @test float64_values(GOG._edge_through_rectangle, NTuple{8, Float32}) == 0
     end
     #= Kernel test: mark_overlap! writes whether each floe overlaps the rectangle into its
     flags. These are test markers, not FLAG_* event bits. It names the module in full: the

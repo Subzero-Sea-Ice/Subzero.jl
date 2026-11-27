@@ -170,6 +170,8 @@ over if/else flags.
   function to copy the original's Float32 results (GeometryOps does this in places, e.g.
   its orientation tests and clipping). Float64 maths is slow on consumer GPUs and fails on
   GPUs without Float64 (Metal), so check correctness in Float64 and measure speed in Float32.
+  `test/test_kernel_code.jl` checks that the final LLVM of the kernels has no Float64 with
+  Float32 floes.
 - Float64 literals such as `1.5Δt` turn Float32 calculations into Float64. Some are
   still in the code; they can be replaced with `FT(1.5) * Δt`, which gives the same
   result with Float64 floes.
