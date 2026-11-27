@@ -317,38 +317,6 @@ Float32 polygons they may differ by round-off.
         FT == Float32 && @test n_endpoints > 100
     end
 
-    #= With Float32 points and polygons, the maths must be in Float32, so that the code can
-    run on GPUs without Float64: Apple GPUs (Metal) and some Intel GPUs have none, and on
-    most other consumer GPUs Float64 is much slower. This checks that no intermediate value
-    in these functions, or in the functions inlined into them, is a Float64. Functions that
-    aren't inlined are listed separately, e.g. AdaptivePredicates' `orient2`. =#
-    @testset "No Float64 maths with Float32" begin
-        float64_values(f, types) = count(==(Float64), only(Base.code_typed(f, types))[1].ssavaluetypes)
-        P = GOG.ArrayPolygon{Array{Float32, 3}}
-        pt = NTuple{2, Float32}
-        ext = typeof(Subzero.Extents.Extent(X = (1f0, 2f0), Y = (1f0, 2f0)))
-        F = Type{Float32}
-        for (f, types) in (
-            (GOG.Predicates._orient, Tuple{GOG.True, pt, pt, pt}),
-            (GOG.Predicates._orient, Tuple{GOG.False, pt, pt, pt}),
-            (Subzero.GeometryOpsGPU.AdaptivePredicates.orient2, Tuple{pt, pt, pt}),
-            (GOG._point_filled_curve_orientation, Tuple{pt, P}),
-            (GOG.coveredby, Tuple{pt, P}),
-            (GOG.within, Tuple{pt, P}),
-            (GOG.area, Tuple{P, F}),
-            (GOG.centroid, Tuple{P, F}),
-            (GOG.signed_distance, Tuple{pt, P, F}),
-            (GOG._intersection_point, Tuple{F, NTuple{2, pt}, NTuple{2, pt}}),
-            (GOG._find_hinge_intersection, Tuple{F, pt, pt, pt, pt, Int, Int, Int}),
-            (GOG._find_cross_intersection, Tuple{F, pt, pt, pt, pt, ext, ext}),
-            (GOG._nearest_endpoint, Tuple{F, pt, pt, pt, pt}),
-            (GOG.intersection_points!, Tuple{Array{Float32, 3}, Int, P, P, F}),
-            (Subzero.get_intersection_points!, Tuple{Array{Float32, 3}, Int, P, P}),
-        )
-            @test float64_values(f, types) == 0
-        end
-    end
-
     @testset "Intersection points and matching vertices with $FT" for FT in (Float64, Float32)
         polys = _geom_test_polys(FT)
         _, apolys = _array_polys(polys)
@@ -455,6 +423,18 @@ Float32 polygons they may differ by round-off.
         sdist[i, s] = Subzero.dist_to_poly(point, r, FT)
         return
     end
+    #= Run `launch()`. With Float32 on the CPU backend, also check that the kernels it launches
+    don't compute in Float64, so that they can run on GPUs without Float64, such as Apple GPUs
+    (Metal) and some Intel GPUs (see `_float64_kernels`). With the floe update and ghost
+    kernels in `test_kernel_code.jl`, this covers every function of the module that kernels
+    use. =#
+    function _launch_float32_checked(launch, backend, FT)
+        if FT == Float32 && backend isa typeof(Subzero.KernelAbstractions.CPU())
+            @test isempty(_float64_kernels(launch))
+        else
+            launch()
+        end
+    end
     #= Kernel test: each floe computes its area and centroid, the point tests for its test
     points, and the intersection points and matching vertices with a partner floe =#
     function _geom_kernel!(floes, i, pts, orient, sdist, areas, cents, partner,
@@ -497,8 +477,9 @@ Float32 polygons they may differ by round-off.
         end
         dev = Subzero.adapt(backend, outputs())
         dev_args = Subzero.adapt(backend, args(dev))
-        Subzero.launch_per_floe!(_geom_kernel!, backend, Subzero.adapt(backend, fwf), dev_args...)
-        Subzero.KernelAbstractions.synchronize(backend)
+        launch() = (Subzero.launch_per_floe!(_geom_kernel!, backend, Subzero.adapt(backend, fwf),
+            dev_args...); Subzero.KernelAbstractions.synchronize(backend))
+        _launch_float32_checked(launch, backend, FT)
         got = Subzero.adapt(Array, dev)
         @test all(isequal.(got, ref))
         # The partners do intersect, so the intersection points are tested
@@ -538,9 +519,10 @@ Float32 polygons they may differ by round-off.
         edge_array = reshape(permutedims(edge_array, (1, 3, 2)), n, 8)
         dev_kinds = Subzero.KernelAbstractions.zeros(backend, Int8, n)
         dev_intrs = Subzero.KernelAbstractions.zeros(backend, FT, n, 8)
-        Subzero.launch_per_floe!(_edge_intersection_kernel!, backend, (; n_floes = n),
-            Subzero.adapt(backend, edge_array), dev_kinds, dev_intrs)
-        Subzero.KernelAbstractions.synchronize(backend)
+        launch() = (Subzero.launch_per_floe!(_edge_intersection_kernel!, backend, (; n_floes = n),
+            Subzero.adapt(backend, edge_array), dev_kinds, dev_intrs);
+            Subzero.KernelAbstractions.synchronize(backend))
+        _launch_float32_checked(launch, backend, FT)
         kinds, intrs = Array(dev_kinds), Array(dev_intrs)
         got(i) = (kinds[i], ((intrs[i, 1], intrs[i, 2]), (intrs[i, 3], intrs[i, 4])),
             ((intrs[i, 5], intrs[i, 6]), (intrs[i, 7], intrs[i, 8])))

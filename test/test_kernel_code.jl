@@ -10,7 +10,8 @@ inlining as the GPU backends, and looks at their optimized Julia IR. So it runs 
 It doesn't see what LLVM does afterwards: on CUDA, the exact check is that the PTX has no
 `__local_depot` (`CUDA.@device_code_ptx`).
 
-With Float32 floes, the kernels must also not compute in Float64 (see `_float64_kernels`).
+With Float32 floes, the kernels must also not compute in Float64 (see `_float64_kernels` in
+`test/utils.jl`).
 =#
 
 # The type of argument `a` of a statement in the optimized code `ci`
@@ -47,30 +48,6 @@ function _not_inlined_calls(f)
         result[_kernel_name(job)] = unique!(calls)
     end
     return result
-end
-
-# The name of the kernel of a compilation job, or for `per_floe_kernel!`, the per-floe function
-function _kernel_name(job)
-    types = job.source.specTypes.parameters
-    kernel = string(nameof(types[1].instance))
-    # per_floe_kernel!(ctx, f, floes, args): name it after f
-    if occursin("per_floe_kernel", kernel)
-        kernel = string(nameof(types[3].instance))
-    end
-    return kernel
-end
-
-#=
-The kernels that `f()` launches on the CPU backend whose final LLVM IR has a `double` or an
-`fpext`, i.e. that compute in Float64. Unlike counting the Float64 values in the typed code
-of one function, this sees everything the kernel calls, inlined or not.
-=#
-function _float64_kernels(f)
-    jobs = keys(Subzero.KernelAbstractions.POCL.@device_code_typed f())
-    llvm(job) = sprint(io -> Subzero.KernelAbstractions.POCL.GPUCompiler.code_llvm(io, job;
-        dump_module = true))
-    return unique!([_kernel_name(job) for job in jobs if
-        occursin(r"\bdouble\b|\bfpext\b", llvm(job))])
 end
 
 # Functions that launch every kernel of the floe update and of both ghost passes
