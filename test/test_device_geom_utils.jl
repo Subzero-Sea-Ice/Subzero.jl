@@ -2,8 +2,8 @@
 Tests of Subzero's geometry functions for polygons stored in arrays
 (`src/tools/device_geom_utils.jl`) and of `_floe_poly`. The functions of GeometryOpsGPU that
 they call are tested in `test_geometry_ops_gpu*.jl`; here, the wrappers are compared with
-GeometryOpsGPU, `which_vertices_match_points!` with its CPU version, and all of them are run
-in a kernel on floes, as the ported physics will.
+GeometryOpsGPU, `which_vertices_match_points!` with its CPU version, and all of them but
+`intersect_polys!` are run in a kernel on floes, as the ported physics will.
 =#
 @testset "Device geometry functions" begin
     @testset "_floe_poly with $FT" for FT in (Float64, Float32)
@@ -99,8 +99,10 @@ in a kernel on floes, as the ported physics will.
     end
 
     #= Kernel test: each floe calls the wrappers on itself, at its test points, and with a
-    partner floe, as the ported physics will. intersect_polys! has a kernel test of its own
-    below. =#
+    partner floe, as the ported physics will. Except intersect_polys!: compiling the clipping
+    into another kernel takes about 45 s, and GOG.intersection!, which it calls with the same
+    arguments, is run in kernels in test_geometry_ops_gpu_clipping.jl, so it is compared with
+    GOG.intersection! on the CPU instead. =#
     function _wrappers_kernel!(floes, i, pts, out_f, out_c, ipts, idxs, partner)
         FT = eltype(floes.area)
         r, rj = Subzero._floe_poly(floes, i), Subzero._floe_poly(floes, partner[i])
@@ -162,46 +164,4 @@ in a kernel on floes, as the ported physics will.
         # The partners do intersect, so the intersections are tested
         @test count(>(0), ref[2][:, k + 1]) > n ÷ 2
     end
-
-    #= Kernel test of intersect_polys!: each floe intersects itself with a partner floe. Only
-    with Float64 on JLBackend, to check that the wrapper works in a kernel: compiling the
-    clipping into another kernel takes about 45 s, and the clipping itself
-    (GOG.intersection!) is run in kernels on every backend, with both float types, in
-    test_geometry_ops_gpu_clipping.jl. =#
-    function _intersect_polys_kernel!(floes, i, lists, regions, counts, partner)
-        counts[i] = Subzero.intersect_polys!(GOG.PolyRegions(regions, i), GOG.ClipLists(lists, i),
-            Subzero._floe_poly(floes, i), Subzero._floe_poly(floes, partner[i]))
-        return
-    end
-    @testset "intersect_polys! on JLBackend with Float64" begin
-        backend, FT = JLArrays.JLBackend(), Float64
-        polys = _geom_test_polys(FT; n = 100)
-        fs = FloeSettings(FT; min_floe_area = 0)
-        rng = Xoshiro(4)
-        floes = StructArray([
-            Floe{FT}([[[x, y] for (x, y) in [p; [p[1]]]]], FT(0.25); floe_settings = fs, rng)
-            for p in polys
-        ])
-        fwf = Subzero.FixedWidthFloes(floes)
-        n = length(floes)
-        partner = [mod1(i + rand(rng, 1:(n - 1)), n) for i in 1:n]
-        outputs() = (GOG.ClipLists(FT, n, 64), GOG.PolyRegions(FT, n, 8, 64), zeros(Int, n))
-        # Reference: the same function called on the CPU without a kernel
-        ref = outputs()
-        for i in 1:n
-            _intersect_polys_kernel!(fwf, i, ref..., partner)
-        end
-        dev = Subzero.adapt(backend, outputs())
-        Subzero.launch_per_floe!(_intersect_polys_kernel!, backend, Subzero.adapt(backend, fwf),
-            dev..., Subzero.adapt(backend, partner))
-        Subzero.KernelAbstractions.synchronize(backend)
-        got = Subzero.adapt(Array, dev)
-        @test all(>=(0), ref[3])  # the buffers are large enough
-        @test isequal(got[3], ref[3])
-        regions(out, i, m) = [_gog_points(GOG.region(GOG.PolyRegions(out, i), l)) for l in 1:m]
-        @test all(i -> isequal(regions(got[2], i, got[3][i]), regions(ref[2], i, ref[3][i])), 1:n)
-        # most pairs overlap
-        @test count(>(0), ref[3]) > n ÷ 2
-    end
-
 end
