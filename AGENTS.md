@@ -8,7 +8,8 @@ over if/else flags.
 ## Code layout and style
 
 - `src/Subzero.jl` `include`s every source file in dependency order. A new file
-  isn't picked up until it's added there, in the right place.
+  isn't picked up until it's added there, in the right place. The `GeometryOpsGPU`
+  submodule includes its own files, in `src/GeometryOpsGPU/GeometryOpsGPU.jl`.
 - `docs/src/api.md` lists functions by hand in `@docs` blocks. Add every new
   public function there. The docs build only warns if one is missing.
 - There's no formatter configured. Match the style of the surrounding code and
@@ -75,7 +76,9 @@ over if/else flags.
 ## GPU
 
 - `timestep_sim!` is being ported to KernelAbstractions kernels one function at a
-  time. So far `timestep_floe_properties!` is done. The backend comes from
+  time. So far `timestep_floe_properties!` is done. Adding and removing ghosts
+  (`add_ghosts!` and `remove_ghosts!` for `FixedWidthFloes`, in `collisions.jl`) is
+  ported too, but `timestep_sim!` doesn't use it yet. The backend comes from
   `Simulation(; backend)` (default `CPU()`), and the same kernels run on the CPU.
 - The goal is to run on any GPU that KernelAbstractions supports (NVIDIA, AMD, Apple,
   Intel), not just CUDA. Subzero doesn't depend on any GPU package: users load one
@@ -134,8 +137,14 @@ over if/else flags.
 
 - Don't allocate: no comprehensions, array literals, slices (`A[i, :]`),
   broadcasting or `zeros`. Loop over scalars instead.
-- Don't call GeometryOps or GeoInterface, because they build geometry objects. Write
-  the geometry maths by hand (see `_move_floe!`). GeometryOps is fine on the CPU.
+- Don't call GeometryOps or GeoInterface, because they build geometry objects. Use the
+  `GeometryOpsGPU` submodule (`src/GeometryOpsGPU/`, imported as `GOG`) instead, and add
+  missing functions there: e.g. `GOG.transform!(f, _floe_poly(floes, i))` (see
+  `_move_floe!`). Its API follows GeometryOps: the same names and argument order where
+  GeometryOps has the function, `!` when it writes into its arguments, polygons as
+  `GOG.ArrayPolygon`s, and files laid out as in GeometryOps' `src/`. It must not use
+  Subzero, so that it can become a package of its own. Test it against GeometryOps in
+  `test/test_geometry_ops_gpu.jl`. GeometryOps is fine on the CPU.
 - Don't log. Set a bit in `floes.flags` (the `FLAG_*` constants in
   `update_floe.jl`). The host logs each type of event once per timestep after copying
   back (`_log_flags`).
@@ -144,13 +153,33 @@ over if/else flags.
 - `InvalidIRError: ... unsupported dynamic function invocation` means something in
   the kernel isn't GPU-compatible: an allocation, a type instability, or a call into
   a library such as GeoInterface. The stack trace shows where.
+- Inline every function a kernel calls that takes the floes or one of their arrays
+  (`@inline` on the method, or at the call). Otherwise they're passed by reference, and on
+  CUDA each thread first copies the whole `FixedWidthFloes` into its local memory, which
+  makes the kernel several times slower. `test/test_kernel_code.jl` checks this without
+  a GPU: add a call that launches each new kernel to it.
 
 ### Floating point and reproducibility
 
-- Float64 literals such as `1.5Δt` turn Float32 calculations into Float64. That's
-  kept for now so that results stay within round-off of `main`, but it is slow on GPUs
-  and fails on GPUs without Float64 (Metal). Consumer GPUs are much slower at Float64
-  than Float32, so check correctness in Float64 and measure speed in Float32.
+- Ported code must match the original (the CPU code on `main`, or the GeometryOps
+  function it replaces) bit for bit with Float64 floes, which is how the original was
+  run. With Float32 floes it doesn't have to: compare with a tolerance, or not at all.
+  This holds for the same function called on the host, without a kernel. In kernels,
+  results can differ by round-off: every backend, the CPU backends (POCL) too, uses its own
+  `sin`, `cos`, `atan`, ..., which can differ from Julia's by 1–2 ulp, and GPU compilers
+  fuse multiplications and additions (CUDA does by default). Which values differ depends
+  on the machine, so test kernels that use such functions with a tolerance on every
+  backend, also where they match exactly locally. Other kernels (`+`, `*`, `/`, `sqrt`) can
+  be tested exactly on the CPU backends.
+- With Float32 floes, use Float32 maths throughout. Don't promote to Float64 inside a
+  function to copy the original's Float32 results (GeometryOps does this in places, e.g.
+  its orientation tests and clipping). Float64 maths is slow on consumer GPUs and fails on
+  GPUs without Float64 (Metal), so check correctness in Float64 and measure speed in Float32.
+  `test/test_kernel_code.jl` checks that the final LLVM of the kernels has no Float64 with
+  Float32 floes.
+- Float64 literals such as `1.5Δt` turn Float32 calculations into Float64. Some are
+  still in the code; they can be replaced with `FT(1.5) * Δt`, which gives the same
+  result with Float64 floes.
 - A Voronoi floe field (`VoronoiTesselationFieldGenerator`) isn't reproducible with
   a fixed `rng`. To compare two runs, generate the floes once and deep-copy them (see
   `test/test_simulation.jl`). In simulations with collisions, differences at
