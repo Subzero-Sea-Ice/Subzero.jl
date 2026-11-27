@@ -120,33 +120,6 @@ the helpers in `geometry_ops_gpu_utils.jl`.
         @test GOG._build_b_list!(lists(5), a, a_idx, 2, Float64, poly_b) == -1
     end
 
-    #= With Float32 polygons, clipping in Float32 must use Float32 maths only, so that it can
-    run on GPUs without Float64, such as Apple GPUs (Metal) and some Intel GPUs: no
-    intermediate value in these functions, or in the functions inlined into them, is a
-    Float64 (see "No Float64 maths with Float32" in test_geometry_ops_gpu.jl) =#
-    @testset "No Float64 maths when clipping in Float32" begin
-        P = GOG.ArrayPolygon{Array{Float32, 3}}
-        pt = NTuple{2, Float32}
-        L = typeof(GOG.ClipLists(GOG.ClipLists(Float32, 1, 8), 1))
-        N, I = fieldtype(L, :a), fieldtype(L, :a_idx)
-        Rg = typeof(GOG.PolyRegions(GOG.PolyRegions(Float32, 1, 1, 8), 1))
-        F = Type{Float32}
-        for (f, types) in (
-            (GOG.intersection!, Tuple{Rg, L, P, P}),
-            (GOG._build_a_list!, Tuple{N, I, F, P, P}),
-            (GOG._build_b_list!, Tuple{N, N, I, Int, F, P}),
-            (GOG._classify_crossing!, Tuple{N, Int, N, Int}),
-            (GOG._get_side, Tuple{pt, pt, pt, pt}),
-            (GOG._flag_ent_exit!, Tuple{N, Int, P}),
-            (GOG._pt_off_edge_status, Tuple{N, Int, P}),
-            (GOG._trace_polynodes!, Tuple{Rg, N, Int, N, Int, I, Int}),
-            (GOG._find_non_cross_orientation, Tuple{N, Int, N, Int, P, P}),
-            (GOG._remove_collinear_points!, Tuple{Rg, Int}),
-        )
-            @test _float64_values(f, types) == 0
-        end
-    end
-
     #= Kernel test: each polygon builds the lists of itself and a partner polygon in its rows
     of the lists =#
     function _build_lists_kernel!(i, coords, ns, a_nodes, b_nodes, a_indices, counts, partner)
@@ -179,8 +152,10 @@ the helpers in `geometry_ops_gpu_utils.jl`.
             _build_lists_kernel!(i, coords, ns, ref..., partner)
         end
         dev = Adapt.adapt(backend, outputs())
-        _gog_launch!(_build_lists_kernel!, backend, n, Adapt.adapt(backend, coords),
-            Adapt.adapt(backend, ns), dev..., Adapt.adapt(backend, partner))
+        _launch_float32_checked(backend, FT) do
+            _gog_launch!(_build_lists_kernel!, backend, n, Adapt.adapt(backend, coords),
+                Adapt.adapt(backend, ns), dev..., Adapt.adapt(backend, partner))
+        end
         got = Adapt.adapt(Array, dev)
         @test all(>=(0), ref[4])  # the capacity is enough
         @test isequal(got[4], ref[4])
@@ -377,8 +352,10 @@ the helpers in `geometry_ops_gpu_utils.jl`.
                 _close_to_expected(got_i, expected, polys[i], polys[partner[i]])
         end
         dev = Adapt.adapt(backend, outputs())
-        _gog_launch!(_intersect_kernel!, backend, n, Adapt.adapt(backend, coords),
-            Adapt.adapt(backend, ns), dev..., Adapt.adapt(backend, partner))
+        _launch_float32_checked(backend, FT) do
+            _gog_launch!(_intersect_kernel!, backend, n, Adapt.adapt(backend, coords),
+                Adapt.adapt(backend, ns), dev..., Adapt.adapt(backend, partner))
+        end
         got = Adapt.adapt(Array, dev)
         @test isequal(got[3], ref[3])
         @test all(1:n) do i

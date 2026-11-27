@@ -98,27 +98,6 @@ in a kernel on floes, as the ported physics will.
         @test n_nonempty > 100
     end
 
-    # With Float32 floes, the maths is in Float32 (see "No Float64 maths with Float32" in
-    # test_geometry_ops_gpu.jl)
-    @testset "No Float64 maths with Float32" begin
-        P = GOG.ArrayPolygon{Array{Float32, 3}}
-        pt = NTuple{2, Float32}
-        L = typeof(GOG.ClipLists(GOG.ClipLists(Float32, 1, 8), 1))
-        Rg = typeof(GOG.PolyRegions(GOG.PolyRegions(Float32, 1, 1, 8), 1))
-        F = Type{Float32}
-        for (f, types) in (
-            (Subzero.area_poly, Tuple{P, F}),
-            (Subzero.centroid_poly, Tuple{P, F}),
-            (Subzero.dist_to_poly, Tuple{pt, P, F}),
-            (Subzero.coveredby_poly, Tuple{pt, P}),
-            (Subzero.get_intersection_points!, Tuple{Array{Float32, 3}, Int, P, P}),
-            (Subzero.intersect_polys!, Tuple{Rg, L, P, P}),
-            (Subzero.which_vertices_match_points!, Tuple{Matrix{Int}, Int, Array{Float32, 3}, Int, P}),
-        )
-            @test _float64_values(f, types) == 0
-        end
-    end
-
     #= Kernel test: each floe calls the wrappers on itself, at its test points, and with a
     partner floe, as the ported physics will. intersect_polys! has a kernel test of its own
     below. =#
@@ -173,9 +152,11 @@ in a kernel on floes, as the ported physics will.
         @test all(i -> isequal(clip(Subzero.intersect_polys!, i), clip(GOG.intersection!, i)), 1:n)
         @test count(i -> clip(GOG.intersection!, i)[1] > 0, 1:n) > n ÷ 2
         dev = Subzero.adapt(backend, outputs())
-        Subzero.launch_per_floe!(_wrappers_kernel!, backend, Subzero.adapt(backend, fwf),
-            Subzero.adapt(backend, pts), dev..., Subzero.adapt(backend, partner))
-        Subzero.KernelAbstractions.synchronize(backend)
+        _launch_float32_checked(backend, FT) do
+            Subzero.launch_per_floe!(_wrappers_kernel!, backend, Subzero.adapt(backend, fwf),
+                Subzero.adapt(backend, pts), dev..., Subzero.adapt(backend, partner))
+            Subzero.KernelAbstractions.synchronize(backend)
+        end
         got = Subzero.adapt(Array, dev)
         @test all(isequal.(got, ref))
         # The partners do intersect, so the intersections are tested

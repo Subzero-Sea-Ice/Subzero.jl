@@ -55,12 +55,6 @@ _floe_shape_rings() = jldopen(joinpath(@__DIR__, "inputs", "floe_shapes.jld2")) 
     [[(c[1], c[2]) for c in p[1]] for p in vec(f["floe_vertices"])]
 end
 
-#= The number of intermediate values that are Float64 in the compiled code of `f` for the
-argument types `types` (a Tuple type), including the functions inlined into it. The tests
-use it to check that Float32 inputs get Float32 maths, so that the kernels can run on GPUs
-without Float64. =#
-_float64_values(f, types) = count(==(Float64), only(Base.code_typed(f, types))[1].ssavaluetypes)
-
 # A test point for polygon p: a vertex, a point along an edge, a grid point, or a random point
 function _geom_test_points(rng, p::Vector{Tuple{FT, FT}}, polys) where FT
     u = rand(rng)
@@ -98,6 +92,17 @@ function _float64_kernels(f)
     llvm(job) = sprint(io -> KA.POCL.GPUCompiler.code_llvm(io, job; dump_module = true))
     return unique!([_kernel_name(job) for job in jobs if
         occursin(r"\bdouble\b|\bfpext\b", llvm(job))])
+end
+
+#= Run `launch()`. With Float32 on the CPU backend, also check that the kernels it launches
+don't compute in Float64, so that they can run on GPUs without Float64, such as Apple GPUs
+(Metal) and some Intel GPUs. =#
+function _launch_float32_checked(launch, backend, FT)
+    if FT == Float32 && backend isa typeof(KA.CPU())
+        @test isempty(_float64_kernels(launch))
+    else
+        launch()
+    end
 end
 
 # The points of a GOG.ArrayPolygon, and whether its padding after them is zero

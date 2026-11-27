@@ -320,19 +320,11 @@ can move with GeometryOpsGPU.
         @test n_nonempty > 100
     end
 
-    #= Run `launch()`. With Float32 on the CPU backend, also check that the kernels it launches
-    don't compute in Float64, so that they can run on GPUs without Float64, such as Apple GPUs
-    (Metal) and some Intel GPUs (see `_float64_kernels`). The kernels below call every
-    function of the module that kernels use, except the clipping (see
-    `test_geometry_ops_gpu_clipping.jl`) and `interiors_intersect` and `transform!` (see
-    `test_kernel_code.jl`). =#
-    function _launch_float32_checked(launch, backend, FT)
-        if FT == Float32 && backend isa typeof(KA.CPU())
-            @test isempty(_float64_kernels(launch))
-        else
-            launch()
-        end
-    end
+    #= The kernels below are launched with `_launch_float32_checked`, which checks that with
+    Float32 they don't compute in Float64. Together they call every function of the module
+    that kernels use, except the clipping (see `test_geometry_ops_gpu_clipping.jl`) and
+    `interiors_intersect` and `transform!` (see `test_kernel_code.jl`). =#
+
     #= Kernel test: each polygon computes its area and centroid, the point tests for its test
     points, and the intersection points with a partner polygon =#
     function _geom_kernel!(i, coords, ns, pts, orient, sdist, areas, cents, partner, ipts, nipts)
