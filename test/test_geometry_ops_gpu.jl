@@ -294,28 +294,6 @@ Float32 polygons they may differ by round-off.
             exact = GO.True())
         return Int8(Int(kind)), intr1, intr2
     end
-    function _gog_intersection_point(::Type{FT}, a1, a2, b1, b2) where FT
-        kind, intr1, intr2 = GOG._intersection_point(FT, (a1, a2), (b1, b2))
-        return Int8(kind), intr1, intr2
-    end
-
-    @testset "Edge intersections with $FT" for FT in (Float64, Float32)
-        same_as_go(e) =
-            isequal(_gog_intersection_point(FT, e...), _go_intersection_point(FT, e...))
-        edges = _polygon_edge_pairs(_geom_test_polys(FT; n = 60))
-        @test all(same_as_go, edges)
-        kinds = [_gog_intersection_point(FT, e...)[1] for e in edges]
-        @test all(k -> count(==(k), kinds) > 100,
-            Int8.((GOG.line_cross, GOG.line_hinge, GOG.line_over, GOG.line_out)))
-        edges = _near_parallel_edge_pairs(FT)
-        @test all(same_as_go, edges)
-        n_endpoints = count(edges) do e
-            kind, (pt, _), _ = _gog_intersection_point(FT, e...)
-            kind == Int8(GOG.line_cross) && pt in e
-        end
-        # In Float64, rounding hardly ever puts the crossing outside the bounding boxes
-        FT == Float32 && @test n_endpoints > 100
-    end
 
     @testset "Intersection points and matching vertices with $FT" for FT in (Float64, Float32)
         polys = _geom_test_polys(FT)
@@ -486,15 +464,16 @@ Float32 polygons they may differ by round-off.
         @test count(>(0), ref[6]) > n ÷ 2
     end
 
-    #= Kernel test of edge intersections. Its purpose is to make sure that GPUs give the same
-    intersections as GeometryOps on every branch of `GOG._intersection_point`, including the rare
-    ones. A GPU compiler could do floating-point maths differently from the CPU (fuse a
-    multiplication and an addition, use a less exact square root, or reorder operations),
-    which would change the results, and could break the exact orientation test, which
-    relies on IEEE arithmetic. The per-floe kernel test above has too few edge pairs to
+    #= Kernel test of edge intersections. Its purpose is to make sure that every backend gives
+    the same intersections as GeometryOps on every branch of `GOG._intersection_point`,
+    including the rare ones. A GPU compiler could do floating-point maths differently from the
+    CPU (fuse a multiplication and an addition, use a less exact square root, or reorder
+    operations), which would change the results, and could break the exact orientation test,
+    which relies on IEEE arithmetic. The per-floe kernel test above has too few edge pairs to
     reach the rare branches, such as the nearest end of almost parallel edges, so this test
-    runs all the edge pairs of the CPU test above (about 150,000) in a kernel and compares
-    them with GeometryOps directly. Kernels name the module in full, because the local `GOG`
+    runs all pairs of edges of 60 test polygons, which touch, cross, and overlap, and almost
+    parallel edges (about 150,000 pairs) in a kernel and compares them with GeometryOps
+    directly. Kernels name the module in full, because the local `GOG`
     would be captured, and a module can't be passed to a kernel.
 
     Each thread computes the intersection of one pair: `launch_per_floe!` only needs
@@ -526,6 +505,14 @@ Float32 polygons they may differ by round-off.
         kinds, intrs = Array(dev_kinds), Array(dev_intrs)
         got(i) = (kinds[i], ((intrs[i, 1], intrs[i, 2]), (intrs[i, 3], intrs[i, 4])),
             ((intrs[i, 5], intrs[i, 6]), (intrs[i, 7], intrs[i, 8])))
-        @test all(i -> isequal(got(i), _go_intersection_point(FT, edges[i]...)), 1:n)
+        ref = [_go_intersection_point(FT, e...) for e in edges]
+        @test all(i -> isequal(got(i), ref[i]), 1:n)
+        # The edge pairs reach every kind of intersection, and, in Float32, crossings that
+        # rounding puts outside the edges' bounding boxes, for which the nearest end is used
+        # (in Float64, that hardly ever happens)
+        @test all(k -> count(r -> r[1] == Int8(k), ref) > 100,
+            (GOG.line_cross, GOG.line_hinge, GOG.line_over, GOG.line_out))
+        n_endpoints = count(i -> ref[i][1] == Int8(GOG.line_cross) && ref[i][2][1] in edges[i], 1:n)
+        FT == Float32 && @test n_endpoints > 100
     end
 end
