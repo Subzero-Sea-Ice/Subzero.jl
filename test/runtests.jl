@@ -20,6 +20,7 @@ using Test
     include("test_physical_processes/test_update_floe.jl")
     include("test_physical_processes/test_collisions.jl")
     include("test_physical_processes/test_ghosts.jl")
+    include("test_kernel_inlining.jl")
     include("test_physical_processes/test_coupling.jl")
     include("test_physical_processes/test_process_settings.jl")
     include("test_physical_processes/test_fractures.jl")
