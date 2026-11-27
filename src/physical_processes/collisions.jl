@@ -1211,16 +1211,18 @@ what to do with it are known at compile time.
 end
 
 # Number of values in a row of an array of a FixedWidthFloes, and element e of row i, with
-# the elements of a row in memory order
+# the elements of a row in memory order. Inlined, so that the arrays aren't passed by
+# reference, which made CUDA copy all of the floes into each thread's local memory.
 _row_length(a::AbstractArray{<:Any, 1}) = 1
 _row_length(a::AbstractArray{<:Any, 2}) = size(a, 2)
 _row_length(a::AbstractArray{<:Any, 3}) = size(a, 2) * size(a, 3)
-_element(a::AbstractArray{<:Any, 1}, i, e) = a[i]
-_element(a::AbstractArray{<:Any, 2}, i, e) = a[i, e]
-_element(a::AbstractArray{<:Any, 3}, i, e) = a[i, mod1(e, size(a, 2)), cld(e, size(a, 2))]
-_set_element!(a::AbstractArray{<:Any, 1}, i, e, x) = (a[i] = x; nothing)
-_set_element!(a::AbstractArray{<:Any, 2}, i, e, x) = (a[i, e] = x; nothing)
-_set_element!(a::AbstractArray{<:Any, 3}, i, e, x) =
+@inline _element(a::AbstractArray{<:Any, 1}, i, e) = a[i]
+@inline _element(a::AbstractArray{<:Any, 2}, i, e) = a[i, e]
+@inline _element(a::AbstractArray{<:Any, 3}, i, e) =
+    a[i, mod1(e, size(a, 2)), cld(e, size(a, 2))]
+@inline _set_element!(a::AbstractArray{<:Any, 1}, i, e, x) = (a[i] = x; nothing)
+@inline _set_element!(a::AbstractArray{<:Any, 2}, i, e, x) = (a[i, e] = x; nothing)
+@inline _set_element!(a::AbstractArray{<:Any, 3}, i, e, x) =
     (a[i, mod1(e, size(a, 2)), cld(e, size(a, 2))] = x; nothing)
 
 # Number of values in a row of floes, over all fields
