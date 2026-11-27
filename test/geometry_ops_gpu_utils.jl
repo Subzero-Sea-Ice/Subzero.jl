@@ -71,15 +71,13 @@ function _geom_test_points(rng, p::Vector{Tuple{FT, FT}}, polys) where FT
     return pt
 end
 
-# The name of the kernel of a compilation job, or for `per_floe_kernel!`, the per-floe function
+#= The name of the kernel of a compilation job. A kernel that runs a function given as its
+first argument, such as `_gog_test_kernel!(f, args)`, is named after that function. =#
 function _kernel_name(job)
-    types = job.source.specTypes.parameters
-    kernel = string(nameof(types[1].instance))
-    # per_floe_kernel!(ctx, f, floes, args): name it after f
-    if occursin("per_floe_kernel", kernel)
-        kernel = string(nameof(types[3].instance))
-    end
-    return kernel
+    # the kernel, the KernelAbstractions context, and the kernel's arguments
+    kernel, _, args... = job.source.specTypes.parameters
+    f = isempty(args) ? kernel : args[1]
+    return string(nameof(f <: Function && isdefined(f, :instance) ? f.instance : kernel.instance))
 end
 
 #=
