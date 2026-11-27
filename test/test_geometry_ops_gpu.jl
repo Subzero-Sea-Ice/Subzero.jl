@@ -26,6 +26,7 @@ Float32 polygons they may differ by round-off.
         @test GI.nhole(p) == 0
         @test gi_points(p) == [GOG.getpoint(p, j) for j in 1:4]
         @test GO.area(p) == 0.5
+        @test GI.extent(p) == GOG.extent(p) == Extent(X = (1.0, 2.0), Y = (2.0, 3.0))
     end
 
     #= transform! changes the polygon in place, as GO.transform with CoordinateTransformations'

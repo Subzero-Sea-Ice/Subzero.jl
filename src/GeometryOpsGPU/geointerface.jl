@@ -17,6 +17,7 @@ GI.geomtrait(::ArrayPolygon) = GI.PolygonTrait()
 GI.ngeom(::GI.PolygonTrait, ::ArrayPolygon) = 1  # no holes
 GI.getgeom(::GI.PolygonTrait, p::ArrayPolygon, k::Integer) = ArrayRing(p.coords, p.i, p.n)
 GI.ncoord(::GI.PolygonTrait, ::ArrayPolygon) = 2
+GI.extent(::GI.PolygonTrait, p::ArrayPolygon) = extent(p)
 
 GI.isgeometry(::Type{<:ArrayRing}) = true
 GI.geomtrait(::ArrayRing) = GI.LinearRingTrait()
