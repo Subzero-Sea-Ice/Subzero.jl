@@ -51,29 +51,6 @@
     tri_moment = Subzero._calc_moment_inertia(Float64, tri_poly, GO.centroid(tri_poly), 0.5)
     @test isapprox(tri_moment, 50581.145, atol = 0.001)
 
-    @testset "_move_floe! matches _move_poly" begin
-        rng = Xoshiro(1)
-        for FT in (Float64, Float32)
-            floes = _make_timestep_test_floes(FT, FloeSettings(FT))
-            fwf = Subzero.FixedWidthFloes(floes)
-            n = length(floes)
-            # Δx, Δy, Δα per floe
-            moves = [(100 .* (rand(rng, FT, 2) .- FT(0.5))..., FT(π) * (rand(rng, FT) - FT(0.5)))
-                for _ in 1:n]
-            expected = [Subzero._move_poly(FT, floes.poly[i], moves[i]..., floes.centroid[i]...)
-                for i in 1:n]
-            foreach(i -> Subzero._move_floe!(fwf, i, moves[i]...), 1:n)
-            # bit for bit in Float64, to round-off in Float32
-            @test isempty(_not_approx(
-                [reinterpret(FT, _fwf_points(fwf, i)) for i in 1:n],
-                [reinterpret(FT, collect(GI.getpoint(p))) for p in expected];
-                rtol = FT == Float64 ? 0.0 : 10eps(FT),
-            ))
-            @test isempty(_not_approx([fwf.centroid[i, :] for i in 1:n],
-                [floes.centroid[i] .+ [moves[i][1], moves[i][2]] for i in 1:n]))
-            @test isempty(_failing(i -> _fwf_padding_is_zero(fwf, i), 1:n))
-        end
-    end
     @testset "_move_floe! on $backend with $FT" for backend in test_backends(),
             FT in (Float64, Float32)
         floes = _make_timestep_test_floes(FT, FloeSettings(FT))
