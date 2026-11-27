@@ -162,10 +162,12 @@ over if/else flags.
 - Ported code must match the original (the CPU code on `main`, or the GeometryOps
   function it replaces) bit for bit with Float64 floes, which is how the original was
   run. With Float32 floes it doesn't have to: compare with a tolerance, or not at all.
-  The one exception so far is the rotation of floes (`GOG.RotateTranslate`, in
-  `timestep_floe_properties!`), which computes in another order than CoordinateTransformations
-  and matches to round-off, so the reference test in `test_update_floe.jl` uses a
-  tolerance. Document and test any other exception the same way.
+  This holds on the CPU backends (`CPU()` and `JLBackend()`). On GPUs, results can differ
+  by round-off, because the GPU compilers fuse multiplications and additions (CUDA does by
+  default) and use their own `sin`, `cos`, `atan`, ..., which differ from Julia's by 1–2
+  ulp. So tests compare Float64 results exactly on the CPU backends and with a tolerance on
+  GPUs (`_float64_rtol(backend)` in `test/utils.jl`). If a port can't match exactly on the
+  CPU, document why and test it with a tolerance.
 - With Float32 floes, use Float32 maths throughout. Don't promote to Float64 inside a
   function to copy the original's Float32 results (GeometryOps does this in places, e.g.
   its orientation tests and clipping). Float64 maths is slow on consumer GPUs and fails on

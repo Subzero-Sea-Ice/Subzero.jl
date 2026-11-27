@@ -1,12 +1,12 @@
 #=
-Tests of the GeometryOpsGPU submodule against GeometryOps (through Subzero's CPU geometry
-functions, which call it). With Float64 polygons the results must be the same, bit for bit,
-except for `RotateTranslate`, which matches to round-off; with Float32 polygons they may
-differ by round-off.
+Tests of the GeometryOpsGPU submodule against GeometryOps (directly, or through Subzero's CPU
+geometry functions, which call it). With Float64 polygons the results must be the same, bit
+for bit; with Float32 polygons they may differ by round-off.
 =#
 @testset "GeometryOpsGPU" begin
     GOG = Subzero.GeometryOpsGPU
     Extent = Subzero.Extents.Extent
+    CT = Subzero.CoordinateTransformations
     # The points of a GeoInterface polygon's exterior ring, as tuples
     gi_points(p) = [(GI.x(q), GI.y(q)) for q in GI.getpoint(GI.getexterior(p))]
 
@@ -28,33 +28,30 @@ differ by round-off.
         @test GO.area(p) == 0.5
     end
 
-    # transform! changes the polygon in place and leaves the padding after its points alone
+    #= transform! changes the polygon in place, as GO.transform with CoordinateTransformations'
+    types, and leaves the padding after its points alone =#
     @testset "transform! with $FT" for FT in (Float64, Float32)
         floes = _make_timestep_test_floes(FT, FloeSettings(FT))
         n = length(floes)
-        # Translate adds Δx and Δy to every coordinate, as GO.transform with a Translation
-        Δx, Δy = FT(-2e4), FT(1234.5)
-        fwf = Subzero.FixedWidthFloes(floes)
-        foreach(i -> GOG.transform!(GOG.Translate(Δx, Δy), Subzero._floe_poly(fwf, i)), 1:n)
-        expected = [Subzero._translate_poly(FT, floes.poly[i], Δx, Δy) for i in 1:n]
-        @test isempty(_failing(i -> _fwf_points(fwf, i) == collect(GI.getpoint(expected[i])), 1:n))
-        @test isempty(_failing(i -> _fwf_padding_is_zero(fwf, i), 1:n))
-        # RotateTranslate, as GO.transform with Translation ∘ recenter(LinearMap(Angle2d)),
-        # which computes in another order, so up to round-off
-        Δα = FT(0.7)
-        fwf = Subzero.FixedWidthFloes(floes)
-        foreach(1:n) do i
-            cx, cy = floes.centroid[i]
-            GOG.transform!(GOG.RotateTranslate(Δα, cx, cy, Δx, Δy), Subzero._floe_poly(fwf, i))
+        original = Subzero.FixedWidthFloes(floes)
+        Δx, Δy, Δα = FT(-2e4), FT(1234.5), FT(0.7)
+        cs = [floes.centroid[i] for i in 1:n]
+        transforms = (
+            translate = (i -> GOG.Translate(Δx, Δy), i -> CT.Translation(Δx, Δy)),
+            rotate_translate = (i -> GOG.RotateTranslate(Δα, cs[i]..., Δx, Δy),
+                i -> CT.Translation(Δx, Δy) ∘
+                    CT.recenter(CT.LinearMap(Subzero.Rotations.Angle2d(Δα)), cs[i])),
+        )
+        @testset "$name" for (name, (gog, ct)) in pairs(transforms)
+            fwf = Subzero.FixedWidthFloes(floes)
+            foreach(i -> GOG.transform!(gog(i), Subzero._floe_poly(fwf, i)), 1:n)
+            expected = [gi_points(GO.transform(ct(i), Subzero._floe_poly(original, i))) for i in 1:n]
+            # bit for bit in Float64, to round-off in Float32
+            rtol = FT == Float64 ? 0.0 : 10eps(FT)
+            @test isempty(_not_approx([reinterpret(FT, _fwf_points(fwf, i)) for i in 1:n],
+                [reinterpret(FT, FT.(collect(Iterators.flatten(e)))) for e in expected]; rtol))
+            @test isempty(_failing(i -> _fwf_padding_is_zero(fwf, i), 1:n))
         end
-        expected = [Subzero._move_poly(FT, floes.poly[i], Δx, Δy, Δα, floes.centroid[i]...)
-            for i in 1:n]
-        @test isempty(_not_approx(
-            [reinterpret(FT, _fwf_points(fwf, i)) for i in 1:n],
-            [reinterpret(FT, collect(GI.getpoint(p))) for p in expected];
-            rtol = 10eps(FT),
-        ))
-        @test isempty(_failing(i -> _fwf_padding_is_zero(fwf, i), 1:n))
     end
 
     #=

@@ -63,10 +63,11 @@
             expected = [Subzero._move_poly(FT, floes.poly[i], moves[i]..., floes.centroid[i]...)
                 for i in 1:n]
             foreach(i -> Subzero._move_floe!(fwf, i, moves[i]...), 1:n)
+            # bit for bit in Float64, to round-off in Float32
             @test isempty(_not_approx(
                 [reinterpret(FT, _fwf_points(fwf, i)) for i in 1:n],
                 [reinterpret(FT, collect(GI.getpoint(p))) for p in expected];
-                rtol = 10eps(FT),
+                rtol = FT == Float64 ? 0.0 : 10eps(FT),
             ))
             @test isempty(_not_approx([fwf.centroid[i, :] for i in 1:n],
                 [floes.centroid[i] .+ [moves[i][1], moves[i][2]] for i in 1:n]))
@@ -84,7 +85,7 @@
         @test isempty(_not_approx(
             [reinterpret(FT, _fwf_points(fwf, i)) for i in 1:n],
             [reinterpret(FT, collect(GI.getpoint(p))) for p in expected];
-            rtol = 10eps(FT),
+            rtol = FT == Float64 ? _float64_rtol(backend) : 10eps(FT),
         ))
         @test isempty(_not_approx([fwf.centroid[i, :] for i in 1:n],
             [floes.centroid[i] .+ [Δx, Δy] for i in 1:n]))
