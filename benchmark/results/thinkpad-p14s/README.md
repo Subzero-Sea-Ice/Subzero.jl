@@ -5,7 +5,7 @@ Made by `summarize.jl` from the results files in this folder: don't edit by hand
 
 | step | ported | baseline 1 thread | baseline 8 threads | current CPU 1 thread | current CPU 8 threads | current AMDGPU Float64 | current AMDGPU Float32 | speedup | share of timestep | check | measured |
 |---|:-:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|
-| [`add_ghosts!` and removing the ghosts](../../steps/10_ghosts.md) | yes | 21.4 | 21.4 | 3.74 | 1.78 | 1.28 | 1.06 | 16.7× | – | ✓ | 2026-11-22 `aab9b8f` |
+| [`add_ghosts!` and removing the ghosts](../../steps/10_ghosts.md) | yes | 21.4 | 21.4 | 3.22 | 1.68 | 1.12 | 1.04 | 19.1× | – | ✓ | 2026-11-27 `c38c996` |
 
 Median time of one call in ms for 100,000 floes. ≈: extrapolated from fewer floes as t ∝ nᵇ, with the exponent b.
 
