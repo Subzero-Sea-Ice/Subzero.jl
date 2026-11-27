@@ -154,7 +154,7 @@ over if/else flags.
 - Inline every function a kernel calls that takes the floes or one of their arrays
   (`@inline` on the method, or at the call). Otherwise they're passed by reference, and on
   CUDA each thread first copies the whole `FixedWidthFloes` into its local memory, which
-  makes the kernel several times slower. `test/test_kernel_inlining.jl` checks this without
+  makes the kernel several times slower. `test/test_kernel_code.jl` checks this without
   a GPU: add a call that launches each new kernel to it.
 
 ### Floating point and reproducibility
