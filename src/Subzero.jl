@@ -16,6 +16,11 @@ using CoordinateTransformations, Dates, Extents,
     Interpolations, JLD2, LinearAlgebra, Logging, Measures, NCDatasets,
     Printf, Random, Rotations, SplitApplyCombine, Statistics, StructArrays
 using Adapt, KernelAbstractions
+import AcceleratedKernels as AK
+
+# Geometry that runs in GPU kernels, with an API like GeometryOps'
+include("GeometryOpsGPU/GeometryOpsGPU.jl")
+import .GeometryOpsGPU as GOG
 
 
 const SIM_DEF = "`sim::Simulation`: simulation to be run"
@@ -35,6 +40,7 @@ from the centroid to any given vertex"
 
 # Types
 include("tools/geom_utils.jl")
+include("tools/device_geom_utils.jl")
 # Model
 include("simulation_components/grids.jl")
 include("simulation_components/domain_components/abstract_domains.jl")
