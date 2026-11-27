@@ -142,7 +142,8 @@ end
                 Subzero._log_flags(host_floes.flags, tstep, floe_settings)
             end,
         )
-        rtol = _float64_rtol(backend)
+        # kernels use the backend's sin, cos and atan, which can differ from Julia's by round-off
+        rtol = 1e-10
         # the vertices of each floe, as a flat vector of coordinates
         coords(floes) = [reinterpret(FT, collect(GI.getpoint(p))) for p in floes.poly]
         @test isempty(_not_approx(coords(floes), coords(expected); rtol))
@@ -288,7 +289,7 @@ end
             @test isempty(_not_approx(
                 [reinterpret(FT, _fwf_points(fwf, i)) for i in eachindex(floes)],
                 [reinterpret(FT, collect(GI.getpoint(p))) for p in floes.poly];
-                rtol = FT == Float64 ? _float64_rtol(backend) : rtol,
+                rtol,
             ))
             @test isempty(_not_approx([fwf.centroid[i, :] for i in eachindex(floes)], floes.centroid; rtol))
             @testset "$field" for field in (:α, :p_dxdt, :p_dydt, :p_dαdt)

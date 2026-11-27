@@ -62,7 +62,7 @@
         @test isempty(_not_approx(
             [reinterpret(FT, _fwf_points(fwf, i)) for i in 1:n],
             [reinterpret(FT, collect(GI.getpoint(p))) for p in expected];
-            rtol = FT == Float64 ? _float64_rtol(backend) : 10eps(FT),
+            rtol = 10eps(FT),
         ))
         @test isempty(_not_approx([fwf.centroid[i, :] for i in 1:n],
             [floes.centroid[i] .+ [Δx, Δy] for i in 1:n]))

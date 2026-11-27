@@ -37,8 +37,10 @@ end
 A point function for [`transform!`](@ref GeometryOpsGPU.transform!) that rotates a point by
 `Δα` radians anticlockwise around `(cx, cy)`, and then moves it by `Δx` and `Δy`: the same,
 bit for bit, as `Translation(Δx, Δy) ∘ recenter(LinearMap(Angle2d(Δα)), (cx, cy))` in
-CoordinateTransformations and Rotations. All arguments must have the same type, that of the
-polygon's coordinates. `sincos(Δα)` and the translation are computed once, here.
+CoordinateTransformations and Rotations, given the same `sincos(Δα)` (in a kernel, the
+backend's `sincos` can differ from Julia's by round-off). All arguments must have the same
+type, that of the polygon's coordinates. `sincos(Δα)` and the translation are computed once,
+here.
 """
 struct RotateTranslate{T}
     sinα::T

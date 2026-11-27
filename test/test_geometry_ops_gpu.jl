@@ -38,9 +38,11 @@ Float32 polygons they may differ by round-off.
         cs = [floes.centroid[i] for i in 1:n]
         transforms = (
             translate = (i -> GOG.Translate(Δx, Δy), i -> CT.Translation(Δx, Δy)),
+            # the centre as a tuple, as in _move_poly: with a Vector, StaticArrays multiplies
+            # with muladd, which may or may not be fused, depending on the CPU
             rotate_translate = (i -> GOG.RotateTranslate(Δα, cs[i]..., Δx, Δy),
                 i -> CT.Translation(Δx, Δy) ∘
-                    CT.recenter(CT.LinearMap(Subzero.Rotations.Angle2d(Δα)), cs[i])),
+                    CT.recenter(CT.LinearMap(Subzero.Rotations.Angle2d(Δα)), Tuple(cs[i]))),
         )
         @testset "$name" for (name, (gog, ct)) in pairs(transforms)
             fwf = Subzero.FixedWidthFloes(floes)

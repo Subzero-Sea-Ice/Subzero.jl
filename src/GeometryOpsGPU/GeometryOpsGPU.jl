@@ -13,10 +13,11 @@ moved into GeometryOps one day:
   arguments instead of returning a new geometry. Internal helpers have the names of the
   GeometryOps helpers they follow. Functions without an equivalent say so.
 - Files are laid out as in GeometryOps' `src/` (`methods/`, `transformations/`, ...).
-- With Float64 polygons, results are the same as GeometryOps', bit for bit, on the CPU.
-  GPUs can differ by round-off, as their compilers fuse multiplications and additions and
-  have their own `sin`, `cos`, ... With Float32 polygons, the maths is in Float32
-  throughout, even where GeometryOps converts to Float64, so results can differ by round-off.
+- With Float64 polygons, results are the same as GeometryOps', bit for bit, when called on
+  the host. In kernels they can differ by round-off, as every KernelAbstractions backend has
+  its own `sin`, `cos`, ..., and GPU compilers fuse multiplications and additions. With
+  Float32 polygons, the maths is in Float32 throughout, even where GeometryOps converts to
+  Float64, so results can differ by round-off.
 
 The differences from GeometryOps:
 - Polygons are `ArrayPolygon`s, not any GeoInterface geometry, and have no holes.

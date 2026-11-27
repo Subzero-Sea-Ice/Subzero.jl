@@ -41,14 +41,6 @@ function _not_approx(a, b; kwargs...)
 end
 _failing(f, is) = filter(!f, collect(is))
 
-#=
-The relative tolerance for comparing Float64 results of kernels on `backend` with the
-original code: none on the CPU backends, and round-off on GPUs, whose compilers fuse
-multiplications and additions and use their own `sin`, `cos`, ...
-=#
-_float64_rtol(backend) =
-    backend isa Union{typeof(Subzero.KernelAbstractions.CPU()), JLArrays.JLBackend} ? 0.0 : 1e-10
-
 # The vertices of floe i of a FixedWidthFloes, and whether the padding after them is zero
 _fwf_points(fwf, i) = [(fwf.poly[i, j, 1], fwf.poly[i, j, 2]) for j in 1:fwf.n_points[i]]
 _fwf_padding_is_zero(fwf, i) = all(iszero, fwf.poly[i, (fwf.n_points[i] + 1):end, :])
