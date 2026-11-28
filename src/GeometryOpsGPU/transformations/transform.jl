@@ -19,6 +19,22 @@ point.
 end
 
 """
+    transform!(f, out::ArrayPolygon, poly::ArrayPolygon)
+
+Write `f` of every point of `poly` into the row of `out`, leaving `poly` as it is, as
+`GO.transform(f, poly)` returns a new polygon. Returns the polygon in `out`'s row, with as
+many points as `poly` (an `ArrayPolygon` with `out`'s array and row). `out`'s row must have
+room for them; points after them are left as they are. Both must have the same float type.
+"""
+@inline function transform!(f, out::ArrayPolygon{<:AbstractArray{T}},
+        p::ArrayPolygon{<:AbstractArray{T}}) where T
+    for j in 1:npoint(p)
+        _setpoint!(out, j, f(getpoint(p, j)))
+    end
+    return ArrayPolygon(out.coords, out.i, npoint(p))
+end
+
+"""
     Translate(Δx, Δy)
 
 A point function for [`transform!`](@ref GeometryOpsGPU.transform!) that moves a point by

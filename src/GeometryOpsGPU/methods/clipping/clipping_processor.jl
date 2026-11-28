@@ -199,7 +199,8 @@ function _build_a_list!(a::_PolyNodes, a_idx::_IndexList, ::Type{T}, poly_a::Arr
         for j in 1:(npoint(poly_b) - 1)
             b_pt1, b_pt2 = getpoint(poly_b, j), getpoint(poly_b, j + 1)
             b_pt1 == b_pt2 && continue
-            line_orient, intr1, intr2 = _intersection_point(T, (a_pt1, a_pt2), (b_pt1, b_pt2))
+            line_orient, intr1, intr2 =
+                _intersection_point(T, (a_pt1, a_pt2), (b_pt1, b_pt2); exact = True())
             line_orient == line_out && continue
             if line_orient == line_cross  # intersection point that isn't a vertex
                 int_pt, fracs = intr1

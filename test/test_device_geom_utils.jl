@@ -103,7 +103,7 @@ GeometryOpsGPU, `which_vertices_match_points!` with its CPU version, and all of 
     into another kernel takes about 45 s, and GOG.intersection!, which it calls with the same
     arguments, is run in kernels in test_geometry_ops_gpu_clipping.jl, so it is compared with
     GOG.intersection! on the CPU instead. =#
-    function _wrappers_kernel!(floes, i, pts, out_f, out_c, ipts, idxs, partner)
+    function _wrappers_kernel!(floes, i, pts, out_f, out_c, ipts, idxs, moved, partner)
         FT = eltype(floes.area)
         r, rj = Subzero._floe_poly(floes, i), Subzero._floe_poly(floes, partner[i])
         out_f[i, 1] = Subzero.area_poly(r, FT)
@@ -117,6 +117,8 @@ GeometryOpsGPU, `which_vertices_match_points!` with its CPU version, and all of 
         k = size(pts, 2)
         out_c[i, k + 1] = m
         out_c[i, k + 2] = m < 0 ? 0 : Subzero.which_vertices_match_points!(idxs, i, ipts, m, rj)
+        out_c[i, k + 3] = Subzero.check_intersects(r, rj)
+        Subzero._translate_poly!(GOG.ArrayPolygon(moved, i, 0), r, FT(12.5), FT(-3.25))
         return
     end
     @testset "Kernels on $backend with $FT" for backend in test_backends(), FT in (Float64, Float32)
@@ -134,8 +136,8 @@ GeometryOpsGPU, `which_vertices_match_points!` with its CPU version, and all of 
             pts[i, s, :] .= _geom_test_points(rng, polys[i], polys)
         end
         partner = [mod1(i + rand(rng, 1:(n - 1)), n) for i in 1:n]
-        outputs() = (zeros(FT, n, 3 + k), zeros(Int, n, k + 2), zeros(FT, n, 32, 2),
-            zeros(Int, n, 32))
+        outputs() = (zeros(FT, n, 3 + k), zeros(Int, n, k + 3), zeros(FT, n, 32, 2),
+            zeros(Int, n, 32), zeros(FT, n, size(fwf.poly, 2), 2))
         # Reference: the same function called on the CPU without a kernel
         ref = outputs()
         for i in 1:n
@@ -146,7 +148,19 @@ GeometryOpsGPU, `which_vertices_match_points!` with its CPU version, and all of 
         @test all(i -> ref[1][i, 1] == GOG.area(r(i), FT), 1:n)
         @test all(i -> (ref[1][i, 2], ref[1][i, 3]) == GOG.centroid(r(i), FT), 1:n)
         @test all(i -> ref[1][i, 4] == GOG.signed_distance((pts[i, 1, 1], pts[i, 1, 2]), r(i), FT), 1:n)
-        @test all(>=(0), ref[2][:, (k + 1):end])  # the buffers are large enough
+        @test all(>=(0), ref[2][:, (k + 1):(k + 2)])  # the buffers are large enough
+        @test all(i -> ref[2][i, k + 3] == GOG.intersects(r(i), r(partner[i])), 1:n)
+        @test 0 < count(==(1), ref[2][:, k + 3]) < n
+        # _translate_poly! gives what _translate_poly gives
+        @test all(1:n) do i
+            moved = _gog_points(GOG.ArrayPolygon(ref[5], i, GOG.npoint(r(i))))
+            moved == [Tuple(FT.(p)) for p in GI.getpoint(GI.getexterior(
+                Subzero._translate_poly(FT, floes.poly[i], FT(12.5), FT(-3.25))))]
+        end
+        # a shift in another float type than the polygons' isn't accepted
+        OT = FT == Float64 ? Float32 : Float64
+        @test_throws MethodError Subzero._translate_poly!(GOG.ArrayPolygon(ref[5], 1, 0), r(1),
+            OT(12.5), OT(-3.25))
         # intersect_polys! gives what GOG.intersection! gives
         clip(f, i) = (out = GOG.PolyRegions(GOG.PolyRegions(FT, 1, 8, 64), 1);
             m = f(out, GOG.ClipLists(GOG.ClipLists(FT, 1, 64), 1), r(i), r(partner[i]));

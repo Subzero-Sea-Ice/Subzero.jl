@@ -13,6 +13,17 @@ dist_to_poly(point, p::GOG.ArrayPolygon, ::Type{T}) where T = GOG.signed_distanc
 
 coveredby_poly(point, p::GOG.ArrayPolygon) = GOG.coveredby(point, p)
 
+# Whether the polygons have a point in common, in their interiors or on their boundaries
+check_intersects(poly1::GOG.ArrayPolygon, poly2::GOG.ArrayPolygon) =
+    GOG.intersects(poly1, poly2)
+
+#= The polygon `p` translated by Δx and Δy, written into the row of `out`, which must have
+room for its points. Returns the translated polygon (in `out`'s row). Δx and Δy must have the
+polygons' float type. =#
+_translate_poly!(out::GOG.ArrayPolygon{<:AbstractArray{T}},
+    p::GOG.ArrayPolygon{<:AbstractArray{T}}, Δx::T, Δy::T) where T =
+    GOG.transform!(GOG.Translate(Δx, Δy), out, p)
+
 #=
 Points where the edges of two polygons intersect, sorted and distinct, in the polygons' float
 type, which `out` and `T` must have. They're written to `out[k, 1:m, :]`, and the number of

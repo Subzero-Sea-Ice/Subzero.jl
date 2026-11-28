@@ -43,6 +43,21 @@ can move with GeometryOpsGPU.
             _gog_points(apolys[i]) == go_points(GO.transform(CT.Translation(Δx, Δy), gps[i]))
         end
         @test all(_gog_padding_is_zero, apolys)
+        #= Into another polygon: the moved points are written into `out`'s rows, and the
+        polygons are left as they are =#
+        coords, apolys = _array_polys(polys)
+        before = copy(coords)
+        out = fill(FT(NaN), size(coords))
+        moved = [GOG.transform!(GOG.Translate(Δx, Δy), GOG.ArrayPolygon(out, i, 0), apolys[i])
+            for i in eachindex(apolys)]
+        @test all(eachindex(polys)) do i
+            moved[i].coords === out && moved[i].i == i &&
+                GOG.npoint(moved[i]) == GOG.npoint(apolys[i]) &&
+                _gog_points(moved[i]) == go_points(GO.transform(CT.Translation(Δx, Δy), gps[i]))
+        end
+        @test isequal(coords, before)
+        # points after the polygon's are left as they are
+        @test all(i -> all(isnan, out[i, (GOG.npoint(apolys[i]) + 1):end, :]), eachindex(polys))
         #= RotateTranslate, as GO.transform with Translation ∘ recenter(LinearMap(Angle2d)): bit
         for bit in Float64, to round-off in Float32. The centres are tuples, as in _move_poly:
         with a Vector, StaticArrays multiplies with muladd, which may or may not be fused,
@@ -234,12 +249,14 @@ can move with GeometryOpsGPU.
             (a1, a2, b1, b2)
         end
     end
-    # The intersection of two edges, with its kind as an integer, from GeometryOps and GOG
-    function _go_intersection_point(::Type{FT}, a1, a2, b1, b2) where FT
+    #= The intersection of two edges, with its kind as an integer, from GeometryOps, with exact
+    (default) or inexact orientation tests =#
+    function _go_intersection_point(::Type{FT}, a1, a2, b1, b2; exact = true) where FT
         kind, intr1, intr2 = GO._intersection_point(GO.Planar(), FT, (a1, a2), (b1, b2);
-            exact = GO.True())
+            exact = exact ? GO.True() : GO.False())
         return Int8(Int(kind)), intr1, intr2
     end
+
     @testset "Intersection points with $FT" for FT in (Float64, Float32)
         polys = _geom_test_polys(FT)
         _, apolys = _array_polys(polys)
@@ -322,8 +339,10 @@ can move with GeometryOpsGPU.
 
     #= The kernels below are launched with `_launch_float32_checked`, which checks that with
     Float32 they don't compute in Float64. Together they call every function of the module
-    that kernels use, except the clipping (see `test_geometry_ops_gpu_clipping.jl`) and
-    `interiors_intersect` and `transform!` (see `test_kernel_code.jl`). =#
+    that kernels use, except the clipping (see `test_geometry_ops_gpu_clipping.jl`),
+    `intersects` and `disjoint` (see `test_geometry_ops_gpu_intersects.jl`),
+    `interiors_intersect` and `transform!` in place (see `test_kernel_code.jl`), and
+    `transform!` into another polygon (see the wrapper kernel in `test_device_geom_utils.jl`). =#
 
     #= Kernel test: each polygon computes its area and centroid, the point tests for its test
     points, and the intersection points with a partner polygon =#
@@ -380,13 +399,14 @@ can move with GeometryOpsGPU.
     reach the rare branches, such as the nearest end of almost parallel edges, so this test
     runs all pairs of edges of 60 test polygons, which touch, cross, and overlap, and almost
     parallel edges (about 150,000 pairs) in a kernel and compares them with GeometryOps
-    directly. Each thread computes the intersection of one pair. =#
-    function _edge_intersection_kernel!(i, edges, kinds, intrs)
+    directly. Each thread computes the intersection of one pair, with exact or (as disjoint
+    uses them) inexact orientation tests. =#
+    function _edge_intersection_kernel!(i, edges, kinds, intrs, exact)
         FT = eltype(edges)
         a1, a2 = (edges[i, 1], edges[i, 2]), (edges[i, 3], edges[i, 4])
         b1, b2 = (edges[i, 5], edges[i, 6]), (edges[i, 7], edges[i, 8])
         kind, (p1, (α1, β1)), (p2, (α2, β2)) =
-            GOG._intersection_point(FT, (a1, a2), (b1, b2))
+            GOG._intersection_point(FT, (a1, a2), (b1, b2); exact)
         kinds[i] = Int8(kind)
         intrs[i, 1], intrs[i, 2], intrs[i, 3], intrs[i, 4] = p1[1], p1[2], α1, β1
         intrs[i, 5], intrs[i, 6], intrs[i, 7], intrs[i, 8] = p2[1], p2[2], α2, β2
@@ -399,17 +419,34 @@ can move with GeometryOpsGPU.
         n = length(edges)
         edge_array = [e[k][d] for e in edges, k in 1:4, d in 1:2]
         edge_array = reshape(permutedims(edge_array, (1, 3, 2)), n, 8)
-        dev_kinds = KA.zeros(backend, Int8, n)
-        dev_intrs = KA.zeros(backend, FT, n, 8)
-        _launch_float32_checked(backend, FT) do
-            _gog_launch!(_edge_intersection_kernel!, backend, n, Adapt.adapt(backend, edge_array),
-                dev_kinds, dev_intrs)
+        # The intersections from the kernel, with exact or inexact orientation tests
+        function kernel_results(exact)
+            dev_kinds = KA.zeros(backend, Int8, n)
+            dev_intrs = KA.zeros(backend, FT, n, 8)
+            _launch_float32_checked(backend, FT) do
+                _gog_launch!(_edge_intersection_kernel!, backend, n,
+                    Adapt.adapt(backend, edge_array), dev_kinds, dev_intrs,
+                    exact ? GOG.True() : GOG.False())
+            end
+            kinds, intrs = Array(dev_kinds), Array(dev_intrs)
+            return [(kinds[i], ((intrs[i, 1], intrs[i, 2]), (intrs[i, 3], intrs[i, 4])),
+                ((intrs[i, 5], intrs[i, 6]), (intrs[i, 7], intrs[i, 8]))) for i in 1:n]
         end
-        kinds, intrs = Array(dev_kinds), Array(dev_intrs)
-        got(i) = (kinds[i], ((intrs[i, 1], intrs[i, 2]), (intrs[i, 3], intrs[i, 4])),
-            ((intrs[i, 5], intrs[i, 6]), (intrs[i, 7], intrs[i, 8])))
         ref = [_go_intersection_point(FT, e...) for e in edges]
-        @test all(i -> isequal(got(i), ref[i]), 1:n)
+        @test isequal(kernel_results(true), ref)
+        #= With inexact orientation tests and Float32 edges, a point counts as on the other
+        edge's line within Float32's tolerance (`isapprox`), where GeometryOps computes in
+        Float64 (see `_same_point_tests`), so almost parallel edges can be classed
+        differently, but only if GOG puts a point on the other edge's line =#
+        inexact = kernel_results(false)
+        on_line(e) = ((a1, a2, b1, b2) = e; any(iszero, (
+            GOG.Predicates.orient(b1, b2, a1; exact = GOG.False()),
+            GOG.Predicates.orient(b1, b2, a2; exact = GOG.False()),
+            GOG.Predicates.orient(a1, a2, b1; exact = GOG.False()),
+            GOG.Predicates.orient(a1, a2, b2; exact = GOG.False()))))
+        differ = filter(i -> !isequal(inexact[i],
+            _go_intersection_point(FT, edges[i]...; exact = false)), 1:n)
+        @test FT == Float64 ? isempty(differ) : all(i -> on_line(edges[i]), differ)
         # The edge pairs reach every kind of intersection, and, in Float32, crossings that
         # rounding puts outside the edges' bounding boxes, for which the nearest end is used
         # (in Float64, that hardly ever happens)
