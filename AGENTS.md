@@ -172,6 +172,9 @@ over if/else flags.
   workgroups of one thread were right. Making the large functions the kernel calls
   `@noinline` fixed it (`GOG.intersection!` and `_many_intersect_normal_force`). If an
   AMD result is wrong only with several threads per workgroup, try that first.
+  TODO: the workaround is fragile. Storing `CollisionWorkspace.vertex_idx` as `Int` instead
+  of `Int32` brings the GPU Kernel Exception back in the Float64 collision kernel, so rerun
+  the AMD tests after changing that kernel, even in small ways.
 
 ### Floating point and reproducibility
 

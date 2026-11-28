@@ -413,6 +413,7 @@ function CollisionWorkspace(::Type{FT}, nrows, max_points; max_ipoints = 16,
         GOG.PolyRegions(FT, nrows, max_regions, region_capacity),
         GOG.PolyRegions(FT, nrows, max_regions, region_capacity),
         zeros(FT, nrows, max_ipoints, 2),
+        # Int32, not Int: with Int, the Float64 collision kernel fails on AMD GPUs (AGENTS.md)
         zeros(Int32, nrows, max_ipoints),
         zeros(FT, nrows, max_points, 2),
         zeros(FT, nrows, max_regions),
