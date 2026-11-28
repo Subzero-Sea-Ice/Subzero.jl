@@ -255,8 +255,13 @@ into `out` (see [`PolyRegions`](@ref GeometryOpsGPU.PolyRegions)), using `lists`
 memory, and their number is returned: 0 if the polygons don't overlap or only touch.
 Returns `CLIP_TOO_SMALL` if `lists` or `out` is too small, and `CLIP_FAILED` where
 GeometryOps throws an error.
+
+It's `@noinline` because of what looks like a compiler bug on AMD GPUs (AMDGPU.jl 2.12): a
+kernel that inlined it and also called other large functions threw a GPU kernel exception (an
+`InexactError`) once two or more threads ran, while the CPU backends were right. The
+function is large, so inlining it gains little anyway.
 """
-function intersection!(out::PolyRegions{<:AbstractArray{T, 3}},
+@noinline function intersection!(out::PolyRegions{<:AbstractArray{T, 3}},
         lists::ClipLists{<:_PolyNodes{<:AbstractArray{T, 3}}},
         poly_a::ArrayPolygon{<:AbstractArray{T}}, poly_b::ArrayPolygon{<:AbstractArray{T}}) where T
     a, b, a_idx = lists.a, lists.b, lists.a_idx

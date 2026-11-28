@@ -166,6 +166,15 @@ over if/else flags.
   CUDA each thread first copies the whole `FixedWidthFloes` into its local memory, which
   makes the kernel several times slower. `test/test_kernel_code.jl` checks this without
   a GPU: add a call that launches each new kernel to it.
+- On AMD GPUs (AMDGPU.jl 2.12), large kernels have failed in a way that looks like a
+  compiler bug: a "GPU Kernel Exception" (e.g. `InexactError`) or wrong results, only when
+  several threads of a workgroup took different branches, while the CPU backends and
+  workgroups of one thread were right. Making the large functions the kernel calls
+  `@noinline` fixed it (`GOG.intersection!` and `_many_intersect_normal_force`). If an
+  AMD result is wrong only with several threads per workgroup, try that first.
+  TODO: the workaround is fragile. Storing `CollisionWorkspace.vertex_idx` as `Int` instead
+  of `Int32` brings the GPU Kernel Exception back in the Float64 collision kernel, so rerun
+  the AMD tests after changing that kernel, even in small ways.
 
 ### Floating point and reproducibility
 

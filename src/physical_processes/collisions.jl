@@ -356,6 +356,362 @@ function floe_floe_interaction!(
     return
 end
 
+#=
+Collision forces between pairs of floes in a `FixedWidthFloes`, one pair at a time, so that a
+GPU kernel can compute many pairs at once. The functions write their results to buffers with
+one row per pair (`PairForces`), using scratch space with one row per pair (a
+`CollisionWorkspace`), so that the results of all pairs can be combined afterwards. They take
+the polygons as `GOG.ArrayPolygon`s, so that they work for both floes and domain elements.
+=#
+
+#=
+    CollisionWorkspace(FT, nrows, max_points; max_ipoints = 16, max_regions = 4)
+    CollisionWorkspace(workspace, k)
+
+Scratch space for the collision forces between pairs of polygons of float type `FT` with up
+to `max_points` points each (for floes, `size(floes.poly, 2)`), with `nrows` rows: one per
+pair that is processed at the same time. The first form makes the arrays on the CPU (move
+them to a device with `adapt`); the second refers to row `k` of the same arrays, e.g. the
+row of one pair in a kernel.
+
+Each row has room for `max_ipoints` points where the polygons' edges intersect and
+`max_regions` overlap regions. The regions have room for `2max_points + max_ipoints + 1`
+points each and the node lists for clipping for `max_points + max_ipoints` nodes, which is
+enough as long as the intersection points fit. The functions that use the workspace return
+`GOG.CLIP_TOO_SMALL` if a pair needs more room.
+
+Fields:
+- `lists`: node lists for clipping, used by both clippings in turn
+- `regions`: the overlap regions of the two polygons
+- `new_regions`: the overlap regions after the first polygon is moved in the direction of a
+  normal force, in `calc_normal_force`
+- `ipoints`: the points where the polygons' edges intersect (`ipoints[k, :, :]`)
+- `vertex_idx`: the vertices of a region that are such points (`vertex_idx[k, :]`)
+- `moved`: the first polygon, moved in the direction of a normal force (`moved[k, :, :]`)
+- `Δl`: for each force, the mean length between the intersection points of its region
+  (`Δl[k, r]`), which the friction needs
+=#
+struct CollisionWorkspace{L<:GOG.ClipLists, R<:GOG.PolyRegions, A3<:AbstractArray{<:Any, 3},
+        I2<:AbstractMatrix{Int32}, A2<:AbstractMatrix}
+    lists::L
+    regions::R
+    new_regions::R
+    ipoints::A3
+    vertex_idx::I2
+    moved::A3
+    Δl::A2
+    k::Int
+end
+
+Adapt.@adapt_structure CollisionWorkspace
+
+function CollisionWorkspace(::Type{FT}, nrows, max_points; max_ipoints = 16,
+        max_regions = 4) where FT
+    region_capacity = 2max_points + max_ipoints + 1
+    return CollisionWorkspace(
+        GOG.ClipLists(FT, nrows, max_points + max_ipoints),
+        GOG.PolyRegions(FT, nrows, max_regions, region_capacity),
+        GOG.PolyRegions(FT, nrows, max_regions, region_capacity),
+        zeros(FT, nrows, max_ipoints, 2),
+        # Int32, not Int: with Int, the Float64 collision kernel fails on AMD GPUs (AGENTS.md)
+        zeros(Int32, nrows, max_ipoints),
+        zeros(FT, nrows, max_points, 2),
+        zeros(FT, nrows, max_regions),
+        0,
+    )
+end
+
+CollisionWorkspace(w::CollisionWorkspace, k) = CollisionWorkspace(GOG.ClipLists(w.lists, k),
+    GOG.PolyRegions(w.regions, k), GOG.PolyRegions(w.new_regions, k), w.ipoints, w.vertex_idx,
+    w.moved, w.Δl, Int(k))
+
+#=
+    PairForces(FT, nrows, max_forces)
+    PairForces(forces, k)
+
+Collision forces between pairs of polygons, with one row per pair and room for `max_forces`
+forces per pair: force `r` of the pair in row `k` is `force[k, r, :]`, it acts at the point
+`point[k, r, :]`, and it comes from an overlap region with area `overlap[k, r]`. Forces that
+are zero are included. The first form makes the arrays on the CPU (move them to a device
+with `adapt`); the second refers to row `k` of the same arrays.
+=#
+struct PairForces{A3<:AbstractArray{<:Any, 3}, A2<:AbstractMatrix}
+    force::A3
+    point::A3
+    overlap::A2
+    k::Int
+end
+
+Adapt.@adapt_structure PairForces
+
+PairForces(::Type{FT}, nrows, max_forces) where FT = PairForces(
+    zeros(FT, nrows, max_forces, 2), zeros(FT, nrows, max_forces, 2),
+    zeros(FT, nrows, max_forces), 0)
+
+PairForces(f::PairForces, k) = PairForces(f.force, f.point, f.overlap, Int(k))
+
+# The number of forces per pair that `forces` has room for
+max_forces(f::PairForces) = size(f.force, 2)
+
+#=
+Velocity of the point (x, y) of floe i, including the floe's rotation.
+
+TODO: the rotation's part looks wrong. A floe that rotates with angular velocity ξ around its
+centroid (cx, cy) moves the point with (-ξ(y - cy), ξ(x - cx)), not (ξ(x - cx), ξ(y - cy)).
+=#
+function _get_velocity(floes::FixedWidthFloes, i, x, y)
+    u = floes.u[i] + floes.ξ[i] * (x - floes.centroid[i, 1])
+    v = floes.v[i] + floes.ξ[i] * (y - floes.centroid[i, 2])
+    return u, v
+end
+
+#=
+Friction between two bodies (floes, or a floe and a domain element) that press against each
+other with the normal force (nx, ny), at a point where they move with velocities (iu, iv) and
+(ju, jv), when the mean length between the intersection points of their overlap region is Δl.
+It opposes the relative velocity, and is at most the coefficient of friction times the normal
+force.
+=#
+function _calc_friction_force(iu, iv, ju, jv, nx::FT, ny::FT, Δl, consts, Δt) where FT
+    G = consts.E/(2*(1+consts.ν))
+    nnorm = sqrt(nx^2 + ny^2)
+    udiff = iu - ju
+    vdiff = iv - jv
+    vnorm = sqrt(udiff^2 + vdiff^2)
+    xdir = zero(FT)
+    ydir = zero(FT)
+    if udiff != 0 || vdiff != 0
+        xdir = udiff/vnorm
+        ydir = vdiff/vnorm
+    end
+    dot_dir = xdir * udiff + ydir * vdiff
+    xfriction = G * Δl * Δt * nnorm * xdir * -dot_dir
+    yfriction = G * Δl * Δt * nnorm * ydir * -dot_dir
+    norm_fric = sqrt(xfriction^2 + yfriction^2)
+    if norm_fric > consts.μ * nnorm
+        xfriction = -consts.μ * nnorm * xdir
+        yfriction = -consts.μ * nnorm * ydir
+    end
+    return xfriction, yfriction
+end
+
+#=
+The direction of the normal force on the overlap region `region` of `poly` and another
+polygon, for a region with other than two intersection points: the sum of the normals of the
+region's edges that are on `poly`, each pointing into the region and as long as its edge,
+normalised. Returns the mean length of those edges, Δl, and the direction, which is (0, 0)
+unless Δl > 0.1.
+
+TODO: this has three problems, to be fixed:
+- The edges on `poly` are those whose midpoints are less than 1e-8 from it. That tolerance is
+  absolute, but the rounding errors of the distance grow with the coordinates: with Float32
+  floes no edge passes, so the force is zero, and with Float64 floes edges start to be missed
+  from coordinates of about 3e7 m.
+- Which way an edge's normal points is decided at a point 1 cm from the edge, which is lost
+  to rounding with Float32 coordinates from about 1e5 m.
+- If the normals cancel out, e.g. for a narrow floe across a wider one, the direction is NaN
+  (0 / 0). `calc_normal_force` then returns `GOG.CLIP_FAILED`.
+
+It's `@noinline` because of what looks like a compiler bug on AMD GPUs (see
+`GOG.intersection!`): in a kernel where some threads of a workgroup took this path and others
+didn't, it threw a GPU kernel exception (an `InexactError`) unless both functions were
+`@noinline`.
+=#
+@noinline function _many_intersect_normal_force(::Type{T},
+        region::GOG.ArrayPolygon{<:AbstractArray{T}}, poly::GOG.ArrayPolygon{<:AbstractArray{T}},
+        force_factor) where T
+    force_dir = (zero(T), zero(T))
+    x1, y1 = zero(T), zero(T)
+    Δl, n_pts = zero(T), 0
+    Fn_tot = (zero(T), zero(T))
+    # Loop over each edge of the overlap region
+    for i in 1:GOG.npoint(region)
+        x2, y2 = GOG.getpoint(region, i)
+        if i == 1
+            x1, y1 = x2, y2
+            continue
+        end
+        # The edge's midpoint and its distance to `poly`
+        xmid, ymid = T(0.5) * (x2 + x1), T(0.5) * (y2 + y1)
+        dist = abs(dist_to_poly((xmid, ymid), poly, T))
+        if dist < T(1e-8)  # only the region's edges on `poly`
+            Δx, Δy = x2 - x1, y2 - y1
+            mag = sqrt(Δx^2 + Δy^2)
+            # Reverse the normal if it points out of the region
+            xt = xmid + (-Δy / 100mag)
+            yt = ymid + (Δx / 100mag)
+            in_region = coveredby_poly((xt, yt), region)
+            f_sign = in_region ? 1 : -1
+            s = f_sign * force_factor
+            Fn = (s * -Δy, s * Δx)
+            Δl += mag
+            n_pts += 1
+            Fn_tot = Fn_tot .+ Fn
+        end
+        x1, y1 = x2, y2
+    end
+    # The mean of the summed values
+    if 0 < n_pts < (GOG.npoint(region) - 1)
+        Δl /= n_pts
+        if Δl > T(0.1)  # large enough to set the direction
+            norm_Fn = sqrt(Fn_tot[1]^2 + Fn_tot[2]^2)
+            force_dir = (Fn_tot[1] / norm_Fn, Fn_tot[2] / norm_Fn)
+        end
+    end
+    return Δl, force_dir
+end
+
+#=
+The normal force on the overlap region `region` of polygons `p1` and `p2`, whose area is
+`area`, given the `n_ipoints` points where the polygons' edges intersect, in
+`ws.ipoints[ws.k, :, :]`. It pushes p1 out of the region: its direction is perpendicular to
+the line between the region's two intersection points, or comes from
+`_many_intersect_normal_force` if the region has another number of them, and it's reversed if
+moving p1 in that direction makes the overlap larger. Its size is `area * force_factor`. Uses
+`ws` for the clipping.
+
+Returns the force, the mean length between the intersection points Δl, and 0, or a negative
+code as the third value: `GOG.CLIP_TOO_SMALL` if `ws` is too small, and `GOG.CLIP_FAILED` if
+the clipping failed or the direction is NaN.
+
+TODO: the direction is reversed once for each region of the overlap after the move that
+intersects `region` and is larger, so two such regions cancel each other out.
+=#
+function calc_normal_force(ws::CollisionWorkspace, p1::GOG.ArrayPolygon,
+        p2::GOG.ArrayPolygon, region::GOG.ArrayPolygon, area, n_ipoints,
+        force_factor::FT) where FT
+    k = ws.k
+    force_dir = (zero(FT), zero(FT))
+    # Which of the region's vertices are intersection points
+    m = which_vertices_match_points!(ws.vertex_idx, k, ws.ipoints, n_ipoints, region)
+    m < 0 && return force_dir, zero(FT), GOG.CLIP_TOO_SMALL
+    Δl = zero(FT)
+    if m == 2  # two intersection points
+        x1, y1 = GOG.getpoint(region, ws.vertex_idx[k, 1])
+        x2, y2 = GOG.getpoint(region, ws.vertex_idx[k, 2])
+        Δx = x2 - x1
+        Δy = y2 - y1
+        Δl = sqrt(Δx^2 + Δy^2)
+        if Δl > FT(0.1)  # if the overlap is large enough to consider
+            force_dir = (-Δy/Δl, Δx/Δl)
+        end
+    elseif m != 0  # another number of intersection points
+        Δl, force_dir = _many_intersect_normal_force(FT, region, p1, force_factor)
+    end
+    # Reverse the direction if moving p1 in it makes the overlap larger
+    if Δl > FT(0.1)
+        # Moving p1 by NaN makes the clipping fail
+        any(isnan, force_dir) && return force_dir, Δl, GOG.CLIP_FAILED
+        GOG.npoint(p1) > size(ws.moved, 2) && return force_dir, Δl, GOG.CLIP_TOO_SMALL
+        p1new = _translate_poly!(GOG.ArrayPolygon(ws.moved, k, 0), p1, force_dir[1],
+            force_dir[2])
+        n_new = intersect_polys!(ws.new_regions, ws.lists, p1new, p2)
+        n_new < 0 && return force_dir, Δl, n_new
+        for r in 1:n_new
+            new_region = GOG.region(ws.new_regions, r)
+            if check_intersects(new_region, region) && area_poly(new_region, FT)/area > 1
+                force_dir = .-force_dir
+            end
+        end
+    end
+    return force_dir .* area .* force_factor, Δl, 0
+end
+
+#=
+The normal forces on the first `n_regions` overlap regions of polygons `p1` and `p2`, which
+are in `ws.regions`. Each region that is large enough gets a force, which is written to row
+`ws.k` of `out` with its point (the region's centroid) and the region's area; its Δl (see
+`calc_normal_force`) is written to `ws.Δl`. Only if the polygons' edges intersect at two or
+more points do the regions get forces.
+
+Returns the number of forces, or a negative code (see `calc_normal_force`).
+=#
+function calc_elastic_forces!(out::PairForces, ws::CollisionWorkspace, p1::GOG.ArrayPolygon,
+        p2::GOG.ArrayPolygon, n_regions, force_factor::FT) where FT
+    k = ws.k
+    n_ipoints = get_intersection_points!(ws.ipoints, k, p1, p2, FT)
+    n_ipoints < 0 && return GOG.CLIP_TOO_SMALL
+    n_ipoints >= 2 || return 0
+    # Regions smaller than this get no force
+    n1, n2 = GOG.npoint(p1) - 1, GOG.npoint(p2) - 1
+    min_area = FT(min(n1, n2) * 100) / FT(1.75)
+    n_forces = 0
+    for r in 1:n_regions
+        region = GOG.region(ws.regions, r)
+        area = area_poly(region, FT)
+        area < min_area && continue
+        (n_forces == max_forces(out) || n_forces == size(ws.Δl, 2)) && return GOG.CLIP_TOO_SMALL
+        n_forces += 1
+        force, Δl = (zero(FT), zero(FT)), zero(FT)
+        px, py = zero(FT), zero(FT)
+        if area != 0
+            px, py = centroid_poly(region, FT)
+            force, Δl, err = calc_normal_force(ws, p1, p2, region, area, n_ipoints,
+                force_factor)
+            err < 0 && return err
+        end
+        out.force[k, n_forces, 1], out.force[k, n_forces, 2] = force
+        out.point[k, n_forces, 1], out.point[k, n_forces, 2] = px, py
+        out.overlap[k, n_forces] = area
+        ws.Δl[k, n_forces] = Δl
+    end
+    return n_forces
+end
+
+"""
+    floe_floe_interaction!(out::PairForces, ws::CollisionWorkspace, floes::FixedWidthFloes,
+        i, j, consts, Δt, max_overlap)
+
+The collision forces on floe i from floe j: a normal force and friction for each region
+where they overlap enough. They are written to row `ws.k` of `out` (see `PairForces`),
+using row `ws.k` of `ws` (see `CollisionWorkspace`), so that a kernel can compute many pairs
+at once. The `floes` are only read, not modified. `max_overlap` is the fraction of either
+floe's area that the floes can overlap before they should fuse.
+
+Returns the number of forces n and whether the floes should fuse (then n is 0), or a
+negative code and `false` if the workspace is too small (`GOG.CLIP_TOO_SMALL`) or the
+clipping failed (`GOG.CLIP_FAILED`).
+"""
+function floe_floe_interaction!(out::PairForces, ws::CollisionWorkspace,
+        floes::FixedWidthFloes{FT}, i, j, consts, Δt, max_overlap) where FT
+    k = ws.k
+    p1, p2 = _floe_poly(floes, i), _floe_poly(floes, j)
+    n_regions = intersect_polys!(ws.regions, ws.lists, p1, p2)
+    n_regions < 0 && return n_regions, false
+    total_area = zero(FT)
+    for r in 1:n_regions
+        total_area += area_poly(GOG.region(ws.regions, r), FT)
+    end
+    total_area > 0 || return 0, false
+    # The floes overlap too much: they should fuse
+    if max(total_area/floes.area[i], total_area/floes.area[j]) > max_overlap
+        return 0, true
+    end
+    # Constant needed to calculate the forces
+    ih = floes.height[i]
+    ir = sqrt(floes.area[i])
+    jh = floes.height[j]
+    jr = sqrt(floes.area[j])
+    force_factor = if ir > FT(1e5) || jr > FT(1e5)
+        consts.E*min(ih, jh)/min(ir, jr)
+    else
+        consts.E*(ih*jh)/(ih*jr+jh*ir)
+    end
+    n = calc_elastic_forces!(out, ws, p1, p2, n_regions, force_factor)
+    n < 0 && return n, false
+    # Add the friction at each force's point, from the floes' velocities there
+    for r in 1:n
+        px, py = out.point[k, r, 1], out.point[k, r, 2]
+        nx, ny = out.force[k, r, 1], out.force[k, r, 2]
+        iu, iv = _get_velocity(floes, i, px, py)
+        ju, jv = _get_velocity(floes, j, px, py)
+        fx, fy = _calc_friction_force(iu, iv, ju, jv, nx, ny, ws.Δl[k, r], consts, Δt)
+        out.force[k, r, 1] = nx + fx
+        out.force[k, r, 2] = ny + fy
+    end
+    return n, false
+end
+
 """
     floe_domain_element_interaction!(floe, boundary::OpenBoundary, ...)
 

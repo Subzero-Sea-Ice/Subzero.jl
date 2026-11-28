@@ -87,9 +87,27 @@ of one function, this sees everything the kernel calls, inlined or not.
 =#
 function _float64_kernels(f)
     jobs = keys(KA.POCL.@device_code_typed f())
-    llvm(job) = sprint(io -> KA.POCL.GPUCompiler.code_llvm(io, job; dump_module = true))
-    return unique!([_kernel_name(job) for job in jobs if
-        occursin(r"\bdouble\b|\bfpext\b", llvm(job))])
+    return unique!([_kernel_name(job) for job in jobs if _computes_in_float64(job)])
+end
+
+# Whether the final LLVM IR of a compilation job has a `double` or an `fpext`
+_computes_in_float64(job) = occursin(r"\bdouble\b|\bfpext\b",
+    sprint(io -> KA.POCL.GPUCompiler.code_llvm(io, job; dump_module = true)))
+
+#= Whether the first kernel that `launch()` launches on the CPU backend computes in Float64,
+as `_float64_kernels` checks, but without compiling the kernel to machine code or running it:
+generating its LLVM IR takes seconds, where POCL can take minutes to compile a large kernel.
+The kernel must not have been compiled already. =#
+struct _StopCompile <: Exception end
+function _kernel_computes_in_float64(launch)
+    job = Ref{Any}()
+    try
+        KA.POCL.GPUCompiler.with_compile_hook(launch, j -> (job[] = j; throw(_StopCompile())))
+    catch e
+        e isa _StopCompile || rethrow()
+    end
+    isassigned(job) || error("no kernel was compiled: it may have been compiled already")
+    return _computes_in_float64(job[])
 end
 
 #= Run `launch()`. With Float32 on the CPU backend, also check that the kernels it launches
@@ -111,14 +129,19 @@ _gog_padding_is_zero(p) = all(iszero, p.coords[p.i, (GOG.npoint(p) + 1):end, :])
 _gi_rect(ext) = (((x1, x2), (y1, y2)) = (ext.X, ext.Y);
     GI.Polygon([GI.LinearRing([(x1, y1), (x1, y2), (x2, y2), (x2, y1), (x1, y1)])]))
 
-#= Run `f(i, args...)` for `i in 1:n` in a kernel on `backend`, and wait for it. The arguments
-must be on the device and isbits, e.g. arrays moved with `Adapt.adapt(backend, x)`. =#
+#= Run `f(i, args...)` for `i in 1:n` in a kernel on `backend`, and wait for it.
+Arguments must be on the device and isbits, e.g. arrays moved with
+`Adapt.adapt(backend, x)`. Let KernelAbstractions choose the workgroup size because
+a fixed one can exceed the limit of a large kernel (in terms of estimated stack usage).
+This depends on the machine (e.g. PoCL on github CI only allowed 224 work-items for a
+large kernel, resulting in an "ArgumentError: Work-group size has more than 224
+work-items, the maximum for this kernel" error). =#
 @kernel function _gog_test_kernel!(f, args)
     i = @index(Global)
     @inline f(i, args...)
 end
 function _gog_launch!(f, backend, n, args...)
-    _gog_test_kernel!(backend, 256)(f, args; ndrange = n)
+    _gog_test_kernel!(backend)(f, args; ndrange = n)
     KA.synchronize(backend)
     return
 end
