@@ -157,6 +157,10 @@ GeometryOpsGPU, `which_vertices_match_points!` with its CPU version, and all of 
             moved == [Tuple(FT.(p)) for p in GI.getpoint(GI.getexterior(
                 Subzero._translate_poly(FT, floes.poly[i], FT(12.5), FT(-3.25))))]
         end
+        # a shift in another float type than the polygons' isn't accepted
+        OT = FT == Float64 ? Float32 : Float64
+        @test_throws MethodError Subzero._translate_poly!(GOG.ArrayPolygon(ref[5], 1, 0), r(1),
+            OT(12.5), OT(-3.25))
         # intersect_polys! gives what GOG.intersection! gives
         clip(f, i) = (out = GOG.PolyRegions(GOG.PolyRegions(FT, 1, 8, 64), 1);
             m = f(out, GOG.ClipLists(GOG.ClipLists(FT, 1, 64), 1), r(i), r(partner[i]));
