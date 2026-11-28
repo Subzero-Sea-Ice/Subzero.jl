@@ -272,10 +272,10 @@ points, and some steps of the clipping, in Float64.
             _gog_launch!(_pair_forces_kernel!, Subzero.KernelAbstractions.CPU(), npairs, args...))
     end
 
-    #= Only Float64 on the CPU backend (POCL) and JLBackend: POCL seems to take a very long
-    time to compile this kernel (and JLBackend triggers compilation through POCL too).
-    The Float32 kernel is tested on GPUs only (not on CI) to try to get the test time
-    less than ~hours... =#
+    #= Float64 on the CPU backend and the GPUs, Float32 on the GPUs only: POCL takes minutes
+    to compile this kernel. JLBackend compiles with POCL too, without reusing CPU()'s compile,
+    so it doesn't run it. With Float32, the kernel's maths is checked above, without
+    compiling it. =#
     _kernel_float_types(backend) =
         backend isa JLArrays.JLBackend ? () :
         backend isa typeof(Subzero.KernelAbstractions.CPU()) ? (Float64,) : (Float64, Float32)
