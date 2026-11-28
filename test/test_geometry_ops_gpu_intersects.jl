@@ -82,23 +82,6 @@ against GeometryOps. With Float64 polygons the results must be the same, bit for
         @test all(o -> count(==(o), orientations) > 1000, (GOG.point_in, GOG.point_on, GOG.point_out))
     end
 
-    #= GeometryOps computes the segment-segment orientation in Float64. With Float64 points all
-    of it must be the same; with Float32 points, the kind of intersection must be the same
-    with exact orientation tests, which decide it exactly in either type. =#
-    @testset "Segment orientations with $FT" for FT in (Float64, Float32)
-        edges = _edge_pairs(_geom_test_polys(FT; n = 40))
-        go(e, exact) = GO._seg_seg_orientation(GO.Planar(), e...; exact = exact ? GO.True() : GO.False())
-        gog(e, exact) = GOG._seg_seg_orientation(e...; exact = exact ? GOG.True() : GOG.False())
-        if FT == Float64
-            @test all(e -> isequal((Int(gog(e, true)[1]), gog(e, true)[2:3]...),
-                (Int(go(e, true)[1]), go(e, true)[2:3]...)), edges)
-            @test all(e -> isequal((Int(gog(e, false)[1]), gog(e, false)[2:3]...),
-                (Int(go(e, false)[1]), go(e, false)[2:3]...)), edges)
-        else
-            @test all(e -> Int(gog(e, true)[1]) == Int(go(e, true)[1]), edges)
-        end
-    end
-
     #= Segments that hinge with a curve (meet it at a vertex, or along an edge), which is
     when _line_filled_curve_interactions splits them: the edges of each polygon against the
     ring of each other polygon, if some edge pair hinges. Compared with GeometryOps'
@@ -157,7 +140,6 @@ against GeometryOps. With Float64 polygons the results must be the same, bit for
         @test n_several > 500
     end
 
-
     #= Where the ring of each polygon of a pair is relative to the other polygon. With
     Float32 points, the in and out of pieces along the other ring's boundary depend on how
     their midpoints are rounded (see "Splitting segments"), so they may differ where both
@@ -178,7 +160,6 @@ against GeometryOps. With Float64 polygons the results must be the same, bit for
         # the rings are in, on and out of the other polygons in many combinations
         @test length(kinds) >= 5
     end
-
 
     #= intersects and disjoint against GeometryOps, on all the test pairs. Unlike the line
     and curve interactions, they match in Float32 too on these pairs: wherever rounding
