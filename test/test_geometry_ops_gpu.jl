@@ -339,8 +339,10 @@ can move with GeometryOpsGPU.
 
     #= The kernels below are launched with `_launch_float32_checked`, which checks that with
     Float32 they don't compute in Float64. Together they call every function of the module
-    that kernels use, except the clipping (see `test_geometry_ops_gpu_clipping.jl`) and
-    `interiors_intersect` and `transform!` (see `test_kernel_code.jl`). =#
+    that kernels use, except the clipping (see `test_geometry_ops_gpu_clipping.jl`),
+    `intersects` and `disjoint` (see `test_geometry_ops_gpu_intersects.jl`),
+    `interiors_intersect` and `transform!` in place (see `test_kernel_code.jl`), and
+    `transform!` into another polygon (see the wrapper kernel in `test_device_geom_utils.jl`). =#
 
     #= Kernel test: each polygon computes its area and centroid, the point tests for its test
     points, and the intersection points with a partner polygon =#
