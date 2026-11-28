@@ -129,12 +129,12 @@ _gog_padding_is_zero(p) = all(iszero, p.coords[p.i, (GOG.npoint(p) + 1):end, :])
 _gi_rect(ext) = (((x1, x2), (y1, y2)) = (ext.X, ext.Y);
     GI.Polygon([GI.LinearRing([(x1, y1), (x1, y2), (x2, y2), (x2, y1), (x1, y1)])]))
 
-#= Run `f(i, args...)` for `i in 1:n` in a kernel on `backend`, and wait for it. 
+#= Run `f(i, args...)` for `i in 1:n` in a kernel on `backend`, and wait for it.
 Arguments must be on the device and isbits, e.g. arrays moved with
 `Adapt.adapt(backend, x)`. Let KernelAbstractions choose the workgroup size because
 a fixed one can exceed the limit of a large kernel (in terms of estimated stack usage).
-This depends on the machine (e.g. PoCL on github CI only allowed 224 work-items for the
-collision kernel resulting in an "ArgumentError: Work-group size has more than 224
+This depends on the machine (e.g. PoCL on github CI only allowed 224 work-items for a
+large kernel, resulting in an "ArgumentError: Work-group size has more than 224
 work-items, the maximum for this kernel" error). =#
 @kernel function _gog_test_kernel!(f, args)
     i = @index(Global)

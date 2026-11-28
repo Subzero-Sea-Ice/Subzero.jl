@@ -664,8 +664,8 @@ end
 The collision forces on floe i from floe j: a normal force and friction for each region
 where they overlap enough. They are written to row `ws.k` of `out` (see `PairForces`),
 using row `ws.k` of `ws` (see `CollisionWorkspace`), so that a kernel can compute many pairs
-at once. The `floes` are only read, not modified. `max_overlap` is the fraction of either floe's area that
-the floes can overlap before they should fuse.
+at once. The `floes` are only read, not modified. `max_overlap` is the fraction of either
+floe's area that the floes can overlap before they should fuse.
 
 Returns the number of forces n and whether the floes should fuse (then n is 0), or a
 negative code and `false` if the workspace is too small (`GOG.CLIP_TOO_SMALL`) or the
